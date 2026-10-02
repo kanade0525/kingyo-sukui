@@ -22,6 +22,7 @@ const ui = new UI({
     ui.resetMeters();
     ui.enterPlay();
   },
+  hour(v) { renderer?.setHour(v); },
   amp(v) { renderer?.setAmp(v); },
   wind(v) { renderer?.setWind(v); },
   fft(n) { renderer?.setFftSize(n); },

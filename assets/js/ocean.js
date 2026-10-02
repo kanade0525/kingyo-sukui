@@ -10,8 +10,12 @@ import { PATCH, TANK } from './world.js';
 
 const G = 9.80665;
 
-/** 波高の実効値 [m]。金魚すくいの舟の水面はこのくらい。 */
-const TARGET_RMS = 0.0014;
+/**
+ * 波の大きさは実効「傾き」で決める。
+ * 水面の見え方（反射のちらつき、底の揺らぎ、コースティクス）を決めるのは
+ * 波高そのものではなく傾きなので、こちらを揃えたほうが縮尺を変えても崩れない。
+ */
+const TARGET_SLOPE = 0.055;
 
 /**
  * Phillips スペクトルから h0(k) と conj(h0(-k)) を作る。
@@ -26,7 +30,7 @@ function phillipsH0(N, patch, wind, windDir) {
   const L = (wind * wind) / G;
   // 格子で表しきれない波を捨てる長さ。下限を置いてあるのは、N を上げても
   // 見た目が細かくなりすぎないようにするため（64 だけは表現力の分だけ滑らかになる）
-  const small = Math.max(patch / N * 2.0, 0.0082);
+  const small = Math.max(patch / N * 2.0, 0.012);
   const A = 8e-6;
   const wx = Math.cos(windDir), wz = Math.sin(windDir);
   const data = new Float32Array(N * N * 4);
@@ -55,7 +59,7 @@ function phillipsH0(N, patch, wind, windDir) {
     return p;
   };
 
-  let power = 0;
+  let slopePower = 0;
   for (let j = 0; j < N; j++) {
     for (let i = 0; i < N; i++) {
       const nx = i - N / 2, nz = j - N / 2;
@@ -69,16 +73,18 @@ function phillipsH0(N, patch, wind, windDir) {
       data[o + 1] = g2 * s;
       data[o + 2] = g3 * sc;     // conj(h0(-k))
       data[o + 3] = -g4 * sc;
-      power += data[o] ** 2 + data[o + 1] ** 2 + data[o + 2] ** 2 + data[o + 3] ** 2;
+      // 傾きの分散は Σ k²·E|h̃|²。E|h̃|² は h0 と conj(h0(-k)) の二乗和
+      const cell = data[o] ** 2 + data[o + 1] ** 2 + data[o + 2] ** 2 + data[o + 3] ** 2;
+      slopePower += (kx * kx + kz * kz) * cell;
     }
   }
 
-  // 波高を目標の実効値に合わせる。
+  // 目標の実効傾きに合わせる。
   // Phillips は 1/k⁴ を持つので、振幅係数 A の意味が波数の縮尺で何桁も変わる。
-  // 海（波長 100m 級）向けの A をそのまま 60cm の舟に使うと 10⁻¹⁴ m になって
-  // 波が消える。A は形だけ決めさせ、大きさはここで一度に正規化する。
-  const rms = Math.sqrt(power);
-  const scale = rms > 1e-30 ? TARGET_RMS / rms : 0;
+  // 海（波長 100m 級）向けの A をそのまま 60cm の舟に使うと波が消える。
+  // A は形だけ決めさせ、大きさはここで一度に正規化する。
+  const rms = Math.sqrt(slopePower);
+  const scale = rms > 1e-30 ? TARGET_SLOPE / rms : 0;
   for (let i = 0; i < data.length; i++) data[i] *= scale;
   return data;
 }

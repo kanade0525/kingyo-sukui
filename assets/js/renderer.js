@@ -17,9 +17,8 @@ import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js';
 import { tankMesh, fishMesh, poiMesh, bowlMesh } from './meshes.js';
 import { Ocean } from './ocean.js';
 import { Ripple } from './ripple.js';
-import {
-  TANK, PATCH, RIPPLE_SPAN, LANTERNS, LAMP_EMISSIVE, LAMP_POWER, MOON_DIR, POI, BOWL, MAX_FISH,
-} from './world.js';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH } from './world.js';
+import { sunFor, DEFAULT_HOUR } from './sky.js';
 import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js';
 
 const DEG = Math.PI / 180;
@@ -61,14 +60,7 @@ export class Renderer {
     this.mBowl = bowlMesh(gl);
     this.mWater = gridMesh(gl, 220, 150);
 
-    // 提灯を uniform に流し込む形で持っておく。
-    // rgb は紙そのものの明るさ、a はまわりを照らす力。
-    this.lanternP = new Float32Array(LANTERNS.length * 4);
-    this.lanternC = new Float32Array(LANTERNS.length * 4);
-    LANTERNS.forEach((l, i) => {
-      const e = LAMP_EMISSIVE * l.i;
-      this.lanternC.set([l.c[0] * e, l.c[1] * e, l.c[2] * e, LAMP_POWER], i * 4);
-    });
+    this.setHour(DEFAULT_HOUR);
 
     this.proj = mat4();
     this.view = mat4();
@@ -165,15 +157,6 @@ export class Renderer {
     BOWL.pos[0] = this.bowlPos[0];
     BOWL.pos[2] = this.bowlPos[2];
 
-    // 提灯はカメラと一緒に回し、引いた分だけ一緒に遠ざける。
-    // 相対の角度が変わらないので、水面に映る位置も変わらない
-    const cy = Math.cos(yaw), sy = Math.sin(yaw);
-    const k = dist / 1.084;
-    LANTERNS.forEach((l, i) => {
-      this.lanternP.set([
-        (l.p[0] * cy + l.p[2] * sy) * k, l.p[1] * k, (-l.p[0] * sy + l.p[2] * cy) * k, l.r * k,
-      ], i * 4);
-    });
 
     const fwd = norm3(sub3(target, eye));
     const right = norm3(cross3(fwd, [0, 1, 0]));
@@ -196,10 +179,35 @@ export class Renderer {
     return [this.cam[0] + d[0] * t, this.cam[2] + d[2] * t];
   }
 
+  /** 時刻から太陽と空を決める。後で夕方や実時刻へ差し替えられるよう、
+   *  光の条件はすべてこの一箇所から配る。 */
+  setHour(hour) {
+    const s = sunFor(hour);
+    this.sun = s;
+    // 水中での屈折角。コースティクスの横ずれに使う
+    const sinA = Math.max(Math.cos(s.elev), 0);        // 天頂からの角の sin
+    const sinT = Math.min(sinA / 1.333, 0.9995);
+    this.refrTan = sinT / Math.sqrt(Math.max(1 - sinT * sinT, 1e-6));
+    const hx = Math.hypot(s.dir[0], s.dir[2]) || 1;
+    this.sunHoriz = [s.dir[0] / hx, s.dir[2] / hx];
+  }
+
   #lights(p) {
-    p.vec4Array('uLanternP[0]', this.lanternP)
-     .vec4Array('uLanternC[0]', this.lanternC)
-     .set('uMoonDir', MOON_DIR);
+    const s = this.sun;
+    p.set('uSunDir', s.dir)
+      .set('uSunColor', s.sunColor)
+      .set('uSkyZenith', s.zenith)
+      .set('uSkyHorizon', s.horizon)
+      .set('uSkyGround', s.ground)
+      .setFloat('uHaze', s.haze)
+      // 分散コースティクス。(1 − 1/n) を 3 波長ぶん。
+      // 実際の水の分散では 16cm の水深で見えないので、広がりは誇張してある
+      .set('uCausC', [0.2425, 0.2502, 0.2578])
+      .set('uSunHoriz', this.sunHoriz)
+      .setFloat('uRefrTan', this.refrTan)
+            // 水深 16cm の舟では、屈折のずれが小さすぎてコースティクスがほとんど
+      // 出ない（clearwater は水深 1.6m）。見える強さまで誇張している
+      .setFloat('uCausGain', 6.0);
     return p;
   }
 
@@ -340,7 +348,9 @@ export class Renderer {
       this.#lights(p); this.#water(p);
       p.set('uVP', this.vp).set('uCam', this.cam)
         .tex('uScene', this.fbos.scene.tex[0])
-        .set('uRes', [this.w, this.h]);
+        .set('uRes', [this.w, this.h])
+        .setFloat('uDepth', TANK.depth)
+        .setFloat('uTime', time);
       this.mWater.draw();
     }
 
@@ -407,7 +417,8 @@ export class Renderer {
     this.pComp.use()
       .tex('uSrc', this.fbos.hdr.tex[0])
       .tex('uBloom', this.fbos.bright.tex[0])
-      .setFloat('uBloomAmt', 0.55)
+      .setFloat('uBloomAmt', 0.22)
+      .setFloat('uExposure', this.sun.exposure)
       .setFloat('uTime', time);
     this.full.draw();
   }

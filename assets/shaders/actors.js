@@ -177,12 +177,11 @@ void main(){
 
   if(alpha < 0.999 && bayer4(gl_FragCoord.xy) > alpha) discard;
 
-  vec3 amb = skyColor(N) * 0.55 + vec3(0.022, 0.034, 0.044);
-  vec3 dif = waterAmbient(vW, N) * 0.85 + lanternLight(vW, N, 1.0) * 0.25;
-  vec3 spc = lanternLight(vW, reflect(-V, N), 110.0) * 0.050;
+  vec3 lit = underSun(N) + underAmbient(N);
   float up = N.y * 0.5 + 0.5;                      // 背のほうが明るい
-  vec3 col = base * (amb + dif) * (0.72 + 0.45 * up) + spc;
-  col += base * pow(1.0 - ndv, 4.0) * 0.14;        // 縁の照り返し
+  vec3 col = base * lit * (0.78 + 0.35 * up);
+  col += ggx(N, V, underSunDir(), 0.30, vec3(0.03)) * uSunColor * 0.7;
+  col += base * pow(1.0 - ndv, 4.0) * 0.12 * lit;  // 縁の照り返し
 
   frag = vec4(col, vDist);
 }`;
@@ -263,29 +262,34 @@ void main(){
     float lip = smoothstep(thr, thr + 0.09, n * 0.60 + r * 0.40);
 
     float fiber = 0.86 + 0.14 * fbm(vUv * vec2(26.0, 7.0) + 2.0);
-    vec3 dry = vec3(1.00, 0.95, 0.90);
-    vec3 wet = vec3(0.86, 0.80, 0.78);
+    vec3 dry = vec3(0.78, 0.74, 0.70);
+    vec3 wet = vec3(0.62, 0.58, 0.56);
     col = mix(dry, wet, uWet) * fiber;
     col = mix(vec3(0.72, 0.56, 0.48), col, lip);
     // 紙は光を透かす
-    vec3 through = waterAmbient(vW, -N) * 0.42 + skyColor(N) * 0.9;
-    col *= (through + waterAmbient(vW, N) * 0.34 + vec3(0.05, 0.06, 0.07));
-    col += lanternLight(vW, reflect(-V, N), 40.0) * 0.05 * uWet;
+    // 和紙は光を透かす。裏から回った分を足す
+    // 和紙は光を透かす。表から当たる分と、裏へ回って透けてくる分を足す。
+    // 反射率 0.75 の紙なので、両方を足しても 1 を大きく超えないようにする
+    vec3 lit = uSunColor * max(dot(N, uSunDir), 0.0) * 0.45
+             + uSunColor * max(dot(-N, uSunDir), 0.0) * 0.30
+             + skyAmbient(N) * 0.6;
+    col *= lit;
+    col += ggx(N, V, uSunDir, 0.30, vec3(0.03)) * uSunColor * uWet;
     alpha = mix(0.72, 0.42, uWet) * (0.55 + 0.45 * lip);
     alpha = mix(alpha, 1.0, pow(1.0 - ndv, 3.0) * 0.4);
   } else if(region == 1){
     // 枠。朱に塗った輪
     col = vec3(0.78, 0.17, 0.09);
     col *= 0.8 + 0.3 * fbm(vUv * 30.0);
-    vec3 lit = waterAmbient(vW, N) * 0.95 + skyColor(N) * 0.8 + vec3(0.03);
-    col = col * lit + lanternLight(vW, reflect(-V, N), 90.0) * 0.16;
+    col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
+        + ggx(N, V, uSunDir, 0.20, vec3(0.05)) * uSunColor;
     alpha = 1.0;
   } else {
     // 柄。竹
     float grain = fbm(vec2(vW.y * 70.0, 0.5)) * 0.5 + 0.5;
     col = mix(vec3(0.52, 0.42, 0.24), vec3(0.72, 0.62, 0.40), grain);
-    vec3 lit = waterAmbient(vW, N) * 0.75 + skyColor(N) * 0.7 + vec3(0.025);
-    col = col * lit + lanternLight(vW, reflect(-V, N), 60.0) * 0.10;
+    col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
+        + ggx(N, V, uSunDir, 0.35, vec3(0.04)) * uSunColor * 0.6;
     alpha = 1.0;
   }
 

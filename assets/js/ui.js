@@ -24,6 +24,11 @@ export class UI {
       this.el.btnPanel.setAttribute('aria-expanded', String(open));
     });
 
+    this.#range('hour', 'hourOut', (v) => {
+      handlers.hour(v);
+      const h = Math.floor(v);
+      return `${String(h).padStart(2, '0')}:${String(Math.round((v - h) * 60)).padStart(2, '0')}`;
+    });
     this.#range('amp', 'ampOut', (v) => {
       const a = v / 100;
       handlers.amp(a);

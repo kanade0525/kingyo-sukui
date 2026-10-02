@@ -42,19 +42,32 @@ in vec2 vUv;
 uniform sampler2D uSrc;
 uniform sampler2D uBloom;
 uniform float uBloomAmt;
+uniform float uExposure;
 uniform float uTime;
 out vec4 frag;
+
+/** わずかな倍率色収差。画面の端ほど赤と青がずれる。
+ *  実際のレンズがそうなっているので、ほんの少し入れると写真らしくなる。 */
+vec3 fetchCA(vec2 uv){
+  vec2 d = uv - 0.5;
+  float k = 0.0016;
+  return vec3(
+    texture(uSrc, 0.5 + d * (1.0 + k)).r,
+    texture(uSrc, uv).g,
+    texture(uSrc, 0.5 + d * (1.0 - k)).b);
+}
+
 void main(){
-  vec3 c = texture(uSrc, vUv).rgb + texture(uBloom, vUv).rgb * uBloomAmt;
+  vec3 c = fetchCA(vUv) + texture(uBloom, vUv).rgb * uBloomAmt;
 
-  // 周辺減光。水槽に目が行くように、ごく弱く
+  // 周辺減光。舟に目が行くように、ごく弱く
   vec2 q = (vUv - 0.5) * vec2(1.0, 0.92);
-  c *= 1.0 - dot(q, q) * 0.52;
+  c *= 1.0 - dot(q, q) * 0.34;
 
-  c = aces(c * 1.08);
+  c = aces(c * uExposure);
   c = toSRGB(c);
 
   // 暗部のバンディングを散らす粒子
-  c += (hash12(gl_FragCoord.xy + uTime) - 0.5) * 0.009;
+  c += (hash12(gl_FragCoord.xy + uTime) - 0.5) * 0.006;
   frag = vec4(c, 1.0);
 }`;

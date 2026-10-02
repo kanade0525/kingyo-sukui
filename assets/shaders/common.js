@@ -1,5 +1,3 @@
-import { LANTERNS } from '../js/world.js';
-
 // シェーダの共有部品。文字列として他のシェーダへ差し込む。
 //
 // fetch で .glsl を読む作りにしなかったのは、file:// で開いたときに黙って
@@ -22,13 +20,18 @@ void main(){
   gl_Position = vec4(aP, 0.0, 1.0);
 }`;
 
-/** 値ノイズ。金魚の斑、紙の繊維、木目に使う。 */
+/** 値ノイズ。砂利、金魚の斑、紙の繊維に使う。 */
 export const NOISE = `
 float hash11(float p){ p = fract(p*0.1031); p *= p+33.33; p *= p+p; return fract(p); }
 float hash12(vec2 p){
   vec3 p3 = fract(vec3(p.xyx)*0.1031);
   p3 += dot(p3, p3.yzx+33.33);
   return fract((p3.x+p3.y)*p3.z);
+}
+vec2 hash22(vec2 p){
+  vec3 p3 = fract(vec3(p.xyx)*vec3(0.1031,0.1030,0.0973));
+  p3 += dot(p3, p3.yzx+33.33);
+  return fract((p3.xx+p3.yz)*p3.zy);
 }
 float vnoise(vec2 p){
   vec2 i = floor(p), f = fract(p);
@@ -40,74 +43,107 @@ float fbm(vec2 p){
   float s = 0.0, a = 0.5;
   for(int i=0;i<4;i++){ s += a*vnoise(p); p *= 2.03; a *= 0.5; }
   return s;
+}
+/** 砂利の粒。セルごとの距離場。 */
+float worley(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  float d = 1e9;
+  for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++){
+    vec2 g = vec2(float(x), float(y));
+    vec2 o = hash22(i+g);
+    d = min(d, length(g + o - f));
+  }
+  return d;
 }`;
 
 /**
- * 夜空と提灯。水面の反射でも背景でも同じ関数を使うので、ここに一本化する。
- * 提灯は点ではなく有限の大きさを持つ球光源として扱う。そうしないと
- * 水面に映る光が点のままで、うねりに沿って伸びない。
+ * 空と太陽。
+ *
+ * 光源は太陽ひとつ。方向の揃った光でないと、水底のコースティクスも
+ * 水面のきらめきも芯が出ない。空の色は時刻から JS 側（sky.js）で作って渡す。
  */
 export const SKYLIB = `
-#define NLANT ${LANTERNS.length}
-uniform vec4 uLanternP[NLANT];   // xyz = 位置, w = 半径
-uniform vec4 uLanternC[NLANT];   // rgb = 色 * 明るさ, a = 揺らぎ
-uniform vec3 uMoonDir;
+uniform vec3 uSunDir;       // 太陽へ向かう単位ベクトル
+uniform vec3 uSunColor;     // 直達光。1 を超える
+uniform vec3 uSkyZenith;
+uniform vec3 uSkyHorizon;
+uniform vec3 uSkyGround;
+uniform float uHaze;
+
+const float PI = 3.14159265;
 
 vec3 skyColor(vec3 d){
   float up = clamp(d.y, -1.0, 1.0);
-  vec3 zenith  = vec3(0.009, 0.017, 0.040);
-  vec3 horizon = vec3(0.052, 0.046, 0.062);
-  vec3 below   = vec3(0.013, 0.012, 0.016);
-  vec3 c = up > 0.0 ? mix(horizon, zenith, pow(up, 0.5))
-                    : mix(horizon, below, pow(-up, 0.55));
-  // 屋台の連なりが地平の少し上を橙に染めている
-  c += vec3(0.048, 0.019, 0.005) * pow(max(1.0 - abs(up) * 1.5, 0.0), 7.0);
-  // 月
-  float m = max(dot(d, uMoonDir), 0.0);
-  c += vec3(0.30, 0.33, 0.40) * pow(m, 900.0) * 2.4;
-  c += vec3(0.030, 0.034, 0.046) * pow(m, 9.0);
+  vec3 c = up > 0.0
+    ? mix(uSkyHorizon, uSkyZenith, pow(up, 0.42))
+    : mix(uSkyHorizon, uSkyGround, pow(-up, 0.55));
+  // 太陽のまわりの暈け（前方散乱）
+  float mu = max(dot(d, uSunDir), 0.0);
+  c += uSunColor * (0.050 * pow(mu, 9.0) + 0.008 * pow(mu, 2.0)) * uHaze;
   return c;
 }
 
-/**
- * 点 P から向き R を見たときに提灯が返す光。
- * sharp が大きいほど鏡に近く、1 なら拡散反射に相当する。
- *
- * ローブは正規化してある。提灯の見かけの角半径を ang とすると、
- *   ・鏡に近いローブ … 指数を 2/ang² で頭打ちにし、覆う量を 1 に寄せる
- *     （鏡に映った光源は、光源そのものの明るさで見えるのが正しい）
- *   ・広いローブ … 覆う量が ang² に比例し、自然に距離の二乗で減る
- * 上限 0.09 は、鏡面の輝きが提灯の実体より明るくなりすぎないための蓋。
- */
-vec3 lanternLight(vec3 P, vec3 R, float sharp){
-  vec3 sum = vec3(0.0);
-  for(int i=0;i<NLANT;i++){
-    vec3 L = uLanternP[i].xyz - P;
-    float d2 = max(dot(L, L), 1e-4);
-    L *= inversesqrt(d2);
-    float cosA = max(dot(R, L), 0.0);
-    float ang2 = uLanternP[i].w * uLanternP[i].w / d2;
-    float n = min(sharp, 2.0 / max(ang2, 1e-5));
-    float cover = min((n + 1.0) * ang2 * 0.5, 0.09);
-    sum += uLanternC[i].rgb * uLanternC[i].a * pow(cosA, n) * cover;
-  }
-  return sum;
+/** 太陽の本体まで描く版。背景のフルスクリーンパスだけで使う。 */
+vec3 skyWithSun(vec3 d){
+  vec3 c = skyColor(d);
+  float mu = max(dot(d, uSunDir), 0.0);
+  c += uSunColor * smoothstep(0.99965, 0.99988, mu) * 42.0;
+  return c;
+}
+
+/** 半球の空からの照り返し。法線の向きで上下を混ぜるだけ。 */
+vec3 skyAmbient(vec3 n){
+  float up = n.y * 0.5 + 0.5;
+  return mix(uSkyGround, mix(uSkyHorizon, uSkyZenith, 0.55), up) * 0.9;
+}
+
+/** GGX 1 本。F0 はフレネルの垂直入射値。 */
+vec3 ggx(vec3 N, vec3 V, vec3 L, float rough, vec3 F0){
+  vec3 H = normalize(L + V);
+  float ndl = max(dot(N, L), 0.0);
+  float ndv = max(dot(N, V), 1e-4);
+  float ndh = max(dot(N, H), 0.0);
+  float vdh = max(dot(V, H), 1e-4);
+  float a = max(rough * rough, 1e-5);
+  float a2 = a * a;
+  float t = ndh * ndh * (a2 - 1.0) + 1.0;
+  float D = a2 / (PI * t * t);
+  // Smith の可視項（高さ相関なし）
+  float gv = ndl * sqrt(ndv * ndv * (1.0 - a2) + a2);
+  float gl = ndv * sqrt(ndl * ndl * (1.0 - a2) + a2);
+  float Vis = 0.5 / max(gv + gl, 1e-5);
+  vec3 F = F0 + (1.0 - F0) * pow(1.0 - vdh, 5.0);
+  return D * Vis * F * ndl;
+}
+
+float fresnelSchlick(float ndv, float f0){
+  return f0 + (1.0 - f0) * pow(1.0 - ndv, 5.0);
 }`;
 
 /**
- * 水の中にあるものが受ける、向きのゆるい光。
- *
- * 提灯は水面すれすれの低い位置に吊ってあるので、法線との内積を素直に取ると
- * 横を向いた面が真っ黒になる。実際には水面で屈折した光が上から降ってくるので、
- * 法線を上に寄せて拾い、真上からの成分も足す。
+ * 水の中にあるものが受ける光。
+ * 水面で屈折した太陽光は、空気中より立って降ってくる。
  */
 export const AMBIENT = `
-vec3 waterAmbient(vec3 P, vec3 N){
-  vec3 up = normalize(N + vec3(0.0, 1.7, 0.0));
-  return lanternLight(P, up, 1.0) * 0.80 + lanternLight(P, vec3(0.0, 1.0, 0.0), 1.0) * 0.45;
+vec3 underSunDir(){
+  // スネルの法則で、水中での太陽の向きを立てる
+  vec3 d = -uSunDir;                       // 進行方向
+  float ci = max(-d.y, 0.02);
+  float si = sqrt(max(1.0 - ci * ci, 0.0));
+  float st = si / 1.333;
+  float ct = sqrt(max(1.0 - st * st, 0.0));
+  vec2 h = normalize(d.xz + vec2(1e-6));
+  return -vec3(h.x * st, -ct, h.y * st);   // 水中で太陽へ向かう向き
+}
+vec3 underSun(vec3 N){
+  float t = 1.0 - fresnelSchlick(max(uSunDir.y, 0.02), 0.02);
+  return uSunColor * t * max(dot(N, underSunDir()), 0.0);
+}
+vec3 underAmbient(vec3 N){
+  return skyAmbient(N) * 0.7;
 }`;
 
-/** ACES のフィルミックな近似。夜景なので高輝度側の丸まりが効く。 */
+/** ACES のフィルミックな近似。 */
 export const TONEMAP = `
 vec3 aces(vec3 x){
   const float a=2.51, b=0.03, c=2.43, d=0.59, e=0.14;

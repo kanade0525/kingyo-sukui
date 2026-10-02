@@ -53,7 +53,7 @@ export class Program {
     if (l === null) return this; // 最適化で消えた uniform は黙って無視
     if (typeof v === 'number') gl.uniform1f(l, v);
     else if (typeof v === 'boolean') gl.uniform1i(l, v ? 1 : 0);
-    else if (v.length === 16) gl.uniformMatrix4fv(l, false, v);
+    else if (v.length === 16) { gl.uniformMatrix4fv(l, false, v); }
     else if (v.length === 2) gl.uniform2fv(l, v);
     else if (v.length === 3) gl.uniform3fv(l, v);
     else gl.uniform4fv(l, v);
