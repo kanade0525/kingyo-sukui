@@ -47,6 +47,10 @@ export class UI {
       handlers.dpr(Number(v));
       $('dprOut').textContent = { '0.7': '軽い', '1': '標準', '2': '精細' }[v] ?? v;
     });
+    this.#seg('segPitch', 'p', (v) => {
+      handlers.pitch(Number(v));
+      $('pitchOut').textContent = { 55: '浅め', 65: '標準', 87: '真上' }[v] ?? v;
+    });
     this.#seg('segMsaa', 'm', (v) => {
       handlers.msaa(v === '1');
       $('msaaNote').textContent = v === '1' ? '入' : '切';

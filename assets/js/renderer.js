@@ -63,6 +63,7 @@ export class Renderer {
 
     // 既定では切る。上の #makeMsaa のコメントを参照
     this.wantMsaa = false;
+    this.pitchDeg = 65;
 
     this.proj = mat4();
     this.view = mat4();
@@ -78,6 +79,12 @@ export class Renderer {
   setFftSize(n) { this.ocean.resize(n); }
   setWind(v) { this.ocean.setWind(v); }
   setAmp(v) { this.ocean.amp = v; }
+
+  setPitch(deg) {
+    if (this.pitchDeg === deg) return;
+    this.pitchDeg = deg;
+    this.updateCamera();
+  }
 
   setMsaa(on) {
     if (this.wantMsaa === on) return;
@@ -180,7 +187,9 @@ export class Renderer {
     const portrait = aspect < 0.95;
     this.portrait = portrait;
     const yaw = portrait ? Math.PI / 2 : 0;
-    const pitch = 65 * DEG;      // ほぼ真上。数度倒して手前の壁の厚みを見せる
+    // 見下ろす角度。倒すほど手前の壁の厚みが見え、立てるほど
+     // 水面が素直に見える。90 度ちょうどは lookAt が縮退するので 87 度止まり
+    const pitch = this.pitchDeg * DEG;
     const tanH = Math.tan(FOV_Y / 2);
 
     const rim = TANK.rimW;
@@ -213,7 +222,9 @@ export class Renderer {
 
     // 器は画面基準で置く。カメラの右方向と手前方向へずらすだけ
     const across = portrait ? BOWL.acrossPortrait : BOWL.across;
-    const toward = portrait ? BOWL.towardPortrait : BOWL.toward;
+    // 真上に近づくほど「手前」は画面でほとんど動かないので、横へ寄せる
+    const lean = Math.cos(pitch) / Math.cos(65 * DEG);
+    const toward = (portrait ? BOWL.towardPortrait : BOWL.toward) * lean;
     const rightV = [Math.cos(yaw), 0, -Math.sin(yaw)];     // 画面の右
     const towardV = [Math.sin(yaw), 0, Math.cos(yaw)];     // 画面の手前
     this.bowlPos = [
