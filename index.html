@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>宵宮の金魚すくい</title>
+<meta name="description" content="水面を Tessendorf の波スペクトルから GPU 上の FFT で毎フレーム逆変換している、WebGL2 の金魚すくい。">
+<meta name="theme-color" content="#07090f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<div id="fallback" hidden>
+  <div>
+    <h2>WebGL2 が使えません</h2>
+    <p class="lede" id="fallbackWhy">この水面は WebGL2 の浮動小数点テクスチャを使って FFT を解いています。別のブラウザか、ハードウェアアクセラレーションを有効にしてお試しください。</p>
+  </div>
+</div>
+
+<div id="topbar" hidden>
+  <div class="stat"><span class="lbl">スクッタ数</span><span class="val" id="countVal">0</span></div>
+  <div class="stat small"><span class="lbl">テン</span><span class="val" id="scoreVal">0</span></div>
+</div>
+
+<div id="botbar">
+  <p id="hint"><b>押している間だけポイが沈みます。</b>金魚の下に入れて持ち上げる。掬えた金魚は左の器へ。</p>
+  <div id="tools">
+    <span id="fps"></span>
+    <button id="btnPanel" aria-expanded="false" aria-controls="panel">設定</button>
+  </div>
+</div>
+
+<div id="panel" hidden>
+  <h3>水面</h3>
+  <div class="row">
+    <label class="rl" for="amp"><span>波の高さ</span><span id="ampOut">1.00</span></label>
+    <input type="range" id="amp" min="0" max="250" step="5" value="100">
+  </div>
+  <div class="row">
+    <label class="rl" for="wind"><span>風速</span><span id="windOut">0.55 m/s</span></label>
+    <input type="range" id="wind" min="25" max="150" step="1" value="55">
+  </div>
+  <div class="row">
+    <div class="rl"><span>FFT 格子</span><span id="fftOut">128²</span></div>
+    <div class="seg" id="segFFT">
+      <button type="button" data-n="64">64</button><button type="button" data-n="128" aria-pressed="true">128</button><button type="button" data-n="256">256</button>
+    </div>
+  </div>
+  <h3>表示</h3>
+  <div class="row">
+    <div class="rl"><span>解像度</span><span id="dprOut">標準</span></div>
+    <div class="seg" id="segDpr">
+      <button type="button" data-d="0.7">軽い</button><button type="button" data-d="1" aria-pressed="true">標準</button><button type="button" data-d="2">精細</button>
+    </div>
+  </div>
+  <div class="row">
+    <div class="rl"><span>水音</span></div>
+    <div class="seg" id="segAudio">
+      <button type="button" data-a="1" aria-pressed="true">鳴らす</button><button type="button" data-a="0">消す</button>
+    </div>
+  </div>
+</div>
+
+<div id="veil">
+  <div class="card" id="cardStart">
+    <p class="kicker">Y O I M I Y A</p>
+    <h1>宵宮の金魚すくい</h1>
+    <p class="lede">水面は Tessendorf の波スペクトルを <em>GPU 上の FFT</em> で毎フレーム逆変換しています。ポイと金魚が立てる波紋は別に解いて重ねています。<br>いまは時間制限なし、ポイも破れません。掬った金魚は手元の器へ。</p>
+    <button class="go" id="btnStart">はじめる</button>
+    <p class="sub">ドラッグで移動／押している間だけ沈む</p>
+  </div>
+  <div class="card" id="cardEnd" hidden aria-hidden="true">
+    <h2 id="endTitle">おしまい</h2>
+    <div id="tally">
+      <div><span class="t">スクッタ数</span><span class="n" id="endCount">0</span></div>
+      <div><span class="t">テン</span><span class="n" id="endScore">0</span></div>
+      <div><span class="t">ノコリポイ</span><span class="n" id="endPoi">0</span></div>
+    </div>
+    <p id="grade"></p>
+    <button class="go" id="btnAgain">もう一度</button>
+  </div>
+</div>
+
+<script type="module" src="assets/js/main.js"></script>
+</body>
+</html>

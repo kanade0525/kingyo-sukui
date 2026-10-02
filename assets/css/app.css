@@ -1,0 +1,136 @@
+/* 夜の縁日。藍の闇に提灯の橙がひとつだけ灯る、単一テーマで通す。
+   画面はほぼ全部が水槽。文字は上下の帯に逃がして、水面を遮らない。 */
+
+:root{
+  color-scheme: dark;
+
+  --ink:#f3ece0;        /* 本文 */
+  --ink-dim:#a2988a;
+  --sumi:#07090f;       /* 最暗部 */
+  --ai:#0d1626;         /* 藍 */
+  --ai-pane:rgba(9,14,24,.93);
+  --hi:#ff7a2b;         /* 提灯の橙 */
+  --hi-soft:#ffb06a;
+  --beni:#e23c3c;       /* 紅 */
+
+  --disp:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+  --body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--sumi);color:var(--ink);
+  font-family:var(--body);overflow:hidden;
+  -webkit-text-size-adjust:100%;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+
+canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+body.playing canvas#scene{cursor:none}
+
+#fallback{position:fixed;inset:0;display:grid;place-content:center;padding:32px;text-align:center;background:var(--sumi)}
+#fallback h2{font-family:var(--disp);font-weight:700;letter-spacing:.08em;margin:0 0 12px}
+
+/* ---------- 上の帯 ---------- */
+#topbar{
+  position:fixed;left:0;right:0;top:0;z-index:2;
+  padding:calc(10px + env(safe-area-inset-top,0px)) 16px 22px;
+  display:flex;align-items:flex-start;gap:16px;
+  background:linear-gradient(180deg,rgba(7,9,15,.8),rgba(7,9,15,0));
+  pointer-events:none;
+}
+.stat{display:flex;flex-direction:column;gap:3px;min-width:0}
+.lbl{font-size:10px;letter-spacing:.2em;color:var(--ink-dim);white-space:nowrap}
+.stat .val{
+  font-family:var(--disp);font-weight:700;line-height:1;font-size:32px;
+  font-variant-numeric:tabular-nums;
+}
+.stat.small .val{font-size:22px}
+#timeVal.warn{color:var(--beni)}
+#spacer{flex:1 1 auto}
+#poiRack{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+#poiDots{display:flex;gap:5px}
+.poiDot{width:15px;height:15px;border-radius:50%;border:2px solid var(--hi-soft);background:rgba(255,176,106,.22)}
+.poiDot.spent{border-color:#4b4137;background:none}
+#paperWrap{width:120px;height:5px;border-radius:3px;background:rgba(243,236,224,.16);overflow:hidden}
+#paperBar{height:100%;width:100%;background:var(--hi-soft)}
+#paperBar.mid{background:#ffd37a}
+#paperBar.low{background:var(--beni)}
+
+/* ---------- 下の帯 ---------- */
+#botbar{
+  position:fixed;left:0;right:0;bottom:0;z-index:2;
+  padding:24px 16px calc(12px + env(safe-area-inset-bottom,0px));
+  display:flex;align-items:flex-end;gap:12px;
+  background:linear-gradient(0deg,rgba(7,9,15,.74),rgba(7,9,15,0));
+}
+#hint{margin:0;font-size:12px;line-height:1.7;color:var(--ink-dim);max-width:52ch;pointer-events:none}
+#hint b{color:var(--ink);font-weight:500}
+#tools{margin-left:auto;display:flex;align-items:center;gap:10px;flex:0 0 auto}
+#fps{font-size:10px;color:var(--ink-dim);font-variant-numeric:tabular-nums;letter-spacing:.06em;white-space:nowrap}
+
+button{
+  font-family:var(--body);font-size:12px;color:var(--ink);
+  background:rgba(22,36,60,.72);border:1px solid rgba(243,236,224,.22);
+  border-radius:999px;padding:7px 15px;cursor:pointer;white-space:nowrap;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+button:hover{border-color:var(--hi-soft);color:var(--hi-soft)}
+button:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
+
+/* ---------- 設定 ---------- */
+#panel{
+  position:fixed;right:16px;bottom:calc(60px + env(safe-area-inset-bottom,0px));z-index:3;
+  width:258px;max-width:calc(100vw - 32px);
+  background:var(--ai-pane);border:1px solid rgba(243,236,224,.18);border-radius:12px;
+  padding:14px;display:flex;flex-direction:column;gap:12px;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+}
+#panel h3{margin:2px 0 -2px;font-family:var(--disp);font-size:12px;font-weight:500;letter-spacing:.14em;color:var(--hi-soft)}
+.row{display:flex;flex-direction:column;gap:6px}
+.rl{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px;color:var(--ink-dim)}
+.rl span:last-child{color:var(--ink);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--hi);background:transparent}
+input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
+.seg{display:flex;gap:4px}
+.seg button{flex:1;padding:6px 0;border-radius:7px;font-size:11px;text-align:center}
+.seg button[aria-pressed=true]{background:var(--hi);color:#1a0d04;border-color:var(--hi);font-weight:700}
+.seg button[aria-pressed=true]:hover{color:#1a0d04}
+
+/* ---------- 覆い ---------- */
+#veil{
+  position:fixed;inset:0;z-index:4;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(130% 95% at 50% 38%,rgba(7,9,15,.46),rgba(7,9,15,.95));
+}
+.card{width:min(560px,100%);text-align:center}
+.kicker{margin:0 0 14px;font-size:11px;letter-spacing:.45em;color:var(--hi-soft)}
+.card h1{
+  margin:0 0 10px;font-family:var(--disp);font-weight:700;
+  font-size:clamp(34px,8.5vw,62px);letter-spacing:.1em;text-wrap:balance;
+  text-shadow:0 0 36px rgba(255,122,43,.32);
+}
+.card h2{margin:0 0 18px;font-family:var(--disp);font-weight:500;font-size:clamp(24px,6vw,36px);letter-spacing:.08em}
+.lede{margin:0 auto 24px;max-width:42ch;font-size:13px;line-height:2.05;color:var(--ink-dim);text-wrap:pretty}
+.lede em{font-style:normal;color:var(--ink)}
+.sub{margin:16px 0 0;font-size:11px;letter-spacing:.1em;color:var(--ink-dim)}
+.go{
+  font-family:var(--disp);font-size:17px;font-weight:700;letter-spacing:.22em;
+  padding:13px 42px;background:var(--hi);color:#1a0d04;border-color:var(--hi);
+}
+.go:hover{background:var(--hi-soft);border-color:var(--hi-soft);color:#1a0d04}
+#tally{display:flex;justify-content:center;gap:28px;flex-wrap:wrap;margin:0 0 20px}
+#tally div{display:flex;flex-direction:column;gap:5px}
+#tally .t{font-size:10px;letter-spacing:.2em;color:var(--ink-dim)}
+#tally .n{font-family:var(--disp);font-weight:700;font-size:34px;line-height:1;font-variant-numeric:tabular-nums}
+#grade{margin:0 0 26px;font-family:var(--disp);font-size:14px;letter-spacing:.16em;color:var(--hi-soft)}
+
+[hidden]{display:none!important}
+
+@media (max-width:560px){
+  #hint{display:none}
+  .stat .val{font-size:26px}
+  .stat.small .val{font-size:19px}
+}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.001ms!important}}
