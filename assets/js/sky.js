@@ -51,7 +51,8 @@ export function sunFor(hour) {
   const dim = 0.22 + 0.78 * ext;
   const zenith = [0.105 * dim, 0.205 * dim, 0.470 * (0.30 + 0.70 * ext)];
   const horizon = mix3([0.66, 0.34, 0.17], [0.560, 0.635, 0.745], ext);
-  const ground = [0.205 * dim, 0.190 * dim, 0.160 * dim];
+  // 地平線より下。明るい地面からの跳ね返りなので、思ったより明るい
+  const ground = [0.300 * dim, 0.285 * dim, 0.255 * dim];
 
   return {
     hour,

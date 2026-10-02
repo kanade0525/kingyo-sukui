@@ -103,7 +103,9 @@ void main(){
       base *= 0.88 + 0.22 * fine;
       vec3 n = normalize(vec3((fine - 0.5) * 0.4, 1.0, (fbm(p.zx * 80.0) - 0.5) * 0.4));
       vec3 lit = uSunColor * max(dot(n, uSunDir), 0.0) + skyAmbient(n);
-      float fog = exp(-t * 0.22);
+      // 遠景のフェードは緩く。きつくすると、画面の大半が「地平線より下の
+      // 空の色」に飲まれて、明るい地面が茶色く沈む
+      float fog = exp(-t * 0.085);
       col = mix(col, base * lit, clamp(fog, 0.0, 1.0));
     }
   }
