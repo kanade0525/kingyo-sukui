@@ -153,6 +153,7 @@ uniform vec4 uFish[16];     // xy = 位置, z = 影の半径, w = 濃さ
 uniform int uFishCount;
 uniform float uDepth;
 uniform float uBowlRim;
+uniform vec3 uBowlPos;
 out vec4 frag;
 
 void main(){
@@ -200,17 +201,23 @@ void main(){
   } else if(region >= 4){
     // 手元の器。白磁に藍の線
     if(region == 6){
-      // 器の水面
+      // 器の水面。舟と同じ考えで、反射より「水の色と透けぐあい」で見せる
       float F = fresnelSchlick(max(dot(N, V), 0.0), 0.02);
       vec3 refl = skyColor(reflect(-V, N));
-      col = vec3(0.035, 0.105, 0.135) * (skyAmbient(N) + uSunColor * 0.25)
-          + refl * F
-          + ggx(N, V, uSunDir, 0.055, vec3(0.02)) * uSunColor;
-      frag = vec4(col, clamp(0.30 + F * 0.6, 0.0, 0.82));
+      // 水の身。浅いので薄く
+      vec3 body = vec3(0.030, 0.115, 0.150) * (skyAmbient(N) * 1.2 + uSunColor * 0.30);
+      col = body + refl * F + ggx(N, V, uSunDir, 0.085, vec3(0.02)) * uSunColor * 0.8;
+      // 縁に寄るほど厚く見える
+      float r = length(vW.xz - uBowlPos.xz) / 0.085;
+      frag = vec4(col, clamp(0.26 + 0.30 * r * r + F * 0.5, 0.0, 0.78));
       return;
     }
     vec3 cer = vec3(0.50, 0.51, 0.52) * (0.94 + 0.10 * fbm(vW.xz * 90.0));
-    if(region == 5) cer *= 0.62;
+    if(region == 5){
+      cer *= 0.78;
+      // 水に浸かっている所は水の色を帯びる。白磁のままだと水が入って見えない
+      if(vW.y < uBowlRim - 0.020) cer = mix(cer, vec3(0.075, 0.215, 0.265), 0.62);
+    }
     col = cer * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
         + ggx(N, V, uSunDir, 0.22, vec3(0.05)) * uSunColor;
   } else {
