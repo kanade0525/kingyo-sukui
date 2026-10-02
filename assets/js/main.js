@@ -4,24 +4,16 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610021121';
-import { Game, PHASE } from './game.js?v=202610021121';
-import { UI } from './ui.js?v=202610021121';
-import { Sound } from './sound.js?v=202610021121';
+import { Renderer } from './renderer.js?v=202610021520';
+import { Game } from './game.js?v=202610021520';
+import { UI } from './ui.js?v=202610021520';
 
 const canvas = document.getElementById('scene');
-const sound = new Sound();
 let renderer = null;
 
-const game = new Game(sound);
+const game = new Game();
 
 const ui = new UI({
-  start() {
-    sound.unlock();
-    game.start();
-    ui.resetMeters();
-    ui.enterPlay();
-  },
   hour(v) { renderer?.setHour(v); },
   amp(v) { renderer?.setAmp(v); },
   wind(v) { renderer?.setWind(v); },
@@ -29,18 +21,26 @@ const ui = new UI({
   dpr(d) { renderer?.setDpr(d); },
   msaa(on) { renderer?.setMsaa(on); },
   pitch(d) { renderer?.setPitch(d); },
-  audio(on) { sound.setEnabled(on); },
 });
 
-try {
-  renderer = new Renderer(canvas);
-  renderer.resize();
-  game.ripple = renderer.ripple;
-} catch (err) {
-  console.error(err);
-  ui.fatal(String(err.message || err));
-  throw err;
+// シェーダを組むのは同期処理で、機械によっては数百ミリ秒かかる。
+// その間ブラウザは何も描けないので、先に覆いを 1 枚描かせてから始める。
+function boot() {
+  try {
+    renderer = new Renderer(canvas);
+    renderer.resize();
+    game.ripple = renderer.ripple;
+  } catch (err) {
+    console.error(err);
+    ui.fatal(String(err.message || err));
+    throw err;
+  }
+  game.start();
+  requestAnimationFrame(frame);
 }
+// 1 フレーム待ってから組み立てる。rAF だけだと、同じフレームの中で
+// 走って覆いが画面に出ないことがある
+requestAnimationFrame(() => setTimeout(boot, 0));
 
 // ---- 入力。ポインタ 1 本だけを見る ----
 function toNdc(e) {
@@ -54,13 +54,14 @@ canvas.addEventListener('pointerdown', (e) => {
   if (pointerId !== null) return;
   pointerId = e.pointerId;
   canvas.setPointerCapture(e.pointerId);
-  sound.unlock();
   const n = toNdc(e);
+  if (!renderer) return;
   game.aim(renderer.pickWater(n[0], n[1]));
   game.press(true);
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  if (!renderer) return;
   const n = toNdc(e);
   game.aim(renderer.pickWater(n[0], n[1]));
 });
@@ -76,7 +77,7 @@ canvas.addEventListener('pointercancel', release);
 // 指を離さずにタブを離れた時に押しっぱなしで固まらないように
 window.addEventListener('blur', () => { pointerId = null; game.press(false); });
 
-window.addEventListener('resize', () => renderer.resize());
+window.addEventListener('resize', () => renderer?.resize());
 
 // キーボードでも遊べるように（スペースで沈める）
 window.addEventListener('keydown', (e) => {
@@ -89,7 +90,9 @@ window.addEventListener('keyup', (e) => {
 // ---- ループ ----
 let last = performance.now();
 let fpsAcc = 0, fpsN = 0, fpsShown = null;
-let wasPhase = game.phase;
+// 最初の 1 枚が出るまでは覆いを残す。シェーダの用意が済んでいても、
+// 1 フレーム目は水面の場がまだ立ち上がっていない
+let warmup = 3;
 
 function frame(now) {
   const dt = Math.min((now - last) / 1000, 1 / 12);
@@ -99,23 +102,18 @@ function frame(now) {
   game.update(dt);
   renderer.render({ time: game.time, school: game.school, poi: game.poi, bowl: game.bowl });
 
-  if (game.phase !== wasPhase) {
-    if (game.phase === PHASE.OVER) ui.enterOver(game);
-    wasPhase = game.phase;
+  if (warmup > 0 && --warmup === 0) ui.ready();
+
+  fpsAcc += dt; fpsN++;
+  if (fpsAcc > 0.5) {
+    fpsShown = Math.round(fpsN / fpsAcc);
+    fpsAcc = 0; fpsN = 0;
   }
-  if (game.phase === PHASE.PLAY) {
-    fpsAcc += dt; fpsN++;
-    if (fpsAcc > 0.5) {
-      fpsShown = Math.round(fpsN / fpsAcc);
-      fpsAcc = 0; fpsN = 0;
-    }
-    ui.tick(game, fpsShown);
-  }
+  ui.tick(game, fpsShown);
   game.events.length = 0;
 
   requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
 
 // 手元で確かめるための窓口。描画の中身を外から覗けるようにしておく。
-window.__kingyo = { renderer, game };
+window.__kingyo = { get renderer() { return renderer; }, game };

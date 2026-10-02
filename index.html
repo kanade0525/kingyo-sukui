@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="assets/css/app.css?v=202610021121">
+<link rel="stylesheet" href="assets/css/app.css?v=202610021520">
 </head>
 <body>
 
@@ -22,13 +22,7 @@
   </div>
 </div>
 
-<div id="topbar" hidden>
-  <div class="stat"><span class="lbl">すくった数</span><span class="val" id="countVal">0</span></div>
-  <div class="stat small"><span class="lbl">点</span><span class="val" id="scoreVal">0</span></div>
-</div>
-
 <div id="botbar">
-  <p id="hint"><b>押している間だけポイが沈みます。</b>金魚の下に入れて持ち上げる。掬えた金魚は左の器へ。</p>
   <div id="tools">
     <button id="btnPanel" aria-expanded="false" aria-controls="panel">設定</button>
   </div>
@@ -42,12 +36,12 @@
   </div>
   <h3>水面</h3>
   <div class="row">
-    <label class="rl" for="amp"><span>波の高さ</span><span id="ampOut">1.00</span></label>
-    <input type="range" id="amp" min="0" max="250" step="5" value="100">
+    <label class="rl" for="amp"><span>波の高さ</span><span id="ampOut">0.55</span></label>
+    <input type="range" id="amp" min="0" max="250" step="5" value="55">
   </div>
   <div class="row">
-    <label class="rl" for="wind"><span>風速</span><span id="windOut">0.55 m/s</span></label>
-    <input type="range" id="wind" min="25" max="150" step="1" value="55">
+    <label class="rl" for="wind"><span>風速</span><span id="windOut">0.34 m/s</span></label>
+    <input type="range" id="wind" min="25" max="150" step="1" value="34">
   </div>
   <div class="row">
     <div class="rl"><span>FFT 格子</span><span id="fftOut">256²</span></div>
@@ -78,33 +72,19 @@
     <div class="rl"><span>描画速度</span><span id="fps">—</span></div>
   </div>
   <div class="row">
-    <div class="rl"><span>水音</span></div>
-    <div class="seg" id="segAudio">
-      <button type="button" data-a="1" aria-pressed="true">鳴らす</button><button type="button" data-a="0">消す</button>
-    </div>
   </div>
 </div>
 
-<div id="veil">
-  <div class="card" id="cardStart">
+<!-- 読み込み中の覆い。シェーダの用意は同期処理で数百ミリ秒かかるので、
+     先にこれを描いてから組み立てる。進み具合は刻めないので、脈動だけ出す -->
+<div id="loading">
+  <div class="card">
     <p class="kicker">夏 の 水 槽</p>
     <h1>金魚掬い</h1>
-    <p class="lede">夏の午後の舟。押している間だけポイが沈みます。<br>金魚の下に入れて、そっと持ち上げる。</p>
-    <button class="go" id="btnStart">はじめる</button>
-    <p class="sub">時間制限なし・ポイは破れません</p>
-  </div>
-  <div class="card" id="cardEnd" hidden aria-hidden="true">
-    <h2 id="endTitle">おしまい</h2>
-    <div id="tally">
-      <div><span class="t">すくった数</span><span class="n" id="endCount">0</span></div>
-      <div><span class="t">点</span><span class="n" id="endScore">0</span></div>
-      <div><span class="t">残りポイ</span><span class="n" id="endPoi">0</span></div>
-    </div>
-    <p id="grade"></p>
-    <button class="go" id="btnAgain">もう一度</button>
+    <div class="bar"><i></i></div>
   </div>
 </div>
 
-<script type="module" src="assets/js/main.js?v=202610021121"></script>
+<script type="module" src="assets/js/main.js?v=202610021520"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@
 // ひれは不透明に描く。水中パスの α にはカメラからの距離を入れていて、
 // ブレンドすると距離が壊れ、水面の屈折が狂うため。薄さは色で表す。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610021121';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610021520';
 
 // ---------------------------------------------------------------- 金魚
 
@@ -124,7 +124,7 @@ in vec2 vUv;
 in float vDist;
 flat in int vPart;
 uniform vec3 uCam;
-uniform int uKind;        // 0 素赤 / 1 更紗 / 2 出目金
+uniform int uKind;        // 0 小赤 / 1 黒出目金 / 2 更紗出目金
 uniform float uSeed;
 out vec4 frag;
 
@@ -164,14 +164,17 @@ void main(){
     float side = abs(sin(ang));                    // 横腹ほど 1
 
     if(uKind == 0){
-      // 素赤。背の濃い緋から、横腹の朱、腹の淡い金へ
+      // 小赤。背の濃い緋から、横腹の朱、腹の淡い金へ
       vec3 back  = vec3(0.330, 0.052, 0.008);
       vec3 flank = vec3(0.600, 0.135, 0.016);
       vec3 belly = vec3(0.660, 0.430, 0.200);
       base = mix(belly, flank, smoothstep(0.08, 0.52, up));
       base = mix(base, back, smoothstep(0.58, 0.95, up));
     } else if(uKind == 1){
-      // 更紗。白地に緋の斑。境目は実物どおり硬い
+      // 黒出目金。黒天鵞絨に、斜めから見ると青銅の照り
+      base = vec3(0.030, 0.025, 0.034) + vec3(0.085, 0.045, 0.020) * pow(1.0 - ndv, 2.5);
+    } else {
+      // 更紗出目金。白地に緋の斑。境目は実物どおり硬い
       float n = fbm(vec2(u * 3.4 + uSeed * 13.0, v * 2.2 + uSeed * 7.0));
       float blotch = smoothstep(0.49, 0.53, n + up * 0.10);
       vec3 white = vec3(0.700, 0.665, 0.610);
@@ -179,9 +182,6 @@ void main(){
       base = mix(white, red, blotch);
       // 斑のふちだけ色が濃くなる
       base = mix(base, red * 0.72, smoothstep(0.46, 0.50, n) * (1.0 - blotch));
-    } else {
-      // 出目金。黒天鵞絨に、斜めから見ると青銅の照り
-      base = vec3(0.030, 0.025, 0.034) + vec3(0.085, 0.045, 0.020) * pow(1.0 - ndv, 2.5);
     }
 
     // 鱗。中心がわずかに明るい程度にとどめる
@@ -196,7 +196,7 @@ void main(){
     vec2 e1 = vec2((u - 0.100) * 2.6, v - 0.195);
     vec2 e2 = vec2((u - 0.100) * 2.6, v - 0.805);
     float eye = min(length(e1), length(e2));
-    float eyeR = uKind == 2 ? 0.050 : 0.029;
+    float eyeR = uKind == 0 ? 0.029 : 0.050;   // 出目金は目が張り出す
     base = mix(base, vec3(0.30, 0.25, 0.20), 1.0 - smoothstep(eyeR, eyeR * 1.14, eye));
     base = mix(base, vec3(0.012, 0.010, 0.013), 1.0 - smoothstep(eyeR * 0.74, eyeR * 0.88, eye));
     float glint = 1.0 - smoothstep(0.003, 0.008,
@@ -211,11 +211,11 @@ void main(){
     // 別の板が漂っているように見える
     // 付け根は胴と同じ色から始める。ここで色を落とすと、継ぎ目で値が飛んで
     // 「胴」と「別の黒い塊」が並んでいるように見える
-    vec3 root = uKind == 2 ? vec3(0.030, 0.025, 0.034)
-              : uKind == 1 ? vec3(0.600, 0.300, 0.230)
+    vec3 root = uKind == 1 ? vec3(0.030, 0.025, 0.034)
+              : uKind == 2 ? vec3(0.600, 0.300, 0.230)
                            : vec3(0.600, 0.135, 0.016);
-    vec3 tip  = uKind == 2 ? vec3(0.095, 0.078, 0.105)
-              : uKind == 1 ? vec3(0.780, 0.480, 0.370)
+    vec3 tip  = uKind == 1 ? vec3(0.095, 0.078, 0.105)
+              : uKind == 2 ? vec3(0.780, 0.480, 0.370)
                            : vec3(0.820, 0.340, 0.135);
     float across = vPart == 1 ? v : (vPart == 2 || vPart == 5 ? u : v);
     base = mix(root, tip, smoothstep(0.0, 0.85, along));
@@ -353,27 +353,41 @@ void main(){
     col += ggx(N, V, uSunDir, 0.30, vec3(0.03)) * uSunColor * uWet * PI;
     alpha = mix(0.72, 0.42, uWet) * (0.55 + 0.45 * lip);
     alpha = mix(alpha, 1.0, pow(1.0 - ndv, 3.0) * 0.4);
-  } else if(region == 1){
-    // 枠。朱に着色した成形品。金型の合わせ目が一周している
-    col = vec3(0.520, 0.105, 0.052);
-    col *= 0.94 + 0.10 * fbm(vUv * 55.0);
-    // 合わせ目。輪の外周を一周する細い筋
-    float ring = length(vUv);
-    float parting = 1.0 - smoothstep(0.0, 0.035, abs(ring - 1.03));
-    col *= 1.0 - parting * 0.22;
-    // 使い込んで擦れた所は色が薄い
-    col = mix(col, col * 1.5 + 0.02, smoothstep(0.55, 0.85, fbm(vUv * 11.0 + 4.0)) * 0.35);
-    col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
-        + ggx(N, V, uSunDir, 0.13, vec3(0.045)) * uSunColor * PI;
-    alpha = 1.0;
   } else {
-    // 柄。削り出した竹。節の方向に細い導管が走る
-    float grain = fbm(vec2(vUv.x * 110.0, vUv.y * 6.0)) * 0.6 + fbm(vUv * 24.0) * 0.4;
-    col = mix(vec3(0.300, 0.250, 0.145), vec3(0.455, 0.392, 0.245), grain);
-    // 手が触れる所は艶が出て色が濃い
-    col *= 0.90 + 0.18 * smoothstep(0.40, 0.75, fbm(vUv * 5.0 + 9.0));
-    col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
-        + ggx(N, V, uSunDir, 0.30, vec3(0.04)) * uSunColor * 0.8 * PI;
+    // 枠と柄。縁日のポイは、輪と持ち手がひと続きの赤い成形品。
+    //
+    // 竹や木ではない。ポリスチレンを赤く着色して一発で抜いたもので、
+    // 見分けの手掛かりは、彩度の高い赤・つるりとした艶・型の合わせ目・
+    // それに柄の真ん中を通る補強のリブ。
+    // 赤に緑や青を混ぜると銅に見えてしまうので、彩度は落とさない。
+    vec3 red = vec3(0.520, 0.030, 0.026);
+    col = red;
+    // 成形品の肌。むらはごく薄い
+    col *= 0.96 + 0.07 * fbm(vUv * 48.0);
+
+    if(region == 1){
+      // 輪。外周を一周する金型の合わせ目
+      float ring = length(vUv);
+      float parting = 1.0 - smoothstep(0.0, 0.030, abs(ring - 1.03));
+      col *= 1.0 - parting * 0.26;
+    } else {
+      // 柄。中央に補強のリブが 1 本通る
+      float rib = 1.0 - smoothstep(0.0, 0.16, abs(vUv.y - 0.5));
+      col *= 1.0 + rib * 0.20;
+      // 握った所は手垢で艶が落ちる
+      col *= 0.93 + 0.12 * smoothstep(0.35, 0.72, fbm(vUv * 5.0 + 9.0));
+    }
+
+    // 使い込んで擦れた所は、樹脂が白化して色が抜ける
+    float wear = smoothstep(0.62, 0.88, fbm(vUv * 13.0 + 4.0));
+    col = mix(col, col * 0.55 + vec3(0.26, 0.17, 0.16), wear * 0.30);
+
+    col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N));
+    // つるりとした樹脂。芯のある白いハイライトが 1 点だけ乗る。
+    // 反射色は白のまま。赤を混ぜると金属に見える
+    col += ggx(N, V, uSunDir, 0.085, vec3(0.045)) * uSunColor * PI * 1.15;
+    // 縁の照り返し
+    col += vec3(0.30, 0.10, 0.09) * pow(1.0 - ndv, 4.0) * 0.5 * skyAmbient(N);
     alpha = 1.0;
   }
 

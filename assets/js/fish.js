@@ -4,8 +4,8 @@
 // 整列させるより、それぞれが勝手に漂って壁で向きを変えるほうが
 // 実際の金魚に近い動きになる。
 
-import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH } from './world.js?v=202610021121';
-import { clamp, lerp, wrapAngle } from './mat.js?v=202610021121';
+import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD } from './world.js?v=202610021520';
+import { clamp, lerp, wrapAngle } from './mat.js?v=202610021520';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -27,19 +27,22 @@ class Fish {
   reset(fromEdge = false) {
     const mx = TANK.halfX - 0.07, mz = TANK.halfZ - 0.07;
     this.kind = this.turtle ? 0 : pickKind();
-    // 亀は金魚より一回り大きく、甲長 5cm ほど
+    // 小赤は全長 3cm ほど。出目金はひと回り大きい。
+    // 亀は甲長 3cm の子ガメで、小赤と同じくらいしかない
     this.len = this.turtle
-      ? rand(0.052, 0.068)
-      : rand(0.036, 0.050) * (this.kind === 2 ? 1.08 : 1.0);
+      ? rand(0.030, 0.038)
+      : this.kind === 0 ? rand(0.026, 0.035) : rand(0.040, 0.050);
     const y = rand(FISH_LAYER.bottom, FISH_LAYER.top);
     this.p = fromEdge
       ? [rand(-1, 1) > 0 ? mx : -mx, y, rand(-mz, mz)]
       : [rand(-mx, mx), y, rand(-mz, mz)];
     this.yaw = rand(-Math.PI, Math.PI);
     // 亀はゆっくり漕ぐ。そのぶん逃げ足も鈍い
-    this.speed = this.turtle ? rand(0.012, 0.026) : rand(0.018, 0.045);
+    // 小さい魚ほど忙しなく動く
+    this.speed = this.turtle ? rand(0.010, 0.022)
+               : this.kind === 0 ? rand(0.026, 0.055) : rand(0.018, 0.038);
     this.cruise = this.speed;
-    this.beat = this.turtle ? rand(3.2, 4.6) : rand(7.5, 10.5);
+    this.beat = this.turtle ? rand(3.2, 4.6) : rand(9.0, 13.0);
     this.phase = rand(0, 10);
     this.seed = Math.random();
     this.bend = 0;
@@ -92,6 +95,26 @@ class Fish {
       }
     }
 
+    // 浮き葉の下へ逃げる。日陰は金魚にとっての隠れ場所で、
+    // 驚かされると真っ先にここへ入る。落ち着いている時も、
+    // 近くにあればそちらに寄っていく
+    let shaded = false;
+    for (const L of PAD.leaves) {
+      const bx = L.x - this.p[0], bz = L.z - this.p[2];
+      const bd = Math.hypot(bx, bz);
+      const reach = L.r * PAD.shelter;
+      if (bd < reach) { shaded = true; continue; }     // もう下にいる
+      // 驚いている時だけ、遠くの葉も目指す
+      const lure = alarmed ? reach * 3.4 : reach * 1.5;
+      if (bd < lure) {
+        const w = (1 - bd / lure) * (alarmed ? 2.6 : 0.5);
+        dx += (bx / bd) * w;
+        dz += (bz / bd) * w;
+      }
+    }
+    // 葉の下に入れたら落ち着く
+    if (shaded) alarmed = false;
+
     // ふらつき
     this.wander += rand(-1, 1) * dt * 9;
     this.wander = clamp(this.wander, -1.4, 1.4);
@@ -126,7 +149,10 @@ class Fish {
       // 亀は時々、息をしに水面へ上がる
       this.target = this.turtle && Math.random() < 0.35
         ? FISH_LAYER.top
-        : rand(FISH_LAYER.bottom, FISH_LAYER.top);
+        : shaded
+          // 葉の下は日陰なので、水面近くまで上がってきて止まる
+          ? rand(FISH_LAYER.top - 0.016, FISH_LAYER.top)
+          : rand(FISH_LAYER.bottom, FISH_LAYER.top);
     }
     // 深さはポイに関係なく自分のペースで変える。
     // 真下へ潜らせると紙の上に乗る機会が無くなり、永久に掬えなくなる

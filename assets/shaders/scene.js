@@ -7,53 +7,13 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610021121';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610021520';
 
 
 
-/**
- * 視差遮蔽（POM）。
- *
- * 1 段の視差は「模様をずらす」だけだが、こちらは高さの場に向かって
- * 視線を進め、潜った所で止める。手前の山が奥を隠すので、本当に凹凸が
- * あるように見える。代わりに、1 画素あたり何度も高さを引く。
- *
- * uDetail で段数を変える。真上に近いほど視差そのものが小さいので、
- * 見込み角に応じて段数も落とす。
- */
-const POM = `
-uniform float uDetail;      // 0 = 使わない, 1 = 標準, 2 = 細かく
-
-float groundHeight(vec2 q){
-  float c;
-  return gravel(q, 165.0, c) * 0.55 + fbm(q * 120.0) * 0.20;
-}
-
-vec2 groundPOM(vec2 p, vec3 V, float depth){
-  if(uDetail < 0.5) return p;
-  float ndv = max(V.y, 0.08);
-  // 真上から見ているときは、ずれようがないので段数を使わない
-  int steps = int(clamp(mix(4.0, 16.0, (1.0 - ndv) * 1.6) * uDetail, 3.0, 18.0));
-  vec2 dir = -V.xz / ndv;
-  float inv = 1.0 / float(steps);
-  vec2 stepUV = dir * depth * inv;
-
-  float h = 1.0;
-  vec2 q = p;
-  float hs = groundHeight(q);
-  for(int i = 0; i < 18; i++){
-    if(i >= steps || hs >= h) break;
-    h -= inv;
-    q += stepUV;
-    hs = groundHeight(q);
-  }
-  // 1 段戻って線形に詰める
-  vec2 qPrev = q - stepUV;
-  float a = hs - h;
-  float b = groundHeight(qPrev) - (h + inv);
-  return mix(q, qPrev, clamp(a / max(a - b, 1e-4), 0.0, 1.0));
-}
-`;
+// 視差遮蔽（POM）は入れてみたが外した。
+// 1 画素あたり十数回も高さを引くので、得られる見た目に対して重すぎる。
+// 1 段の視差で十分に厚みは出る。
 
 // ---------------------------------------------------------------- 空と地面
 
@@ -61,13 +21,19 @@ export const FS_SKY = `${HEAD}
 ${NOISE}
 ${SKYLIB}
 ${MATERIAL}
-${POM}
 in vec2 vNdc;
 uniform vec3 uCam;
 uniform vec3 uRight, uUp, uFwd;
 uniform float uTanHalf, uAspect;
 uniform float uGroundY;
-uniform vec2 uTankOuter;   // 舟の外寸の半分
+uniform vec2 uTankOuter;   // 舟の外寸の半分（いちばん張り出す縁の上端で）
+uniform float uTankOuterR; // その角の丸み
+
+/** 角の丸い長方形までの距離。正なら外側。 */
+float outerDist(vec2 p){
+  vec2 q = abs(p) - uTankOuter + uTankOuterR;
+  return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - uTankOuterR;
+}
 uniform float uRimTop;     // 舟の上端
 uniform vec3 uBowlPos;
 uniform float uBowlR;
@@ -88,8 +54,7 @@ float groundShadow(vec3 p){
 
   // 舟
   vec2 q = p.xz + uSunDir.xz * ((uRimTop - p.y) / sy);
-  vec2 d = abs(q) - uTankOuter;
-  sh *= smoothstep(-0.004, 0.028, max(d.x, d.y));
+  sh *= smoothstep(-0.004, 0.028, outerDist(q));
 
   // 器
   vec2 b = p.xz + uSunDir.xz * ((uBowlRimY - p.y) / sy) - uBowlPos.xz;
@@ -100,9 +65,7 @@ float groundShadow(vec3 p){
 
 /** 接地の陰り。物の足元がいちばん濃い。 */
 float contactAO(vec3 p){
-  vec2 d = abs(p.xz) - uTankOuter;
-  float dt = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
-  float ao = 1.0 - 0.55 * exp(-max(dt, 0.0) / 0.045);
+  float ao = 1.0 - 0.55 * exp(-max(outerDist(p.xz), 0.0) / 0.045);
   float db = length(p.xz - uBowlPos.xz) - uBowlR;
   ao *= 1.0 - 0.45 * exp(-max(db, 0.0) / 0.030);
   return ao;
@@ -123,37 +86,73 @@ void main(){
       // 高さぶんの視差、粒の谷の遮蔽、面内で変わる粗さ、濡れた膜の
       // 四つを足す。平らな面に模様を貼っただけだと、斜めから見ても
       // 模様が動かないので、すぐ「絵が貼ってある」と分かってしまう。
+      // 1 段の視差。高さぶんだけ見ている向きへずらす
       float cav0;
-      vec2 pp = groundPOM(p.xz, -d, 0.016);
+      float h0 = gravel(p.xz, 44.0, cav0);
+      vec2 pp = parallax(p.xz, h0, -d, vec3(0.0, 1.0, 0.0), 0.009);
 
+      // 下地は神社の参道の石畳。その上に玉砂利が撒いてある。
+      //
+      // 粒の大きさを間違えると、どれだけ重ねても漆喰の壁にしか見えない。
+      // 実際の玉砂利は 2〜3cm なので、周波数は 40/m 前後。前は 165/m で、
+      // カメラから 1m 離れると 1 粒が 1 画素より小さく、全部ならされて
+      // 平らな灰色になっていた。
       float coarse = fbm(pp * 2.4);
-      float fine = fbm(pp * 120.0);
-      float cav;
-      float peb = gravel(pp, 165.0, cav);
+      float cav, cav2;
+      // 粒を 2 段に重ねる。1 段だけだと大きさが揃いすぎて、
+      // 砂利ではなく緩衝材の粒に見える
+      float peb  = gravel(pp, 44.0, cav);         // 玉砂利（2.5cm ほど）
+      float peb2 = gravel(pp * 1.7 + 11.0, 44.0, cav2);   // 間を埋める小粒
+      float grit = fbm(pp * 150.0);               // その上の細かい砂
 
-      vec3 soil  = mix(vec3(0.128, 0.114, 0.096), vec3(0.212, 0.195, 0.168), coarse);
-      vec3 stone = mix(vec3(0.185, 0.180, 0.170), vec3(0.268, 0.260, 0.244), fine);
-      vec3 base = mix(soil, stone, peb * 0.28);
-      base *= 0.90 + 0.20 * fine;
+      float joint, sid, dish;
+      float gran = flagstone(pp * 4.0, joint, sid, dish);
+      // 花崗岩。青みの強い灰色で、砂利より明るく、つるりとしている
+      vec3 slab = vec3(0.196, 0.198, 0.196) * gran;
+      // 石ごとの振れを大きく取る。実際の参道は一枚ずつ色が違う
+      slab *= vec3(0.62 + 0.72 * sid, 0.66 + 0.64 * sid, 0.72 + 0.54 * sid);
+      slab *= 0.88 + 0.22 * (1.0 - dish);         // 踏まれて中央が磨ける
+      // 石肌の目。細かい彫り跡が残っている
+      slab *= 0.93 + 0.14 * fbm(pp * vec2(90.0, 24.0) + sid * 30.0);
+
+      // 玉砂利。石畳より暗く、黄みが強い。粒ごとに色が振れる
+      float pid = hash12(floor(pp * 44.0));
+      float pid2 = hash12(floor(pp * 1.7 * 44.0 + 11.0));
+      vec3 soil  = mix(vec3(0.062, 0.053, 0.042), vec3(0.112, 0.098, 0.076), coarse);
+      vec3 stone = mix(vec3(0.112, 0.105, 0.090), vec3(0.205, 0.192, 0.165), pid);
+      vec3 stone2 = mix(vec3(0.098, 0.094, 0.082), vec3(0.180, 0.172, 0.150), pid2);
+      vec3 gravelCol = mix(mix(soil, stone, peb), stone2, peb2 * 0.55);
+      gravelCol *= 0.86 + 0.28 * grit;
+
+      // 砂利の被り。溜まる所と、掃けて石畳が出る所がある
+      float cover = clamp(smoothstep(0.34, 0.74, fbm(pp * 1.6 + 3.0)) * 1.10
+                        + peb * 0.22, 0.0, 1.0);
+      vec3 base = mix(slab, gravelCol, cover);
+      // 目地は最後に落とす。砂が溜まっていても、凹んでいるぶんは必ず暗い
+      base = mix(base, vec3(0.055, 0.048, 0.038), joint * 0.80 * (1.0 - cover * 0.45));
 
       // 舟と器のまわりは水が跳ねて濡れている
-      vec2 dd = abs(pp) - uTankOuter;
-      float ring = length(max(dd, 0.0)) + min(max(dd.x, dd.y), 0.0);
+      float ring = outerDist(pp);
       float wet = clamp((1.0 - smoothstep(0.0, 0.30, ring)) * 0.75
                       + smoothstep(0.54, 0.82, fbm(pp * 1.6 + 7.0)) * 0.45, 0.0, 1.0);
       base *= 1.0 - wet * 0.40;
 
       // 粒の谷は空が見えないので、環境光だけを落とす。
       // 直射まで落とすと、谷が日向でも真っ黒になる
-      float ao = 1.0 - cav * 0.55;
-      // 粗さは面内で変わる。石の肌はつるりとして、土はざらつく
-      float rough = mix(0.80, 0.42, peb);
+      float ao = 1.0 - cav * 0.50 * cover;
+      ao *= 1.0 - joint * 0.45;                      // 目地は空が見えにくい
+      // 粗さは面内で変わる。踏まれて磨けた石畳はつるりとして、砂利はざらつく
+      float rough = mix(mix(0.26, 0.48, dish), mix(0.78, 0.46, peb), cover);
 
-      float e = 0.0022;
-      float hc = gravel(pp, 165.0, cav0) * 0.55 + fbm(pp * 120.0) * 0.20;
-      float hx = gravel(pp + vec2(e, 0.0), 165.0, cav0) * 0.55 + fbm((pp + vec2(e, 0.0)) * 120.0) * 0.20;
-      float hz = gravel(pp + vec2(0.0, e), 165.0, cav0) * 0.55 + fbm((pp + vec2(0.0, e)) * 120.0) * 0.20;
-      vec3 n = normalize(vec3((hc - hx) * 2.2, 1.0, (hc - hz) * 2.2));
+      // 法線は細かい方の高さだけから取る。粒の形は陰影で足りていて、
+      // worley をもう 3 回引く価値はない
+      // 法線。砂利の粒の丸みと、目地の落ち込み
+      // 法線。粒の丸みは控えめに。強くすると、砂利ではなく
+      // 梱包用の緩衝材のように粒が立って見える
+      float e = 0.0045;
+      float hs = gravel(pp + vec2(e, 0.0), 44.0, cav) - peb;
+      float hz = gravel(pp + vec2(0.0, e), 44.0, cav) - peb;
+      vec3 n = normalize(vec3(-hs * 0.55 * cover, 1.0, -hz * 0.55 * cover));
 
       float sh = groundShadow(p);
       vec3 sky = skyColor(reflect(d, n));
@@ -200,7 +199,6 @@ ${NOISE}
 ${SKYLIB}
 ${AMBIENT}
 ${MATERIAL}
-${POM}
 ${WATERLIB}
 ${CAUSTICS}
 in vec3 vW;
@@ -229,41 +227,40 @@ void main(){
   vec3 col;
 
   if(region <= 1){
-    // 舟の内側。青いビニルに細かい砂利
-    // 木枠に敷いたブルーシート。縁日の金魚すくいでいちばん多い作り。
+    // 水色のポリエチレンのトレー（トロ舟）。縁日の金魚すくいで一番多い。
     //
-    // ブルーシートの見分けがつく一番の手掛かりは、平たいテープを縦横に
-    // 編んだ織り目。それに、折り畳んだ跡の折り目（白く色が抜ける）と、
-    // 水を張ったときの大きなたるみ。この三つを入れると、
-    // 「青く塗った箱」ではなく「水を張ったシート」になる
-    // 織り目は三面投影で貼る。平面投影だと、壁で目が引き伸びる
-    vec3 tw3 = triWeights(N, 6.0);
-    vec2 wbx, wby, wbz;
-    // 底は視差でずらす。テープが編んであることが見えてくる
-    vec2 spY = vW.xz;
-    if(uDetail > 0.5){
-      vec2 tmp; float hY = tarpWeave(spY, tmp);
-      spY = parallax(spY, hY, V, vec3(0.0, 1.0, 0.0), 0.0026);
-    }
-    float wX = tarpWeave(vW.zy, wbx);
-    float wY = tarpWeave(spY, wby);
-    float wZ = tarpWeave(vW.xy, wbz);
-    float w = wX * tw3.x + wY * tw3.y + wZ * tw3.z;
-    vec2 wb = wbx * tw3.x + wby * tw3.y + wbz * tw3.z;
-    float sag = fbm(vW.xz * 4.0);
-    float creaseN = fbm(region == 1 ? vec2((vW.x + vW.z) * 13.0, vW.y * 2.6)
-                                    : vW.xz * vec2(9.0, 3.2));
-    float crease = 1.0 - smoothstep(0.0, 0.055, abs(creaseN - 0.5));
+    // プラスチックに見える手掛かりは三つ。型で付いた細かい梨地、
+    // 擦れて白く粉を吹いた傷、それに地の色がどこまでも均一なこと。
+    // 木やシートと違って、むらが無いことそのものが手掛かりになる。
+    //
+    // 水の線には必ず緑の膜と白い水垢が付く。これが無いと、
+    // 下ろしたてのトレーに見えて、縁日の匂いがしない。
 
-    vec3 vinyl = vec3(0.050, 0.108, 0.144);
-    vec3 base = vinyl * (0.86 + 0.26 * sag) * (0.92 + 0.14 * w);
-    // 折り目は樹脂が白く疲れる
-    base = mix(base, base * 1.8 + vec3(0.012, 0.016, 0.018), crease * 0.55);
-    if(region == 1) base *= 1.16;     // 壁は斜めで暗くなりがちなので素地を上げる
+    // 梨地。型のシボ。細かく、起伏は低い
+    float grain = fbm(vec2(vW.x + vW.z, vW.y * 2.0 + vW.x) * 460.0);
+    // 擦り傷。ポリエチレンは擦れると白化する。方向のある細い筋
+    float scuffN = fbm(vec2((vW.x + vW.z * 0.35) * 52.0, (vW.z - vW.x * 0.2) * 6.0));
+    float scuff = smoothstep(0.54, 0.66, scuffN);
+    // 日に焼けた色あせ
+    float fade = fbm(vW.xz * 2.6);
 
-    vec3 bn = normalize(vec3(wb.x * 0.08, 1.0, wb.y * 0.08));
-    float tarpAO = 0.80 + 0.20 * w;                      // 織り目の谷は光が入りにくい
-    vec3 tarpT = normalize(vec3(1.0, 0.0, 0.0));         // テープの走る向き
+    vec3 poly = vec3(0.088, 0.252, 0.330);
+    vec3 base = poly * (0.88 + 0.18 * fade) * (0.97 + 0.06 * grain);
+    base = mix(base, base * 0.52 + vec3(0.26, 0.30, 0.31), scuff * 0.34);
+    if(region == 1) base *= 1.06;     // 壁は斜めで暗くなりがちなので素地を上げる
+
+    // 水際の緑。水面からわずかに下に帯で付く
+    float algae = (1.0 - smoothstep(0.0, 0.030, abs(vW.y + 0.012)))
+                * smoothstep(0.35, 0.68, fbm(vec2((vW.x + vW.z) * 22.0, vW.y * 40.0)));
+    base = mix(base, vec3(0.072, 0.102, 0.048), algae * 0.70);
+    // 底の隅には沈んだ汚れが溜まる
+    // 壁が傾いているので、内寸はその高さで測る
+    float corner = smoothstep(0.10, 0.004, tankIn(vW.xz - uTankDraft * vW.y));
+    base *= 1.0 - corner * 0.22;
+
+    vec3 bn = normalize(vec3((grain - 0.5) * 0.10, 1.0, (fade - 0.5) * 0.05));
+    float tarpAO = 0.88 + 0.12 * grain;
+    vec3 tarpT = normalize(vec3(1.0, 0.0, 0.0));
 
     if(uUnderwater == 1){
       float below = max(-vW.y, 0.0);                // 水面からの深さ
@@ -277,8 +274,9 @@ void main(){
       vec3 amb = underAmbient(bn) * tarpAO;
       col = base * (sun + amb);
       // 塩ビは濡れているので、織り目に沿って照りが伸びる
-      col += ggxAniso(bn, V, underSunDir(), tarpT, 0.17, 0.055, vec3(0.035))
-           * uSunColor * PI * 0.20 * caus;
+      // ポリエチレンは半艶。織り目が無いので照りは等方で、やや広い
+      col += ggx(bn, V, underSunDir(), 0.30, vec3(0.042))
+           * uSunColor * PI * 0.22 * caus;
 
       // 金魚の影
       for(int i=0;i<20;i++){
@@ -324,74 +322,62 @@ void main(){
     col = cer * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
         + ggx(N, V, uSunDir, 0.085, vec3(0.055)) * uSunColor * PI;
   } else {
-    // 縁と外側。使い込んだ木。背景が明るいので、ここは暗く締めて輪郭を残す
-    // 使い込んだ杉の板。
+    // 縁と外側。内側と同じ一枚のトレー。
     //
-    // 板目は、年輪を板の長手方向へ強く伸ばした同心の縞として作る。
-    // 面ごとに板の向きが違うので、どちらの辺に沿っているかで座標を取り替える。
-    // 日に当たる面は銀色に褪せ、水の跳ねる所は色が抜けて黒ずむ。
-    bool lengthX = abs(vW.z) > abs(vW.x);
-    vec2 wp = lengthX ? vec2(vW.x, vW.y * 3.0 + vW.z * 0.6)
-                      : vec2(vW.z, vW.y * 3.0 + vW.x * 0.6);
-    float seed = floor((lengthX ? vW.z : vW.x) * 2.0) * 0.7;
+    // 樹脂の成形品だと分かるのは、縁が丸く巻いてあること、外壁に
+    // 補強の横リブが通っていること、そして角に型の合わせ目が残ること。
+    // 木と違って継ぎ目が無く、全部ひと続きなのが効く。
+    float grain2 = fbm(vec2(vW.x + vW.z, vW.y * 2.0) * 460.0);
+    float fade2 = fbm(vW.xz * 2.2 + 5.0);
+    float scuff2 = smoothstep(0.50, 0.64, fbm(vec2((vW.x - vW.z * 0.3) * 46.0, vW.y * 9.0)));
 
-    // 板目も三面で混ぜる。面が切り替わる所で模様が食い違わない
-    vec3 ww3 = triWeights(N, 4.0);
-    float ring = woodRings(vec2(vW.z, vW.y * 3.0) * vec2(2.6, 2.2), seed) * ww3.x
-               + woodRings(vec2(vW.x, vW.z * 3.0) * vec2(2.6, 2.2), seed) * ww3.y
-               + woodRings(vec2(vW.x, vW.y * 3.0) * vec2(2.6, 2.2), seed) * ww3.z;
-    float fibre = fbm(wp * vec2(90.0, 320.0));
-    float grain = ring * 0.72 + fibre * 0.28;
-    vec3 wood = mix(vec3(0.028, 0.018, 0.011), vec3(0.118, 0.078, 0.046), grain);
+    vec3 poly2 = vec3(0.105, 0.300, 0.395);
+    // 外に出ている面は日に焼けて白茶ける
+    vec3 wood = poly2 * (0.80 + 0.26 * fade2) * (0.97 + 0.06 * grain2);
+    wood = mix(wood, wood * 0.50 + vec3(0.28, 0.31, 0.32), scuff2 * 0.38);
 
-    // 日に焼けて銀化した所
-    float silver = smoothstep(0.48, 0.86, fbm(wp * vec2(1.6, 1.1) + 3.0));
-    wood = mix(wood, vec3(0.098, 0.092, 0.082), silver * 0.45);
-    // 水が跳ねて黒ずんだ所。縁の上と内側に出る
-    float splash = smoothstep(0.52, 0.80, fbm(vW.xz * 7.0 + 5.0));
-    wood *= 1.0 - splash * 0.30;
-
-    // 角の留め継ぎ。4 枚の板を 45 度に切って突き合わせてあるので、
-    // 角から斜めに細い継ぎ目が走る。板目の向きが切り替わるのもこの線。
-    // 線を引かないと、向きが変わった所がただの食い違いに見える
-    vec2 q = abs(vW.xz) - uTankHalf;
-    float miter = 1.0 - smoothstep(0.0, 0.0035, abs(q.x - q.y));
-    float onRim = step(0.0, min(q.x, q.y));       // 角の板が重なる所だけ
-    wood *= 1.0 - miter * onRim * 0.42;
-    if(region == 2) wood *= 1.25;             // 縁の上面は手で擦れて明るい
-
-    // シートの折り返し。内側の縁に青が乗る。これがあると
-    // 「木の箱」ではなく「木枠に水を張った舟」に見える
-    if(region == 2){
-      vec2 d2 = abs(vW.xz) - uTankHalf;
-      float over = smoothstep(0.016, 0.002, max(d2.x, d2.y));
-      vec3 sheet = vec3(0.070, 0.150, 0.190) * (0.86 + 0.28 * fbm(vW.xz * 34.0));
-      wood = mix(wood, sheet, over);
+    // 外壁の横リブ。等間隔に通る補強の筋
+    if(region == 3){
+      float rib = cos((vW.y - uGroundY) * 185.0);
+      float ribFade = 1.0 - smoothstep(0.0025, 0.010, fwidth(vW.y) * 29.0);
+      wood *= 1.0 + rib * 0.085 * ribFade;
+      // 底に向かって一段すぼまる。成形品の抜き勾配
+      wood *= 0.92 + 0.14 * smoothstep(uGroundY, uGroundY + 0.10, vW.y);
     }
-    // 面取り。縁の内側と外側のきわだけ、擦れて明るい。
-    // y だけで見ると上面が丸ごと光ってしまう
+
+    // 角の型合わせ目。縦に一本だけ細く入る
+    vec2 q = abs(vW.xz) - uTankHalf - uTankDraft * vW.y;
+    float miter = 1.0 - smoothstep(0.0, 0.0030, abs(q.x - q.y));
+    float onRim = step(0.0, min(q.x, q.y));
+    wood *= 1.0 - miter * onRim * 0.26;
+
     if(region == 2){
-      vec2 di = abs(vW.xz) - uTankHalf;
+      // 縁は丸く巻いてある。光が乗って一本の筋になる
+      wood *= 1.10;
+      float di = tankIn(vW.xz - uTankDraft * vW.y);
       vec2 doo = abs(vW.xz) - uTankOuter2;
-      float edge = max(1.0 - smoothstep(0.0, 0.006, abs(max(di.x, di.y))),
-                       1.0 - smoothstep(0.0, 0.006, abs(max(doo.x, doo.y))));
-      wood *= 1.0 + 0.55 * edge;
+      float edge = max(1.0 - smoothstep(0.0, 0.007, abs(di)),
+                       1.0 - smoothstep(0.0, 0.007, abs(max(doo.x, doo.y))));
+      wood *= 1.0 + 0.26 * edge;
+      // 内側のきわには水垢の白い線が残る
+      float scale = 1.0 - smoothstep(0.0, 0.012, abs(di));
+      wood = mix(wood, vec3(0.26, 0.265, 0.255), scale * 0.26);
     }
+
+    // 水の跳ねた跡。乾くと白い輪が残る
+    float splash = smoothstep(0.52, 0.80, fbm(vW.xz * 7.0 + 5.0));
+    wood = mix(wood, wood * 0.80 + vec3(0.10, 0.11, 0.11), splash * 0.35);
+
     // 下へ行くほど地面の照り返ししか届かない
     float toGround = smoothstep(uGroundY, uGroundY + 0.14, vW.y);
-    // 板目の向き。照りはこの向きに沿って伸びる
-    vec3 woodT = lengthX ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0);
-    woodT = normalize(woodT - N * dot(woodT, N));
-    // 年輪の谷（冬目）は凹んでいて、光が入りにくい
-    float woodAO = 0.72 + 0.28 * grain;
-    // 水の跳ねる所は濡れている。縁の上と内側に集まる
+    float woodAO = 0.86 + 0.14 * grain2;
     float wwet = splash * (0.45 + 0.55 * (1.0 - toGround));
 
     col = wood * (uSunColor * max(dot(N, uSunDir), 0.0)
                 + skyAmbient(N) * (0.35 + 0.65 * toGround) * woodAO)
-        + ggxAniso(N, V, uSunDir, woodT, 0.52, 0.22, vec3(0.035)) * uSunColor * PI * 0.30
+        + ggx(N, V, uSunDir, 0.34, vec3(0.042)) * uSunColor * PI * 0.30
         + clearcoat(N, V, uSunDir, wwet, uSunColor, skyColor(reflect(-V, N)));
-    col *= 0.55 + 0.45 * toGround;
+    col *= 0.62 + 0.38 * toGround;
   }
 
   frag = vec4(col, vDist);
@@ -410,7 +396,9 @@ out float vEdge;
 out float vDist;
 
 void main(){
-  vec2 p = (aUv * 2.0 - 1.0) * uTankHalf;
+  // 格子は四角いので、角の R からはみ出した頂点を丸みの上へ寄せる。
+  // そうしないと、角で水が舟の外へこぼれる
+  vec2 p = tankClamp((aUv * 2.0 - 1.0) * uTankHalf);
   float m = edgeMask(p);
 
   vec3 D = texture(uDisp, patchUv(p)).xyz;
@@ -445,8 +433,8 @@ out vec4 frag;
 /** 水中の浮遊物。深さを変えて 3 段、まばらに置く。水の厚みが出る。 */
 vec3 specks(vec3 origin, vec3 dir){
   float s = 0.0;
-  for(int i = 0; i < 3; i++){
-    float t = 0.022 + 0.040 * float(i);
+  for(int i = 0; i < 2; i++){
+    float t = 0.026 + 0.048 * float(i);
     vec3 q = origin + dir * (t / max(-dir.y, 0.25));
     q.xz += vec2(uTime * 0.0035 * (1.0 + float(i)), uTime * 0.0021);
     vec2 g = q.xz * 300.0 + float(i) * 23.0;
@@ -470,9 +458,11 @@ void main(){
   // 屈折へ入れると、隣り合う画素が遠く離れた所を拾い、金魚の胴が
   // 途中で切れて二匹に見える。
   const float SMOOTH = 0.016;      // この長さより短い波は屈折に効かせない
+  // 3 点でならす。5 点から減らしたのは、1 画素あたりのテクスチャ引きが
+  // そのまま効くため。斜めに 2 点取れば、十分に細かい波は落ちる
   vec2 slopeR = (slopeAt(vP)
-               + slopeAt(vP + vec2(SMOOTH, 0.0)) + slopeAt(vP - vec2(SMOOTH, 0.0))
-               + slopeAt(vP + vec2(0.0, SMOOTH)) + slopeAt(vP - vec2(0.0, SMOOTH))) * 0.2 * vEdge;
+               + slopeAt(vP + vec2(SMOOTH, SMOOTH * 0.7))
+               + slopeAt(vP - vec2(SMOOTH, SMOOTH * 0.7))) * 0.3333 * vEdge;
   vec3 Nr = normalize(vec3(-slopeR.x, 1.0, -slopeR.y));
 
   // 水深 16cm では、底の横ずれは D·(1−1/n)·∇h ≈ 2mm しかない。

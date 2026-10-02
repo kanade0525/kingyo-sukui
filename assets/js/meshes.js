@@ -4,8 +4,8 @@
 // 形は頂点シェーダで作る。泳ぎのうねりを毎フレーム CPU で計算して
 // 転送するのは無駄で、しかも法線を作り直す手間が増えるため。
 
-import { Mesh } from './glx.js?v=202610021121';
-import { TANK, POI, BOWL } from './world.js?v=202610021121';
+import { Mesh } from './glx.js?v=202610021520';
+import { TANK, POI, BOWL, AIR } from './world.js?v=202610021520';
 
 /** 位置・法線・領域の 3 属性を貯めて Mesh にする小さな入れ物。 */
 class Builder {
@@ -33,32 +33,131 @@ class Builder {
   }
 }
 
-/** 水槽。領域 0=底、1=内壁、2=縁の上、3=外壁。 */
+/**
+ * 角の丸い長方形の輪郭。(x, z) と、外を向く水平の向き (nx, nz) を返す。
+ * 角を seg 分割して一周する。
+ */
+function roundRect(hx, hz, r, seg) {
+  const cx = Math.max(hx - r, 0), cz = Math.max(hz - r, 0);
+  const out = [];
+  const corner = [[cx, cz, 0], [-cx, cz, Math.PI / 2], [-cx, -cz, Math.PI], [cx, -cz, Math.PI * 1.5]];
+  for (const [ox, oz, a0] of corner) {
+    for (let i = 0; i <= seg; i++) {
+      const a = a0 + (i / seg) * (Math.PI / 2);
+      const nx = Math.cos(a), nz = Math.sin(a);
+      out.push({ x: ox + nx * r, z: oz + nz * r, nx, nz });
+    }
+  }
+  return out;
+}
+
+/**
+ * 水槽（トロ舟）。領域 0=底、1=内壁、2=縁の上、3=外壁。
+ *
+ * 形は「角の丸い長方形を、上へ行くほど広げながら積む」で作る。
+ * 樹脂の成形品なので、直角も鋭い稜線も無い。
+ */
 export function tankMesh(gl) {
   const b = new Builder();
-  const { halfX: hx, halfZ: hz, depth, rimW: rw, rimTop: rt, outBottom: ob } = TANK;
-  const ox = hx + rw, oz = hz + rw;
+  const T = TANK;
+  const SEG = 9;                       // 角 1 つぶんの分割
+  const ring = (hx, hz, r) => roundRect(hx, hz, r, SEG);
+  const N = SEG * 4 + 4;               // 1 周の点数
 
-  // 底
-  b.quad([-hx, -depth, -hz], [-hx, -depth, hz], [hx, -depth, hz], [hx, -depth, -hz], [0, 1, 0], 0);
+  // 高さ y での内側の輪郭。壁が傾いているので高さごとに広がる
+  const inner = (y) => ring(T.halfX + T.draftX * y, T.halfZ + T.draftZ * y,
+                            T.cornerR + T.draftX * y);
 
-  // 内壁（法線は内向き）
-  b.quad([hx, -depth, -hz], [hx, -depth, hz], [hx, rt, hz], [hx, rt, -hz], [-1, 0, 0], 1);
-  b.quad([-hx, -depth, hz], [-hx, -depth, -hz], [-hx, rt, -hz], [-hx, rt, hz], [1, 0, 0], 1);
-  b.quad([-hx, -depth, hz], [hx, -depth, hz], [hx, rt, hz], [-hx, rt, hz], [0, 0, -1], 1);
-  b.quad([hx, -depth, -hz], [-hx, -depth, -hz], [-hx, rt, -hz], [hx, rt, -hz], [0, 0, 1], 1);
+  /** 2 つの輪をつないで帯を張る。n は各頂点の法線を返す関数。 */
+  const band = (A, B, nf, region) => {
+    const base = b.pos.length / 3;
+    for (const [ring_, yi] of [[A, 0], [B, 1]]) {
+      for (const p of ring_) {
+        b.pos.push(p.x, ring_.y, p.z);
+        const n = nf(p, yi);
+        b.nrm.push(n[0], n[1], n[2]);
+        b.reg.push(region);
+      }
+    }
+    // 輪は閉じているので、最後の点から最初の点へも張る。
+    // ここを忘れると、一周の継ぎ目にあたる一面だけが丸ごと抜ける
+    for (let i = 0; i < N; i++) {
+      const j = (i + 1) % N;
+      b.idx.push(base + i, base + N + i, base + j);
+      b.idx.push(base + j, base + N + i, base + N + j);
+    }
+  };
 
-  // 縁の上面（4 枚で額縁をつくる）
-  b.quad([-ox, rt, -oz], [-ox, rt, oz], [-hx, rt, oz], [-hx, rt, -oz], [0, 1, 0], 2);
-  b.quad([hx, rt, -oz], [hx, rt, oz], [ox, rt, oz], [ox, rt, -oz], [0, 1, 0], 2);
-  b.quad([-hx, rt, hz], [-hx, rt, oz], [hx, rt, oz], [hx, rt, hz], [0, 1, 0], 2);
-  b.quad([-hx, rt, -oz], [-hx, rt, -hz], [hx, rt, -hz], [hx, rt, -oz], [0, 1, 0], 2);
+  // ---- 底。隅の丸み（フィレット）のぶん内へ寄せた平らな面 ----
+  const fy = -T.depth;
+  const flat = inner(fy + T.fillet);
+  const fr = T.fillet;
+  // 平らな部分の輪郭
+  const bot = ring(T.halfX + T.draftX * fy - fr, T.halfZ + T.draftZ * fy - fr,
+                   Math.max(T.cornerR + T.draftX * fy - fr, 0.004));
+  bot.y = fy;
+  {
+    // 中心からの扇で埋める
+    const c = b.pos.length / 3;
+    b.pos.push(0, fy, 0); b.nrm.push(0, 1, 0); b.reg.push(0);
+    const base = b.pos.length / 3;
+    for (const p of bot) { b.pos.push(p.x, fy, p.z); b.nrm.push(0, 1, 0); b.reg.push(0); }
+    for (let i = 0; i < N - 1; i++) b.idx.push(c, base + i, base + i + 1);
+    b.idx.push(c, base + N - 1, base);
+  }
 
-  // 外壁
-  b.quad([ox, ob, -oz], [ox, ob, oz], [ox, rt, oz], [ox, rt, -oz], [1, 0, 0], 3);
-  b.quad([-ox, ob, oz], [-ox, ob, -oz], [-ox, rt, -oz], [-ox, rt, oz], [-1, 0, 0], 3);
-  b.quad([-ox, ob, oz], [ox, ob, oz], [ox, rt, oz], [-ox, rt, oz], [0, 0, 1], 3);
-  b.quad([ox, ob, -oz], [-ox, ob, -oz], [-ox, rt, -oz], [ox, rt, -oz], [0, 0, -1], 3);
+  // ---- 底と壁をつなぐ丸み ----
+  const FSEG = 5;
+  let prev = bot, prevT = 0;
+  for (let k = 1; k <= FSEG; k++) {
+    const t = k / FSEG, th = t * Math.PI / 2;
+    const y = fy + fr * (1 - Math.cos(th));
+    const shrink = fr * (1 - Math.sin(th));   // 壁から内へ残っている量
+    const cur = ring(T.halfX + T.draftX * y - shrink, T.halfZ + T.draftZ * y - shrink,
+                     Math.max(T.cornerR + T.draftX * y - shrink, 0.004));
+    cur.y = y;
+    prev.y = prev.y === undefined ? fy : prev.y;
+    const ta = prevT, tb = th;
+    band(prev, cur, (p, yi) => {
+      const a = yi ? tb : ta, s = Math.sin(a), co = Math.cos(a);
+      return [-p.nx * s, co, -p.nz * s];
+    }, 0);
+    prev = cur; prevT = th;
+  }
+
+  // ---- 内壁。上へ行くほど外へ開く ----
+  const wallBot = prev;
+  const wallTop = inner(T.rimTop);
+  wallTop.y = T.rimTop;
+  // 傾いた壁を内から見た法線は、内へ向きつつ上を向く
+  const dn = (T.draftX + T.draftZ) * 0.5;
+  const nl = Math.hypot(1, dn);
+  band(wallBot, wallTop, (p) => [-p.nx / nl, dn / nl, -p.nz / nl], 1);
+
+  // ---- 縁の上面 ----
+  const rimOut = ring(T.halfX + T.draftX * T.rimTop + T.rimW,
+                      T.halfZ + T.draftZ * T.rimTop + T.rimW,
+                      T.cornerR + T.draftX * T.rimTop + T.rimW);
+  rimOut.y = T.rimTop;
+  band(wallTop, rimOut, () => [0, 1, 0], 2);
+
+  // ---- 縁の巻き返し。外へ張り出した唇が、外壁まで下りる ----
+  const lipH = 0.016;
+  const ly = T.rimTop - lipH;
+  const lipBot = ring(T.halfX + T.draftX * ly + T.wallT,
+                      T.halfZ + T.draftZ * ly + T.wallT,
+                      T.cornerR + T.draftX * ly + T.wallT);
+  lipBot.y = ly;
+  const ln = Math.hypot(T.rimW - T.wallT, lipH);
+  band(rimOut, lipBot, (p) => [p.nx * lipH / ln, (T.rimW - T.wallT) / ln, p.nz * lipH / ln], 3);
+
+  // ---- 外壁。内壁と平行に、肉厚のぶん外側 ----
+  const oy = T.outBottom;
+  const outBot = ring(T.halfX + T.draftX * oy + T.wallT,
+                      T.halfZ + T.draftZ * oy + T.wallT,
+                      T.cornerR + T.draftX * oy + T.wallT);
+  outBot.y = oy;
+  band(lipBot, outBot, (p) => [p.nx / nl, -dn / nl, p.nz / nl], 3);
 
   return b.build(gl);
 }
@@ -158,8 +257,9 @@ export function poiMesh(gl) {
     }
   }
 
-  // 枠。輪を断面 8 角で押し出す
-  const MR = R + 0.0036, mr = 0.0040, SIDE = 8;
+  // 枠。実物は外径 83mm・内径 78mm なので、輪は径方向にわずか 2.5mm しかない。
+  // 断面は丸ではなく、縦長の小判。平たいぶん上から見ると細い線に見える。
+  const MR = R + 0.0013, mrx = 0.0013, mry = 0.0018, SIDE = 8;
   const fb = b.pos.length / 3;
   for (let j = 0; j <= SEG; j++) {
     const a = (j / SEG) * Math.PI * 2;
@@ -167,8 +267,11 @@ export function poiMesh(gl) {
     for (let k = 0; k <= SIDE; k++) {
       const t = (k / SIDE) * Math.PI * 2;
       const ct = Math.cos(t), st = Math.sin(t);
-      b.pos.push(ca * (MR + mr * ct), mr * st, sa * (MR + mr * ct));
-      b.nrm.push(ca * ct, st, sa * ct);
+      b.pos.push(ca * (MR + mrx * ct), mry * st, sa * (MR + mrx * ct));
+      // 断面が楕円なので、法線は軸の比を逆に掛ける
+      const nx = ct / mrx, ny = st / mry;
+      const nl = Math.hypot(nx, ny);
+      b.nrm.push(ca * nx / nl, ny / nl, sa * nx / nl);
       b.reg.push(1);
     }
   }
@@ -180,19 +283,38 @@ export function poiMesh(gl) {
     }
   }
 
-  // 柄。輪の手前から斜め上に伸びる竹の平板
-  const z0 = MR, z1 = MR + 0.085;
-  const w0 = 0.0062, w1 = 0.0078, h = 0.0030;
-  const y1 = 0.011;
-  const corners = (z, w, y, dy) => [
-    [-w, y - dy, z], [w, y - dy, z], [w, y + dy, z], [-w, y + dy, z],
+  // 柄。実物は全長 150mm・枠 85mm なので、柄は 65mm しかない。
+  // 幅 10mm・厚さ 2mm ほどの平たい細板で、輪と同じ平面にまっすぐ伸びる。
+  // ここを太く・厚く・斜め上にすると、一気に虫取り網に見える。
+  // 根元だけわずかに広いのは、輪との継ぎ目の補強。
+  const HSEG = [
+    { z: MR - 0.002, w: 0.0062, h: 0.0011 },   // 輪との継ぎ目
+    { z: MR + 0.008, w: 0.0050, h: 0.0010 },
+    { z: MR + 0.040, w: 0.0045, h: 0.0010 },
+    { z: MR + 0.064, w: 0.0038, h: 0.0009 },   // 先端。わずかに細る
   ];
-  const A = corners(z0, w0, 0, h), B = corners(z1, w1, y1, h);
-  b.quad(A[3], A[2], B[2], B[3], [0, 1, 0], 2);     // 上
-  b.quad(A[0], B[0], B[1], A[1], [0, -1, 0], 2);    // 下
-  b.quad(A[1], B[1], B[2], A[2], [1, 0, 0.2], 2);   // 右
-  b.quad(A[0], A[3], B[3], B[0], [-1, 0, 0.2], 2);  // 左
-  b.quad(B[0], B[3], B[2], B[1], [0, 0, 1], 2);     // 端
+  const hb = b.pos.length / 3;
+  // 断面は角を落とした長方形。6 点で一周する
+  const SECT = [[-1, 0], [-1, 1], [1, 1], [1, 0], [1, -1], [-1, -1]];
+  for (const g of HSEG) {
+    for (const [sx, sy] of SECT) {
+      b.pos.push(sx * g.w, sy * g.h, g.z);
+      const nl = Math.hypot(sx, sy) || 1;
+      b.nrm.push(sx / nl, sy / nl, 0);
+      b.reg.push(2);
+    }
+  }
+  for (let i = 0; i < HSEG.length - 1; i++) {
+    for (let k = 0; k < SECT.length; k++) {
+      const k2 = (k + 1) % SECT.length;
+      const a = hb + i * SECT.length;
+      b.idx.push(a + k, a + SECT.length + k, a + k2);
+      b.idx.push(a + k2, a + SECT.length + k, a + SECT.length + k2);
+    }
+  }
+  // 先端のふた
+  const tipB = hb + (HSEG.length - 1) * SECT.length;
+  for (let k = 1; k < SECT.length - 1; k++) b.idx.push(tipB, tipB + k, tipB + k + 1);
 
   return b.build(gl);
 }
@@ -254,4 +376,168 @@ export function bowlMesh(gl) {
   for (let j = 0; j < SEG; j++) water.idx.push(0, 1 + j + 1, 1 + j);
 
   return { body: body.build(gl), water: water.build(gl) };
+}
+
+/**
+ * 浮き葉。中心から縁への円板を、表と裏の 2 枚で作る。
+ * 属性は (中心からの距離, 角度, 表=1/裏=0)。形は頂点シェーダが水面に合わせる。
+ */
+export function padMesh(gl) {
+  const RINGS = 10, SEG = 56;
+  const pos = [];
+  const idx = [];
+  for (const face of [1, 0]) {
+    const base = pos.length / 3;
+    for (let i = 0; i <= RINGS; i++) {
+      for (let j = 0; j <= SEG; j++) pos.push(i / RINGS, j / SEG, face);
+    }
+    for (let i = 0; i < RINGS; i++) {
+      for (let j = 0; j < SEG; j++) {
+        const a = base + i * (SEG + 1) + j, c = a + SEG + 1;
+        if (face) idx.push(a, c, a + 1, a + 1, c, c + 1);
+        else idx.push(a, a + 1, c, a + 1, c + 1, c);
+      }
+    }
+  }
+  return new Mesh(gl, [{ loc: 0, size: 3, data: new Float32Array(pos) }], new Uint32Array(idx));
+}
+
+/**
+ * 泡。1 粒 1 枚の板。位置は頂点シェーダが時刻から出すので、
+ * ここは板と通し番号を並べるだけ。
+ */
+export function bubbleMesh(gl, count) {
+  const pos = [];
+  const idx = [];
+  for (let i = 0; i < count; i++) {
+    const b = pos.length / 3;
+    pos.push(-1, -1, i, 1, -1, i, 1, 1, i, -1, 1, i);
+    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+  }
+  return new Mesh(gl, [{ loc: 0, size: 3, data: new Float32Array(pos) }], new Uint32Array(idx));
+}
+
+/**
+ * エアストーンとチューブ、それに外に立てた酸素ボンベ。
+ * 領域 0=石、1=チューブ、2=ボンベの胴、3=金具。
+ */
+export function gearMesh(gl, floorY) {
+  const b = new Builder();
+  const SIDE = 10;
+
+  /** 中心線に沿って円筒を張る。pts は [x,y,z,半径] の列。 */
+  const tube = (pts, region, capA = false, capB = false) => {
+    const base = b.pos.length / 3;
+    for (let i = 0; i < pts.length; i++) {
+      const [x, y, z, r] = pts[i];
+      // 進む向き
+      const n = pts[Math.min(i + 1, pts.length - 1)], p = pts[Math.max(i - 1, 0)];
+      let t = [n[0] - p[0], n[1] - p[1], n[2] - p[2]];
+      const tl = Math.hypot(...t) || 1;
+      t = t.map((v) => v / tl);
+      // 直交する 2 本
+      const up = Math.abs(t[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+      let e1 = [t[1] * up[2] - t[2] * up[1], t[2] * up[0] - t[0] * up[2], t[0] * up[1] - t[1] * up[0]];
+      const e1l = Math.hypot(...e1) || 1;
+      e1 = e1.map((v) => v / e1l);
+      const e2 = [t[1] * e1[2] - t[2] * e1[1], t[2] * e1[0] - t[0] * e1[2], t[0] * e1[1] - t[1] * e1[0]];
+      for (let k = 0; k <= SIDE; k++) {
+        const a = (k / SIDE) * Math.PI * 2;
+        const c = Math.cos(a), s = Math.sin(a);
+        const nx = e1[0] * c + e2[0] * s, ny = e1[1] * c + e2[1] * s, nz = e1[2] * c + e2[2] * s;
+        b.pos.push(x + nx * r, y + ny * r, z + nz * r);
+        b.nrm.push(nx, ny, nz);
+        b.reg.push(region);
+      }
+    }
+    const N = SIDE + 1;
+    for (let i = 0; i < pts.length - 1; i++) {
+      for (let k = 0; k < SIDE; k++) {
+        const a = base + i * N + k, c = a + N;
+        b.idx.push(a, c, a + 1, a + 1, c, c + 1);
+      }
+    }
+    // ふた
+    for (const [on, end] of [[capA, 0], [capB, pts.length - 1]]) {
+      if (!on) continue;
+      const [x, y, z] = pts[end];
+      const ci = b.pos.length / 3;
+      const t = end === 0 ? [-1, 0, 0] : [1, 0, 0];
+      b.pos.push(x, y, z); b.nrm.push(...t); b.reg.push(region);
+      const r0 = base + end * N;
+      for (let k = 0; k < SIDE; k++) b.idx.push(ci, r0 + k, r0 + k + 1);
+    }
+  };
+
+  // エアストーン。直径 15mm・長さ 30mm の円筒を底に寝かせる
+  const sx = AIR.stone[0], sz = AIR.stone[2], sy = floorY + 0.0085;
+  tube([[sx - 0.015, sy, sz, 0.0075], [sx + 0.015, sy, sz, 0.0075]], 0, true, true);
+
+  // チューブ。石から立ち上がり、内壁を這って縁を越え、外のボンベへ下りる
+  const wallZ = TANK.halfZ + TANK.draftZ * 0.0;
+  const rimZ = TANK.halfZ + TANK.draftZ * TANK.rimTop + TANK.rimW;
+  const TR = 0.0030;
+  tube([
+    [sx + 0.014, sy + 0.001, sz, TR],
+    [sx + 0.030, sy + 0.004, sz - 0.030, TR],
+    [sx + 0.045, sy + 0.012, -wallZ + 0.020, TR],
+    [sx + 0.050, -TANK.depth * 0.45, -wallZ - 0.004, TR],
+    [sx + 0.052, TANK.rimTop - 0.004, -rimZ + 0.012, TR],
+    [sx + 0.054, TANK.rimTop + 0.009, -rimZ - 0.012, TR],
+    [sx + 0.090, TANK.rimTop - 0.030, -rimZ - 0.060, TR],
+    [AIR.bottle[0] - 0.010, TANK.outBottom + AIR.bottleH * 0.80, AIR.bottle[2] + 0.030, TR],
+    [AIR.bottle[0], TANK.outBottom + AIR.bottleH * 0.88, AIR.bottle[2] + 0.008, TR],
+  ], 1);
+
+  // 酸素ボンベ。外に立てておく
+  const bx = AIR.bottle[0], bz = AIR.bottle[2], by = TANK.outBottom;
+  const bottle = [];
+  const H = AIR.bottleH, R = AIR.bottleR;
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10;
+    // 肩で丸めて細くなる
+    const r = t < 0.86 ? R : R * Math.sqrt(Math.max(1 - ((t - 0.86) / 0.14) ** 2, 0.04));
+    bottle.push([bx, by + H * t, bz, Math.max(r, 0.004)]);
+  }
+  tubeY(b, bottle, 2, SIDE, true);
+  // 首とバルブ
+  tubeY(b, [[bx, by + H, bz, 0.011], [bx, by + H + 0.030, bz, 0.011]], 3, SIDE, true);
+  tubeY(b, [[bx, by + H + 0.018, bz, 0.009], [bx + 0.028, by + H + 0.018, bz, 0.009]], 3, SIDE, true, true);
+
+  return b.build(gl);
+}
+
+/** 縦に積む円筒。tube() と同じだが、軸が y 固定なので向きを作らなくてよい。 */
+function tubeY(b, pts, region, SIDE, capTop = false, sideways = false) {
+  const base = b.pos.length / 3;
+  for (const [x, y, z, r] of pts) {
+    for (let k = 0; k <= SIDE; k++) {
+      const a = (k / SIDE) * Math.PI * 2;
+      const c = Math.cos(a), s = Math.sin(a);
+      if (sideways) {
+        b.pos.push(x, y + c * r, z + s * r);
+        b.nrm.push(0, c, s);
+      } else {
+        b.pos.push(x + c * r, y, z + s * r);
+        b.nrm.push(c, 0, s);
+      }
+      b.reg.push(region);
+    }
+  }
+  const N = SIDE + 1;
+  for (let i = 0; i < pts.length - 1; i++) {
+    for (let k = 0; k < SIDE; k++) {
+      const a = base + i * N + k, c = a + N;
+      b.idx.push(a, c, a + 1, a + 1, c, c + 1);
+    }
+  }
+  if (capTop) {
+    const last = pts[pts.length - 1];
+    const ci = b.pos.length / 3;
+    b.pos.push(last[0], last[1], last[2]);
+    b.nrm.push(sideways ? 1 : 0, sideways ? 0 : 1, 0);
+    b.reg.push(region);
+    const r0 = base + (pts.length - 1) * N;
+    for (let k = 0; k < SIDE; k++) b.idx.push(ci, r0 + k, r0 + k + 1);
+  }
 }

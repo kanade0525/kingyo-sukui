@@ -95,6 +95,41 @@ float woodRings(vec2 p, float seed){
 }
 
 /** 砂利。粒の中心ほど明るく、継ぎ目に影が溜まる。 */
+/**
+ * 石畳。神社の参道。
+ *
+ * 花崗岩の切石を目地を取って敷いたもの。石畳に見える手掛かりは三つで、
+ * 「石ごとに色が違う」「目地が凹んで土が溜まる」「踏まれて中央が磨ける」。
+ * この三つが無いと、ただの格子模様になる。
+ *
+ * 胞体の種を中心へ寄せると、丸い粒ではなく切り石の四角さが残る。
+ * 参道の石は進む向きを横切る形に敷くので、セルは横長に取る。
+ *
+ * 戻り値は石肌の明るさ。joint に目地（1 が芯）、id に石ごとの乱数、
+ * dish に中心からの距離（踏まれ具合）。
+ */
+float flagstone(vec2 p, out float joint, out float id, out float dish){
+  vec2 q = p * vec2(1.0, 1.52);
+  vec2 i = floor(q), f = fract(q);
+  float d1 = 1e9, d2 = 1e9;
+  vec2 best = i;
+  for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++){
+    vec2 g = vec2(float(x), float(y));
+    vec2 o = 0.5 + (hash22(i + g) - 0.5) * 0.52;
+    float d = length(g + o - f);
+    if(d < d1){ d2 = d1; d1 = d; best = i + g; }
+    else if(d < d2) d2 = d;
+  }
+  joint = 1.0 - smoothstep(0.0, 0.05, d2 - d1);
+  id = hash12(best);
+  dish = smoothstep(0.0, 0.40, d1);
+  // 花崗岩の斑。白い長石と黒い雲母。細かすぎると画素より小さくなって
+  // ちらつくので、1 画素に収まりだしたら消す
+  float sp = fbm(p * 240.0);
+  float keep = 1.0 - smoothstep(0.004, 0.016, fwidth(p.x));
+  return 0.80 + (sp - 0.5) * 0.52 * keep;
+}
+
 float gravel(vec2 p, float scale, out float cavity){
   float d = worley(p * scale);
   cavity = smoothstep(0.52, 0.16, d);         // 粒の谷
@@ -269,6 +304,25 @@ uniform float uPatch;
 uniform float uRipSpan;
 uniform vec2 uTankHalf;
 
+uniform float uTankR;       // 角の丸み
+uniform vec2 uTankDraft;    // 抜き勾配。高さ 1m あたり外へ開く量
+
+/** 角の丸い長方形の内側からの距離。正なら内側、負なら外側。 */
+float tankIn(vec2 p){
+  vec2 q = abs(p) - uTankHalf + uTankR;
+  return uTankR - (min(max(q.x, q.y), 0.0) + length(max(q, 0.0)));
+}
+
+/** はみ出した点を、丸みの上へ寄せる。水面の格子を舟の形に合わせる。 */
+vec2 tankClamp(vec2 p){
+  vec2 q = abs(p) - uTankHalf + uTankR;
+  if(q.x > 0.0 && q.y > 0.0){
+    float l = length(q);
+    if(l > uTankR) return sign(p) * (uTankHalf - uTankR + q * (uTankR / l));
+  }
+  return p;
+}
+
 uniform float uFftN;
 // テクセルの中心に合わせる。合わせないと場が半テクセルずれ、
 // uv=0 で端どうしが混ざってわずかに鈍る
@@ -283,8 +337,7 @@ vec2 slopeAt(vec2 p){
 /** 壁に近いほど 0。たらいの水は縁で動けないので、変位をここで殺す。 */
 float edgeMask(vec2 p){
   const float fade = 0.012;
-  return smoothstep(0.0, fade, uTankHalf.x - abs(p.x))
-       * smoothstep(0.0, fade, uTankHalf.y - abs(p.y));
+  return smoothstep(0.0, fade, tankIn(p));
 }`;
 
 /**
@@ -316,8 +369,7 @@ uniform float uCausGain;
 float wallShade(vec2 entry){
   // 太陽が低いほど影は長く伸びる。縁をぼかすのは、水面が揺れていて
   // 影の境目そのものが揺らぐため
-  float s = smoothstep(0.030, -0.004, abs(entry.x) - uTankHalf.x)
-          * smoothstep(0.030, -0.004, abs(entry.y) - uTankHalf.y);
+  float s = smoothstep(-0.030, 0.004, tankIn(entry));
   return 0.42 + 0.58 * s;     // 影の中にも空からの光がよく回り込む
 }
 
@@ -334,9 +386,9 @@ vec3 caustics(vec2 bottomP, float below){
   float c0 = uCausC.x * k;
   float c1 = uCausC.y * k;
   float c2 = uCausC.z * k;
-  // 下限 0.42 で頭打ちにするので最大 2.4 倍。1/|det| は平均が 1 を超えるので、
-  // 全体が明るくなりすぎないよう割り戻しておく
-  const float LIM = 0.26, NRM = 0.72;
+  // 下限で頭打ちにする。舟の底が水色のトレーになって反射率が上がったので、
+  // 以前の 0.26（最大 2.8 倍）だと青が振り切れて、水面が一面の白い靄になる
+  const float LIM = 0.36, NRM = 0.70;
   g.r = NRM / max(abs((1.0 + c0*hxx) * (1.0 + c0*hzz) - (c0*hxz) * (c0*hzx)), LIM);
   g.g = NRM / max(abs((1.0 + c1*hxx) * (1.0 + c1*hzz) - (c1*hxz) * (c1*hzx)), LIM);
   g.b = NRM / max(abs((1.0 + c2*hxx) * (1.0 + c2*hzz) - (c2*hxz) * (c2*hzx)), LIM);

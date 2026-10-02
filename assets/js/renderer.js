@@ -9,18 +9,26 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610021121';
-import { VS_FULL } from '../shaders/common.js?v=202610021121';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610021121';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610021121';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610021121';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js?v=202610021121';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh } from './meshes.js?v=202610021121';
-import { Ocean } from './ocean.js?v=202610021121';
-import { Ripple } from './ripple.js?v=202610021121';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH } from './world.js?v=202610021121';
-import { sunFor, DEFAULT_HOUR } from './sky.js?v=202610021121';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610021121';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610021520';
+import { VS_FULL } from '../shaders/common.js?v=202610021520';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610021520';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610021520';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610021520';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js?v=202610021520';
+import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR } from '../shaders/props.js?v=202610021520';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh } from './meshes.js?v=202610021520';
+import { Ocean } from './ocean.js?v=202610021520';
+import { Ripple } from './ripple.js?v=202610021520';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR } from './world.js?v=202610021520';
+import { sunFor, DEFAULT_HOUR } from './sky.js?v=202610021520';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610021520';
+
+// 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
+const TANK_OUTER = [
+  TANK.halfX + TANK.draftX * TANK.rimTop + TANK.rimW,
+  TANK.halfZ + TANK.draftZ * TANK.rimTop + TANK.rimW,
+];
+const TANK_OUTER_R = TANK.cornerR + TANK.draftX * TANK.rimTop + TANK.rimW;
 
 const DEG = Math.PI / 180;
 const FOV_Y = 46 * DEG;
@@ -51,6 +59,9 @@ export class Renderer {
     this.pFish = new Program(gl, VS_FISH, FS_FISH, 'fish');
     this.pPoi = new Program(gl, VS_POI, FS_POI, 'poi');
     this.pTurtle = new Program(gl, VS_TURTLE, FS_TURTLE, 'turtle');
+    this.pPad = new Program(gl, VS_PAD, FS_PAD, 'pad');
+    this.pBubble = new Program(gl, VS_BUBBLE, FS_BUBBLE, 'bubble');
+    this.pGear = new Program(gl, VS_GEAR, FS_GEAR, 'gear');
     this.pBright = new Program(gl, VS_FULL, FS_BRIGHT, 'bright');
     this.pBlur = new Program(gl, VS_FULL, FS_BLUR, 'blur');
     this.pComp = new Program(gl, VS_FULL, FS_COMPOSITE, 'composite');
@@ -60,6 +71,10 @@ export class Renderer {
     this.mPoi = poiMesh(gl);
     this.mBowl = bowlMesh(gl);
     this.mTurtle = turtleMesh(gl);
+    this.mPad = padMesh(gl);
+    this.mBubble = bubbleMesh(gl, AIR.bubbles);
+    this.mGear = gearMesh(gl, -TANK.depth);
+    this.stonePos = [AIR.stone[0], -TANK.depth + 0.014, AIR.stone[2]];
     this.mWater = gridMesh(gl, 220, 150);
 
     this.setHour(DEFAULT_HOUR);
@@ -67,7 +82,6 @@ export class Renderer {
     // 既定では切る。上の #makeMsaa のコメントを参照
     this.wantMsaa = false;
     this.pitchDeg = 65;
-    this.detail = 1;
 
     // 切り分け用。?plain で後処理を全部外し、?nodof で被写界深度だけ外す。
     // 「手元では出ないが実機で出る」類を、往復一回で切り分けるため
@@ -105,8 +119,6 @@ export class Renderer {
 
   setDpr(scale) {
     this.dprScale = scale;
-    // 視差遮蔽は 1 画素あたり何度も高さを引くので、画質と一緒に上げ下げする
-    this.detail = scale < 0.9 ? 0 : scale > 1.5 ? 2 : 1;
     this.resize(true);
   }
 
@@ -205,16 +217,13 @@ export class Renderer {
     const pitch = this.pitchDeg * DEG;
     const tanH = Math.tan(FOV_Y / 2);
 
-    const rim = TANK.rimW;
-    const acrossScreen = (portrait ? TANK.halfZ : TANK.halfX) + rim;
-    const intoScreen = (portrait ? TANK.halfX : TANK.halfZ) + rim;
-    const needW = (acrossScreen + 0.035) / (tanH * aspect);
-    const needH = (intoScreen * Math.sin(pitch) + 0.085) / tanH;
-    // 縦画面は横の制約が厳しく、素直に合わせると上下が大きく余る。
-    // 画面の短辺に寄せて詰める
-    const dist = portrait
-      ? Math.max(needW * 1.02, needH * 1.06)
-      : Math.max(needW * 1.10, needH * 1.12);
+    // 舟の外寸はいちばん張り出す縁の上端で取る
+    const acrossScreen = portrait ? TANK_OUTER[1] : TANK_OUTER[0];
+    const intoScreen = portrait ? TANK_OUTER[0] : TANK_OUTER[1];
+    // 余白はほとんど取らない。舟で画面を埋める
+    const needW = (acrossScreen + 0.004) / (tanH * aspect);
+    const needH = (intoScreen * Math.sin(pitch) + 0.030) / tanH;
+    const dist = Math.max(needW, needH) * 1.005;
 
     const base = [0, -0.01, 0];
     const eye = [
@@ -314,7 +323,8 @@ export class Renderer {
      .setFloat('uFftN', this.ocean.N)
      .setFloat('uRipSpan', RIPPLE_SPAN)
      .set('uTankHalf', [TANK.halfX, TANK.halfZ])
-     .setFloat('uDetail', this.detail);
+     .setFloat('uTankR', TANK.cornerR)
+     .set('uTankDraft', [TANK.draftX, TANK.draftZ]);
     return p;
   }
 
@@ -341,7 +351,7 @@ export class Renderer {
       .setFloat('uPhase', f.phase)
       .setFloat('uBeat', f.beat)
       .setFloat('uBend', f.bend || 0)
-      .setFloat('uBulge', f.kind === 2 ? 0.55 : 0.0)
+      .setFloat('uBulge', f.kind === 0 ? 0.0 : 0.55)
       .setFloat('uSeed', f.seed)
       .setInt('uKind', f.kind);
     this.mFish.draw();
@@ -353,6 +363,20 @@ export class Renderer {
     this.#water(p);          // 体に落ちるコースティクスのため
     p.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
     return p;
+  }
+
+  /** 浮き葉。葉ごとに大きさと向きを変えて、同じ円板を描き直す。 */
+  #drawPads(time) {
+    const p = this.pPad.use();
+    this.#lights(p); this.#water(p);
+    p.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
+    PAD.leaves.forEach((c, i) => {
+      p.set('uPadPos', [c.x, c.z])
+       .setFloat('uPadR', c.r)
+       .setFloat('uYaw', c.yaw)
+       .setFloat('uSeed', 0.137 + i * 0.311);
+      this.mPad.draw();
+    });
   }
 
   #drawFish(school, wantAbove, time) {
@@ -412,13 +436,19 @@ export class Renderer {
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
-        .setFloat('uDetail', this.detail)
         .setFloat('uRimTop2', TANK.rimTop)
-        .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
+        .set('uTankOuter2', TANK_OUTER)
         .set('uBowlPos', this.bowlPos)
         .vec4Array('uFish[0]', school.shadowData(this.sunHoriz, this.refrTan), MAX_FISH)
         .setInt('uFishCount', school.shadowCount);
       this.mTank.draw();
+    }
+
+    {
+      const p = this.pGear.use();
+      this.#lights(p); this.#water(p);
+      p.mat4('uVP', this.vp).set('uCam', this.cam).setInt('uUnderwater', 1);
+      this.mGear.draw();
     }
     this.#drawFish(school, false, time);
     // 沈めたポイは水面に隠れてしまうので、水中パスにも描く
@@ -443,10 +473,10 @@ export class Renderer {
         .setFloat('uTanHalf', this.tanH)
         .setFloat('uAspect', this.aspect)
         .setFloat('uGroundY', TANK.outBottom)
-        .setFloat('uDetail', this.detail)
         .setFloat('uRimTop2', TANK.rimTop)
-        .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
-        .set('uTankOuter', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
+        .set('uTankOuter2', TANK_OUTER)
+        .set('uTankOuter', TANK_OUTER)
+        .setFloat('uTankOuterR', TANK_OUTER_R)
         .setFloat('uRimTop', TANK.rimTop)
         .set('uBowlPos', this.bowlPos)
         .setFloat('uBowlR', BOWL.outerR)
@@ -465,12 +495,18 @@ export class Renderer {
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
-        .setFloat('uDetail', this.detail)
         .setFloat('uRimTop2', TANK.rimTop)
-        .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
+        .set('uTankOuter2', TANK_OUTER)
         .set('uBowlPos', this.bowlPos)
         .setInt('uFishCount', 0);
       this.mTank.draw();
+    }
+
+    {
+      const p = this.pGear.use();
+      this.#lights(p); this.#water(p);
+      p.mat4('uVP', this.vp).set('uCam', this.cam).setInt('uUnderwater', 0);
+      this.mGear.draw();
     }
 
     {
@@ -484,6 +520,30 @@ export class Renderer {
       this.mWater.draw();
     }
 
+    this.#drawPads(time);
+
+    // 泡。水面より手前に重ねる。小さいので屈折までは追わない
+    {
+      // 水面より奥にあるので、素直に深度を見ると水面に落とされる。
+      // 泡は小さいので、手前に重ねてしまって差し支えない
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.disable(gl.DEPTH_TEST);
+      gl.depthMask(false);
+      const p = this.pBubble.use();
+      this.#lights(p);
+      p.mat4('uVP', this.vp).set('uCam', this.cam)
+        .set('uRight', this.basis.right)
+        .set('uUp', this.basis.up)
+        .set('uStone', this.stonePos)
+        .setFloat('uCount', AIR.bubbles)
+        .setFloat('uTime', time);
+      this.mBubble.draw();
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+    }
+
     this.#drawFish(school, true, time);
 
     // 手元の器。本体 → 中の金魚 → 水面、の順に重ねる
@@ -495,9 +555,8 @@ export class Renderer {
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
-        .setFloat('uDetail', this.detail)
         .setFloat('uRimTop2', TANK.rimTop)
-        .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
+        .set('uTankOuter2', TANK_OUTER)
         .set('uBowlPos', this.bowlPos)
         .setInt('uFishCount', 0);
       this.mBowl.body.draw();
@@ -529,9 +588,8 @@ export class Renderer {
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
-        .setFloat('uDetail', this.detail)
         .setFloat('uRimTop2', TANK.rimTop)
-        .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
+        .set('uTankOuter2', TANK_OUTER)
         .set('uBowlPos', this.bowlPos)
         .setInt('uFishCount', 0);
       this.mBowl.water.draw();

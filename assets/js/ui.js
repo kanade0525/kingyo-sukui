@@ -8,15 +8,12 @@ const $ = (id) => document.getElementById(id);
 export class UI {
   constructor(handlers) {
     this.el = {
-      topbar: $('topbar'), count: $('countVal'), score: $('scoreVal'), fps: $('fps'),
-      veil: $('veil'), start: $('cardStart'), end: $('cardEnd'),
-      endCount: $('endCount'), endScore: $('endScore'), endPoi: $('endPoi'), grade: $('grade'),
+      fps: $('fps'),
+      loading: $('loading'),
       panel: $('panel'), btnPanel: $('btnPanel'),
-      hint: $('hint'), fallback: $('fallback'), fallbackWhy: $('fallbackWhy'),
+      fallback: $('fallback'), fallbackWhy: $('fallbackWhy'),
     };
 
-    $('btnStart').addEventListener('click', () => handlers.start());
-    $('btnAgain').addEventListener('click', () => handlers.start());
 
     this.el.btnPanel.addEventListener('click', () => {
       const open = this.el.panel.hidden;
@@ -55,7 +52,6 @@ export class UI {
       handlers.msaa(v === '1');
       $('msaaNote').textContent = v === '1' ? '入' : '切';
     });
-    this.#seg('segAudio', 'a', (v) => handlers.audio(v === '1'));
   }
 
   #range(id, outId, fn) {
@@ -79,39 +75,19 @@ export class UI {
 
   fatal(message) {
     this.el.fallback.hidden = false;
-    this.el.veil.hidden = true;
-    this.el.topbar.hidden = true;
+    this.el.loading.hidden = true;
     document.getElementById('botbar').hidden = true;
     if (message) this.el.fallbackWhy.textContent = message;
   }
 
-  enterPlay() {
-    this.el.veil.hidden = true;
-    this.el.topbar.hidden = false;
-    document.body.classList.add('playing');
-  }
-
-  enterOver(game) {
-    this.el.veil.hidden = false;
-    this.el.start.hidden = true;
-    this.el.end.hidden = false;
-    this.el.endCount.textContent = game.caught;
-    this.el.endScore.textContent = game.score;
-    this.el.endPoi.textContent = game.stock;
-    this.el.grade.textContent = game.grade;
-    document.body.classList.remove('playing');
+  /** 最初の絵が出たら覆いを外す。 */
+  ready() {
+    this.el.loading.classList.add('done');
+    setTimeout(() => { this.el.loading.hidden = true; }, 600);
   }
 
   /** 毎フレーム。文字が変わった時だけ DOM を書き換える。 */
   tick(game, fps) {
-    if (this.lastCount !== game.caught) {
-      this.el.count.textContent = game.caught;
-      this.lastCount = game.caught;
-    }
-    if (this.lastScore !== game.score) {
-      this.el.score.textContent = game.score;
-      this.lastScore = game.score;
-    }
     if (fps !== null && this.lastFps !== fps) {
       this.el.fps.textContent = `${fps} fps`;
       this.lastFps = fps;
@@ -119,8 +95,6 @@ export class UI {
   }
 
   resetMeters() {
-    this.lastCount = this.lastScore = null;
-    this.el.count.textContent = '0';
-    this.el.score.textContent = '0';
+    this.lastFps = null;
   }
 }

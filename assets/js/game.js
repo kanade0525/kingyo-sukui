@@ -8,16 +8,15 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610021121';
-import { Poi } from './poi.js?v=202610021121';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL } from './world.js?v=202610021121';
+import { School } from './fish.js?v=202610021520';
+import { Poi } from './poi.js?v=202610021520';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL } from './world.js?v=202610021520';
 
 export const PHASE = { READY: 'ready', PLAY: 'play', OVER: 'over' };
 
 export class Game {
-  constructor(sound) {
-    this.sound = sound;
-    this.school = new School(11);
+  constructor() {
+    this.school = new School(26);
     this.poi = new Poi();
     this.poi.visible = false;
     this.phase = PHASE.READY;
@@ -67,8 +66,6 @@ export class Game {
     if (this.phase !== PHASE.PLAY) return;
     const was = this.poi.pressed;
     this.poi.pressed = down;
-    if (down && !was) this.sound.dip();
-    if (!down && was && this.poi.submerged) this.sound.lift();
   }
 
   update(dt) {
@@ -130,7 +127,6 @@ export class Game {
     // 水面を割った瞬間の音
     if (poi.y > 0.004 && !this.lifting) {
       this.lifting = true;
-      if (this.held.length) this.sound.splash();
     } else if (poi.y <= 0.004) {
       this.lifting = false;
     }
@@ -143,7 +139,6 @@ export class Game {
         this.score += k.score + size;
         this.caught++;
         this.events.push({ type: 'catch', name: k.name, score: k.score + size });
-        this.sound.chime(f.turtle ? 760 : 1180 + f.kind * 220);
         this.#toBowl(f);
         f.gone = true;
         f.held = false;

@@ -34,32 +34,6 @@ body.playing canvas#scene{cursor:none}
 #fallback{position:fixed;inset:0;display:grid;place-content:center;padding:32px;text-align:center;background:var(--sumi)}
 #fallback h2{font-family:var(--disp);font-weight:700;letter-spacing:.08em;margin:0 0 12px}
 
-/* ---------- 上の帯 ---------- */
-#topbar{
-  position:fixed;left:0;right:0;top:0;z-index:2;
-  padding:calc(10px + env(safe-area-inset-top,0px)) 16px 22px;
-  display:flex;align-items:flex-start;gap:16px;
-  background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(255,255,255,0));
-  pointer-events:none;
-}
-.stat{display:flex;flex-direction:column;gap:3px;min-width:0}
-.lbl{font-size:10px;letter-spacing:.2em;color:var(--ink-dim);white-space:nowrap}
-.stat .val{
-  font-family:var(--disp);font-weight:700;line-height:1;font-size:32px;
-  font-variant-numeric:tabular-nums;
-}
-.stat.small .val{font-size:22px}
-#timeVal.warn{color:var(--beni)}
-#spacer{flex:1 1 auto}
-#poiRack{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
-#poiDots{display:flex;gap:5px}
-.poiDot{width:15px;height:15px;border-radius:50%;border:2px solid var(--hi);background:rgba(217,80,27,.18)}
-.poiDot.spent{border-color:#4b4137;background:none}
-#paperWrap{width:120px;height:5px;border-radius:3px;background:rgba(23,34,43,.14);overflow:hidden}
-#paperBar{height:100%;width:100%;background:var(--hi-soft)}
-#paperBar.mid{background:#ffd37a}
-#paperBar.low{background:var(--beni)}
-
 /* ---------- 下の帯 ---------- */
 #botbar{
   position:fixed;left:0;right:0;bottom:0;z-index:2;
@@ -67,8 +41,6 @@ body.playing canvas#scene{cursor:none}
   display:flex;align-items:flex-end;gap:12px;
   background:linear-gradient(0deg,rgba(255,255,255,.72),rgba(255,255,255,0));
 }
-#hint{margin:0;font-size:12px;line-height:1.7;color:var(--ink-dim);max-width:52ch;pointer-events:none}
-#hint b{color:var(--ink);font-weight:500}
 #tools{margin-left:auto;display:flex;align-items:center;gap:10px;flex:0 0 auto}
 #fps{color:var(--ink);font-variant-numeric:tabular-nums}
 
@@ -101,39 +73,31 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 .seg button[aria-pressed=true]{background:var(--hi);color:#fff;border-color:var(--hi);font-weight:700}
 .seg button[aria-pressed=true]:hover{color:#fff}
 
-/* ---------- 覆い ---------- */
-#veil{
+/* ---------- 読み込み中の覆い ---------- */
+#loading{
   position:fixed;inset:0;z-index:4;display:grid;place-items:center;padding:24px;
-  background:radial-gradient(120% 86% at 50% 40%,rgba(248,250,249,.18),rgba(236,240,239,.74));
+  background:radial-gradient(120% 86% at 50% 40%,rgba(248,250,249,.30),rgba(236,240,239,.88));
+  transition:opacity .5s ease;
 }
+#loading.done{opacity:0;pointer-events:none}
 .card{width:min(560px,100%);text-align:center}
 .kicker{margin:0 0 14px;font-size:11px;letter-spacing:.45em;color:var(--hi)}
 .card h1{
-  margin:0 0 10px;font-family:var(--disp);font-weight:700;
+  margin:0 0 28px;font-family:var(--disp);font-weight:700;
   font-size:clamp(40px,10vw,76px);letter-spacing:.22em;text-wrap:balance;
   text-shadow:0 1px 0 rgba(255,255,255,.75), 0 3px 26px rgba(255,255,255,.95);
 }
-.card h2{margin:0 0 18px;font-family:var(--disp);font-weight:500;font-size:clamp(24px,6vw,36px);letter-spacing:.08em}
-.lede{margin:0 auto 24px;max-width:34ch;font-size:13px;line-height:2.1;color:var(--ink);text-wrap:pretty;
-  text-shadow:0 1px 10px rgba(255,255,255,.9)}
-.lede em{font-style:normal;color:var(--ink)}
-.sub{margin:16px 0 0;font-size:11px;letter-spacing:.1em;color:var(--ink-dim)}
-.go{
-  font-family:var(--disp);font-size:17px;font-weight:700;letter-spacing:.22em;
-  padding:13px 42px;background:var(--hi);color:#fff;border-color:var(--hi);
+/* 進み具合は刻めないので、流れる脈動だけ出す */
+.bar{width:min(220px,60%);height:2px;margin:0 auto;background:rgba(0,0,0,.10);
+  border-radius:2px;overflow:hidden}
+.bar i{display:block;width:40%;height:100%;background:var(--hi);border-radius:2px;
+  animation:sweep 1.25s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes sweep{
+  0%{transform:translateX(-100%)}
+  100%{transform:translateX(250%)}
 }
-.go:hover{background:var(--hi-soft);border-color:var(--hi-soft);color:#fff}
-#tally{display:flex;justify-content:center;gap:28px;flex-wrap:wrap;margin:0 0 20px}
-#tally div{display:flex;flex-direction:column;gap:5px}
-#tally .t{font-size:10px;letter-spacing:.2em;color:var(--ink-dim)}
-#tally .n{font-family:var(--disp);font-weight:700;font-size:34px;line-height:1;font-variant-numeric:tabular-nums}
-#grade{margin:0 0 26px;font-family:var(--disp);font-size:14px;letter-spacing:.16em;color:var(--hi)}
 
 [hidden]{display:none!important}
 
-@media (max-width:560px){
-  #hint{display:none}
-  .stat .val{font-size:26px}
-  .stat.small .val{font-size:19px}
-}
+
 @media (prefers-reduced-motion:reduce){*{transition-duration:.001ms!important}}
