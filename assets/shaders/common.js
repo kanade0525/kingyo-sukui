@@ -65,16 +65,23 @@ float worley(vec2 p){
  * 色が抜ける。そこまで入れて初めて物に見える。
  */
 export const MATERIAL = `
-/** ブルーシートの織り目。平たいテープを縦横に編んだもの。 */
+/**
+ * ブルーシートの織り目。平たいテープを縦横に編んだもの。
+ *
+ * 1 画素がテープ何本ぶんを覆っているかを見て、細かすぎるときは
+ * 平らに均す。均さないと、遠い所で干渉縞（モアレ）が出る。
+ */
 float tarpWeave(vec2 p, out vec2 bump){
   const float PITCH = 620.0;            // テープ幅 1.6mm
   vec2 g = p * PITCH;
+  float px = max(length(fwidth(g)), 1e-4);
+  float fade = 1.0 - smoothstep(0.55, 1.5, px);
   vec2 f = fract(g), i = floor(g);
   float flip = mod(i.x + i.y, 2.0);     // 市松に上下が入れ替わる
   float bx = sin(f.x * PI), by = sin(f.y * PI);
   float h = mix(bx, by, flip);
-  bump = mix(vec2(cos(f.x * PI), 0.0), vec2(0.0, cos(f.y * PI)), flip) * 0.9;
-  return h;
+  bump = mix(vec2(cos(f.x * PI), 0.0), vec2(0.0, cos(f.y * PI)), flip) * 0.9 * fade;
+  return mix(0.5, h, fade);
 }
 
 /** 板目。年輪を、板の長手方向へ強く伸ばした同心の縞として作る。 */
@@ -97,6 +104,56 @@ float gravel(vec2 p, float scale, out float cavity){
 /** 角の擦れ。縁に近いほど 1。色が抜けた所を作るのに使う。 */
 float wearEdge(float dist, float width){
   return 1.0 - smoothstep(0.0, width, dist);
+}
+
+/**
+ * 視差。高さのぶんだけ、見ている向きへ座標をずらす。
+ *
+ * 平たい面に模様を貼っただけだと、斜めから見ても模様が動かないので
+ * 「絵が貼ってある」と分かってしまう。1 段だけでも、砂利や織り目に
+ * 厚みが出る。depth は模様の起伏の実寸（m）。
+ */
+vec2 parallax(vec2 p, float h, vec3 V, vec3 N, float depth){
+  vec3 t = V - N * dot(V, N);          // 視線を面に落とした向き
+  return p - t.xz * (h - 0.5) * depth / max(dot(V, N), 0.25);
+}
+
+/**
+ * 異方性のハイライト。
+ *
+ * 木目や織り目は、繊維の向きに沿って光が伸びる。等方の GGX だと
+ * どの素材も同じ丸いハイライトになり、プラスチックに見える。
+ * T は面の上での繊維の向き。
+ */
+vec3 ggxAniso(vec3 N, vec3 V, vec3 L, vec3 T, float ax, float ay, vec3 F0){
+  vec3 B = normalize(cross(N, T));
+  vec3 Tn = normalize(cross(B, N));
+  vec3 H = normalize(L + V);
+  float ndl = max(dot(N, L), 0.0);
+  float ndv = max(dot(N, V), 1e-4);
+  float ndh = max(dot(N, H), 0.0);
+  float vdh = max(dot(V, H), 1e-4);
+  float th = dot(Tn, H) / max(ax, 1e-4);
+  float bh = dot(B, H) / max(ay, 1e-4);
+  float d = th * th + bh * bh + ndh * ndh;
+  float D = 1.0 / (PI * ax * ay * d * d);
+  float Vis = 0.25 / max(ndl * ndv, 1e-3);
+  vec3 F = F0 + (1.0 - F0) * pow(1.0 - vdh, 5.0);
+  return min(D * Vis * F * ndl, vec3(24.0));
+}
+
+/**
+ * 濡れた膜。下地の上に、薄い水の層をもう一枚重ねる。
+ *
+ * 濡れた物が濡れて見えるのは、色が暗くなるからではなく、
+ * 表面に鏡の層が乗って、そこだけ空が映るから。
+ */
+vec3 clearcoat(vec3 N, vec3 V, vec3 L, float wet, vec3 sun, vec3 sky){
+  if(wet <= 0.001) return vec3(0.0);
+  float r = mix(0.26, 0.075, wet);
+  float f = fresnelSchlick(max(dot(N, V), 0.0), 0.02);
+  // 鏡の層なので尖りやすい。頭を抑えないと白い穴が開く
+  return min((ggx(N, V, L, r, vec3(0.02)) * sun * PI + sky * f * 0.7) * wet, vec3(1.6));
 }
 `;
 

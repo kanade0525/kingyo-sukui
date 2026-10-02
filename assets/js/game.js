@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610020729';
-import { Poi } from './poi.js?v=202610020729';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL } from './world.js?v=202610020729';
+import { School } from './fish.js?v=202610020915';
+import { Poi } from './poi.js?v=202610020915';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL } from './world.js?v=202610020915';
 
 export const PHASE = { READY: 'ready', PLAY: 'play', OVER: 'over' };
 

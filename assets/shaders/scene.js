@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610020729';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610020915';
 
 
 
@@ -73,42 +73,50 @@ void main(){
     if(t > 0.0){
       vec3 p = uCam + d * t;
       // 乾いた土に砂利が埋まった地面。舟のまわりは水が跳ねて濡れている。
-      // 「大きなむら・埋まった粒・細かい砂」の三層を重ね、
-      // 粒の継ぎ目に影を落として、ようやく土に見える
-      float coarse = fbm(p.xz * 2.4);
-      float fine = fbm(p.xz * 120.0);
+      //
+      // 「大きなむら・埋まった粒・細かい砂」を重ねたうえで、
+      // 高さぶんの視差、粒の谷の遮蔽、面内で変わる粗さ、濡れた膜の
+      // 四つを足す。平らな面に模様を貼っただけだと、斜めから見ても
+      // 模様が動かないので、すぐ「絵が貼ってある」と分かってしまう。
+      float cav0;
+      float h0 = gravel(p.xz, 165.0, cav0) * 0.55 + fbm(p.xz * 120.0) * 0.20;
+      vec2 pp = parallax(p.xz, h0, -d, vec3(0.0, 1.0, 0.0), 0.012);
+
+      float coarse = fbm(pp * 2.4);
+      float fine = fbm(pp * 120.0);
       float cav;
-      float peb = gravel(p.xz, 165.0, cav);   // 粒は 6mm
+      float peb = gravel(pp, 165.0, cav);
 
       vec3 soil  = mix(vec3(0.128, 0.114, 0.096), vec3(0.212, 0.195, 0.168), coarse);
       vec3 stone = mix(vec3(0.185, 0.180, 0.170), vec3(0.268, 0.260, 0.244), fine);
       vec3 base = mix(soil, stone, peb * 0.28);
-      base *= 1.0 - cav * 0.20;                       // 粒の継ぎ目に溜まる影
       base *= 0.90 + 0.20 * fine;
 
-      // 舟と器のまわりは濡れている。濡れた土は暗く、よく照る
-      vec2 dd = abs(p.xz) - uTankOuter;
+      // 舟と器のまわりは水が跳ねて濡れている
+      vec2 dd = abs(pp) - uTankOuter;
       float ring = length(max(dd, 0.0)) + min(max(dd.x, dd.y), 0.0);
-      float damp = (1.0 - smoothstep(0.0, 0.30, ring)) * 0.75
-                 + smoothstep(0.52, 0.80, fbm(p.xz * 1.6 + 7.0)) * 0.5;
-      damp = clamp(damp, 0.0, 1.0);
-      base *= 1.0 - damp * 0.42;
+      float wet = clamp((1.0 - smoothstep(0.0, 0.30, ring)) * 0.75
+                      + smoothstep(0.54, 0.82, fbm(pp * 1.6 + 7.0)) * 0.45, 0.0, 1.0);
+      base *= 1.0 - wet * 0.40;
+
+      // 粒の谷は空が見えないので、環境光だけを落とす。
+      // 直射まで落とすと、谷が日向でも真っ黒になる
+      float ao = 1.0 - cav * 0.55;
+      // 粗さは面内で変わる。石の肌はつるりとして、土はざらつく
+      float rough = mix(0.80, 0.42, peb);
 
       float e = 0.0022;
-      float h0 = peb * 0.5 + fine * 0.18;
-      float hx = gravel(p.xz + vec2(e, 0.0), 165.0, cav) * 0.5 + fbm((p.xz + vec2(e, 0.0)) * 120.0) * 0.18;
-      float hz = gravel(p.xz + vec2(0.0, e), 165.0, cav) * 0.5 + fbm((p.xz + vec2(0.0, e)) * 120.0) * 0.18;
-      vec3 n = normalize(vec3((h0 - hx) * 1.8, 1.0, (h0 - hz) * 1.8));
+      float hc = gravel(pp, 165.0, cav0) * 0.55 + fbm(pp * 120.0) * 0.20;
+      float hx = gravel(pp + vec2(e, 0.0), 165.0, cav0) * 0.55 + fbm((pp + vec2(e, 0.0)) * 120.0) * 0.20;
+      float hz = gravel(pp + vec2(0.0, e), 165.0, cav0) * 0.55 + fbm((pp + vec2(0.0, e)) * 120.0) * 0.20;
+      vec3 n = normalize(vec3((hc - hx) * 2.2, 1.0, (hc - hz) * 2.2));
 
       float sh = groundShadow(p);
-      vec3 lit = uSunColor * max(dot(n, uSunDir), 0.0) * sh
-               + skyAmbient(n) * contactAO(p);
-      // 濡れた所の照り返し
-      base = base * lit
-           + ggx(n, -d, uSunDir, mix(0.72, 0.22, damp), vec3(0.04)) * uSunColor * PI * sh * (0.15 + 0.85 * damp);
-      lit = vec3(1.0);
-      // 遠景のフェードは緩く。きつくすると、画面の大半が「地平線より下の
-      // 空の色」に飲まれて、明るい地面が茶色く沈む
+      vec3 sky = skyColor(reflect(d, n));
+      base = base * (uSunColor * max(dot(n, uSunDir), 0.0) * sh
+                   + skyAmbient(n) * contactAO(p) * ao)
+           + ggx(n, -d, uSunDir, rough, vec3(0.035)) * uSunColor * PI * sh * 0.5
+           + clearcoat(n, -d, uSunDir, wet, uSunColor * sh, sky);
       float fog = exp(-t * 0.085);
       col = mix(col, base, clamp(fog, 0.0, 1.0));
     }
@@ -183,7 +191,12 @@ void main(){
     // 編んだ織り目。それに、折り畳んだ跡の折り目（白く色が抜ける）と、
     // 水を張ったときの大きなたるみ。この三つを入れると、
     // 「青く塗った箱」ではなく「水を張ったシート」になる
-    vec2 sp = region == 1 ? vec2(vW.x + vW.z, vW.y) * 1.0 : vW.xz;
+    // 壁は縦に、底は平面に貼る。壁で xz を使うと目が引き伸ばされる
+    vec2 sp0 = region == 1 ? vec2(vW.x + vW.z, vW.y) : vW.xz;
+    vec2 wb0;
+    float w0 = tarpWeave(sp0, wb0);
+    // 織り目の山を視差でずらす。テープが編んであることが見えてくる
+    vec2 sp = region == 0 ? parallax(sp0, w0, V, vec3(0.0, 1.0, 0.0), 0.0024) : sp0;
     vec2 wb;
     float w = tarpWeave(sp, wb);
     float sag = fbm(vW.xz * 4.0);
@@ -198,6 +211,8 @@ void main(){
     if(region == 1) base *= 1.16;     // 壁は斜めで暗くなりがちなので素地を上げる
 
     vec3 bn = normalize(vec3(wb.x * 0.08, 1.0, wb.y * 0.08));
+    float tarpAO = 0.80 + 0.20 * w;                      // 織り目の谷は光が入りにくい
+    vec3 tarpT = normalize(vec3(1.0, 0.0, 0.0));         // テープの走る向き
 
     if(uUnderwater == 1){
       float below = max(-vW.y, 0.0);                // 水面からの深さ
@@ -208,8 +223,11 @@ void main(){
       vec3 caus = mix(vec3(1.0), caustics(vW.xz, below), edgeMask(entry) * face);
 
       vec3 sun = underSun(bn) * caus * wallShade(entry);
-      vec3 amb = underAmbient(bn);
+      vec3 amb = underAmbient(bn) * tarpAO;
       col = base * (sun + amb);
+      // 塩ビは濡れているので、織り目に沿って照りが伸びる
+      col += ggxAniso(bn, V, underSunDir(), tarpT, 0.17, 0.055, vec3(0.035))
+           * uSunColor * PI * 0.20 * caus;
 
       // 金魚の影
       for(int i=0;i<20;i++){
@@ -306,9 +324,18 @@ void main(){
     }
     // 下へ行くほど地面の照り返ししか届かない
     float toGround = smoothstep(uGroundY, uGroundY + 0.14, vW.y);
-    vec3 wn = normalize(vec3((grain - 0.5) * 0.10, 1.0, (fibre - 0.5) * 0.06) * 0.0 + N);
-    col = wood * (uSunColor * max(dot(wn, uSunDir), 0.0) + skyAmbient(wn) * (0.35 + 0.65 * toGround))
-        + ggx(wn, V, uSunDir, 0.62, vec3(0.035)) * uSunColor * 0.5 * PI;
+    // 板目の向き。照りはこの向きに沿って伸びる
+    vec3 woodT = lengthX ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0);
+    woodT = normalize(woodT - N * dot(woodT, N));
+    // 年輪の谷（冬目）は凹んでいて、光が入りにくい
+    float woodAO = 0.72 + 0.28 * grain;
+    // 水の跳ねる所は濡れている。縁の上と内側に集まる
+    float wwet = splash * (0.45 + 0.55 * (1.0 - toGround));
+
+    col = wood * (uSunColor * max(dot(N, uSunDir), 0.0)
+                + skyAmbient(N) * (0.35 + 0.65 * toGround) * woodAO)
+        + ggxAniso(N, V, uSunDir, woodT, 0.52, 0.22, vec3(0.035)) * uSunColor * PI * 0.30
+        + clearcoat(N, V, uSunDir, wwet, uSunColor, skyColor(reflect(-V, N)));
     col *= 0.55 + 0.45 * toGround;
   }
 
