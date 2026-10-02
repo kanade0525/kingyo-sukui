@@ -9,17 +9,18 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610020701';
-import { VS_FULL } from '../shaders/common.js?v=202610020701';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610020701';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610020701';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js?v=202610020701';
-import { tankMesh, fishMesh, poiMesh, bowlMesh } from './meshes.js?v=202610020701';
-import { Ocean } from './ocean.js?v=202610020701';
-import { Ripple } from './ripple.js?v=202610020701';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH } from './world.js?v=202610020701';
-import { sunFor, DEFAULT_HOUR } from './sky.js?v=202610020701';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610020701';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610020729';
+import { VS_FULL } from '../shaders/common.js?v=202610020729';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610020729';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610020729';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610020729';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js?v=202610020729';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh } from './meshes.js?v=202610020729';
+import { Ocean } from './ocean.js?v=202610020729';
+import { Ripple } from './ripple.js?v=202610020729';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH } from './world.js?v=202610020729';
+import { sunFor, DEFAULT_HOUR } from './sky.js?v=202610020729';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610020729';
 
 const DEG = Math.PI / 180;
 const FOV_Y = 46 * DEG;
@@ -49,6 +50,7 @@ export class Renderer {
     this.pWater = new Program(gl, VS_WATER, FS_WATER, 'water');
     this.pFish = new Program(gl, VS_FISH, FS_FISH, 'fish');
     this.pPoi = new Program(gl, VS_POI, FS_POI, 'poi');
+    this.pTurtle = new Program(gl, VS_TURTLE, FS_TURTLE, 'turtle');
     this.pBright = new Program(gl, VS_FULL, FS_BRIGHT, 'bright');
     this.pBlur = new Program(gl, VS_FULL, FS_BLUR, 'blur');
     this.pComp = new Program(gl, VS_FULL, FS_COMPOSITE, 'composite');
@@ -57,6 +59,7 @@ export class Renderer {
     this.mFish = fishMesh(gl);
     this.mPoi = poiMesh(gl);
     this.mBowl = bowlMesh(gl);
+    this.mTurtle = turtleMesh(gl);
     this.mWater = gridMesh(gl, 220, 150);
 
     this.setHour(DEFAULT_HOUR);
@@ -351,9 +354,27 @@ export class Renderer {
   #drawFish(school, wantAbove, time) {
     const p = this.#fishProgram(time);
     for (const f of school.list) {
-      if (f.gone) continue;
+      if (f.gone || f.turtle) continue;
       if ((f.p[1] > -0.004) !== wantAbove) continue;
       this.#oneFish(p, f);
+    }
+    // 亀は別のプログラム
+    let tp = null;
+    for (const f of school.list) {
+      if (f.gone || !f.turtle) continue;
+      if ((f.p[1] > -0.004) !== wantAbove) continue;
+      if (!tp) {
+        tp = this.pTurtle.use();
+        this.#lights(tp); this.#water(tp);
+        tp.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
+      }
+      tp.set('uPos', f.p)
+        .setFloat('uYaw', f.yaw)
+        .setFloat('uLen', f.len)
+        .setFloat('uPhase', f.phase)
+        .setFloat('uBeat', f.beat)
+        .setFloat('uSeed', f.seed);
+      this.mTurtle.draw();
     }
   }
 
@@ -388,6 +409,7 @@ export class Renderer {
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
         .setFloat('uRimTop2', TANK.rimTop)
+        .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
         .set('uBowlPos', this.bowlPos)
         .vec4Array('uFish[0]', school.shadowData(this.sunHoriz, this.refrTan), MAX_FISH)
         .setInt('uFishCount', school.shadowCount);
@@ -417,6 +439,7 @@ export class Renderer {
         .setFloat('uAspect', this.aspect)
         .setFloat('uGroundY', TANK.outBottom)
         .setFloat('uRimTop2', TANK.rimTop)
+        .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
         .set('uTankOuter', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
         .setFloat('uRimTop', TANK.rimTop)
         .set('uBowlPos', this.bowlPos)
@@ -437,6 +460,7 @@ export class Renderer {
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
         .setFloat('uRimTop2', TANK.rimTop)
+        .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
         .set('uBowlPos', this.bowlPos)
         .setInt('uFishCount', 0);
       this.mTank.draw();
@@ -465,13 +489,26 @@ export class Renderer {
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
         .setFloat('uRimTop2', TANK.rimTop)
+        .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
         .set('uBowlPos', this.bowlPos)
         .setInt('uFishCount', 0);
       this.mBowl.body.draw();
     }
     if (state.bowl && state.bowl.length) {
       const p = this.#fishProgram(time);
-      for (const f of state.bowl) this.#oneFish(p, f);
+      for (const f of state.bowl) if (!f.turtle) this.#oneFish(p, f);
+      let tp = null;
+      for (const f of state.bowl) {
+        if (!f.turtle) continue;
+        if (!tp) {
+          tp = this.pTurtle.use();
+          this.#lights(tp); this.#water(tp);
+          tp.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
+        }
+        tp.set('uPos', f.p).setFloat('uYaw', f.yaw).setFloat('uLen', f.len)
+          .setFloat('uPhase', f.phase).setFloat('uBeat', f.beat).setFloat('uSeed', f.seed);
+        this.mTurtle.draw();
+      }
     }
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -485,6 +522,7 @@ export class Renderer {
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
         .setFloat('uRimTop2', TANK.rimTop)
+        .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
         .set('uBowlPos', this.bowlPos)
         .setInt('uFishCount', 0);
       this.mBowl.water.draw();

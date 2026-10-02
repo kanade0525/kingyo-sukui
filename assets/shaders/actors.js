@@ -7,7 +7,7 @@
 // ひれは不透明に描く。水中パスの α にはカメラからの距離を入れていて、
 // ブレンドすると距離が壊れ、水面の屈折が狂うため。薄さは色で表す。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610020701';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610020729';
 
 // ---------------------------------------------------------------- 金魚
 
@@ -332,10 +332,15 @@ void main(){
     // 破れ口のまわりは毛羽立って濃くなる
     float lip = smoothstep(thr, thr + 0.09, n * 0.60 + r * 0.40);
 
-    float fiber = 0.86 + 0.14 * fbm(vUv * vec2(26.0, 7.0) + 2.0);
-    vec3 dry = vec3(0.78, 0.74, 0.70);
-    vec3 wet = vec3(0.62, 0.58, 0.56);
+    // 和紙。漉いたときの繊維が、長い節になって残る
+    float fiber = 0.90 + 0.10 * fbm(vUv * vec2(34.0, 9.0) + 2.0);
+    float knot = smoothstep(0.62, 0.80, fbm(vUv * vec2(60.0, 14.0) + 7.0));
+    vec3 dry = vec3(0.78, 0.745, 0.705);
+    vec3 wet = vec3(0.60, 0.565, 0.545);
     col = mix(dry, wet, uWet) * fiber;
+    col = mix(col, col * 1.12 + 0.02, knot * 0.5);     // 節は少し白い
+    // 濡れた所は斑に透ける
+    col *= 1.0 - uWet * 0.18 * smoothstep(0.45, 0.72, fbm(vUv * 7.0 + 3.0));
     col = mix(vec3(0.72, 0.56, 0.48), col, lip);
     // 紙は光を透かす
     // 和紙は光を透かす。裏から回った分を足す
@@ -349,18 +354,26 @@ void main(){
     alpha = mix(0.72, 0.42, uWet) * (0.55 + 0.45 * lip);
     alpha = mix(alpha, 1.0, pow(1.0 - ndv, 3.0) * 0.4);
   } else if(region == 1){
-    // 枠。朱に塗った輪
-    col = vec3(0.78, 0.17, 0.09);
-    col *= 0.8 + 0.3 * fbm(vUv * 30.0);
+    // 枠。朱に着色した成形品。金型の合わせ目が一周している
+    col = vec3(0.520, 0.105, 0.052);
+    col *= 0.94 + 0.10 * fbm(vUv * 55.0);
+    // 合わせ目。輪の外周を一周する細い筋
+    float ring = length(vUv);
+    float parting = 1.0 - smoothstep(0.0, 0.035, abs(ring - 1.03));
+    col *= 1.0 - parting * 0.22;
+    // 使い込んで擦れた所は色が薄い
+    col = mix(col, col * 1.5 + 0.02, smoothstep(0.55, 0.85, fbm(vUv * 11.0 + 4.0)) * 0.35);
     col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
-        + ggx(N, V, uSunDir, 0.20, vec3(0.05)) * uSunColor * PI;
+        + ggx(N, V, uSunDir, 0.13, vec3(0.045)) * uSunColor * PI;
     alpha = 1.0;
   } else {
-    // 柄。竹
-    float grain = fbm(vec2(vW.y * 70.0, 0.5)) * 0.5 + 0.5;
-    col = mix(vec3(0.52, 0.42, 0.24), vec3(0.72, 0.62, 0.40), grain);
+    // 柄。削り出した竹。節の方向に細い導管が走る
+    float grain = fbm(vec2(vUv.x * 110.0, vUv.y * 6.0)) * 0.6 + fbm(vUv * 24.0) * 0.4;
+    col = mix(vec3(0.300, 0.250, 0.145), vec3(0.455, 0.392, 0.245), grain);
+    // 手が触れる所は艶が出て色が濃い
+    col *= 0.90 + 0.18 * smoothstep(0.40, 0.75, fbm(vUv * 5.0 + 9.0));
     col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
-        + ggx(N, V, uSunDir, 0.35, vec3(0.04)) * uSunColor * 0.6 * PI;
+        + ggx(N, V, uSunDir, 0.30, vec3(0.04)) * uSunColor * 0.8 * PI;
     alpha = 1.0;
   }
 

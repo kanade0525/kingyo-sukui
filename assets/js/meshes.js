@@ -4,8 +4,8 @@
 // 形は頂点シェーダで作る。泳ぎのうねりを毎フレーム CPU で計算して
 // 転送するのは無駄で、しかも法線を作り直す手間が増えるため。
 
-import { Mesh } from './glx.js?v=202610020701';
-import { TANK, POI, BOWL } from './world.js?v=202610020701';
+import { Mesh } from './glx.js?v=202610020729';
+import { TANK, POI, BOWL } from './world.js?v=202610020729';
 
 /** 位置・法線・領域の 3 属性を貯めて Mesh にする小さな入れ物。 */
 class Builder {
@@ -61,6 +61,37 @@ export function tankMesh(gl) {
   b.quad([ox, ob, -oz], [-ox, ob, -oz], [-ox, rt, -oz], [ox, rt, -oz], [0, 0, -1], 3);
 
   return b.build(gl);
+}
+
+/**
+ * ミドリガメ。甲羅は中心から縁への円板、四肢と頭は別の面。
+ * 0=甲羅 1=腹側 2..5=四肢 6=頭と首 7=尾
+ */
+export function turtleMesh(gl) {
+  const uv = [];
+  const part = [];
+  const idx = [];
+  const sheet = (nu, nv, p) => {
+    const base = uv.length / 2;
+    for (let j = 0; j <= nv; j++) {
+      for (let i = 0; i <= nu; i++) { uv.push(i / nu, j / nv); part.push(p); }
+    }
+    for (let j = 0; j < nv; j++) {
+      for (let i = 0; i < nu; i++) {
+        const a = base + j * (nu + 1) + i;
+        idx.push(a, a + nu + 1, a + 1, a + 1, a + nu + 1, a + nu + 2);
+      }
+    }
+  };
+  sheet(40, 12, 0);          // 甲羅
+  sheet(40, 6, 1);           // 腹側
+  for (let i = 0; i < 4; i++) sheet(6, 4, 2 + i);
+  sheet(10, 12, 6);          // 頭と首
+  sheet(5, 8, 7);            // 尾
+  return new Mesh(gl, [
+    { loc: 0, size: 2, data: new Float32Array(uv) },
+    { loc: 1, size: 1, data: new Float32Array(part) },
+  ], new Uint32Array(idx));
 }
 
 /**

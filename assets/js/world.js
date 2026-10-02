@@ -35,8 +35,19 @@ export const FISH_LAYER = { top: -0.026, bottom: -0.100 };
 export const FISH_KINDS = [
   { name: '素赤', score: 100, weight: 1.00, chance: 0.50 },
   { name: '更紗', score: 150, weight: 1.05, chance: 0.33 },
-  { name: '出目金', score: 300, weight: 1.35, chance: 0.17 },
+  { name: '出目金', score: 300, weight: 1.17, chance: 0.17 },
 ];
+
+/** ミドリガメ。縁日の定番。たまにしか居ない。 */
+export const TURTLE = {
+  name: 'ミドリガメ',
+  score: 600,
+  weight: 2.2,
+  /** 舟に同時に居られる数 */
+  max: 2,
+  /** 1 匹が居なくなってから、次が入ってくるまでの目安（秒） */
+  interval: 22,
+};
 
 /** 手元の器。掬った金魚はここへ入る。舟の左脇、地面の上に置く。
  *  置き場所は画面の向きから renderer が決める（uBowlPos）。 */
@@ -56,6 +67,7 @@ export const BOWL = {
   floorY: TANK.outBottom + 0.004,
 };
 
-export const MAX_FISH = 16;
+/** 影の uniform 配列の長さ。金魚＋亀＋ポイが収まる数 */
+export const MAX_FISH = 20;
 /** 器に泳がせておく数の上限。これを超えたら古いものから引っ込める。 */
 export const MAX_BOWL = 12;

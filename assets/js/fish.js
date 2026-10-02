@@ -4,8 +4,8 @@
 // 整列させるより、それぞれが勝手に漂って壁で向きを変えるほうが
 // 実際の金魚に近い動きになる。
 
-import { TANK, FISH_KINDS, FISH_LAYER, MAX_FISH } from './world.js?v=202610020701';
-import { clamp, lerp, wrapAngle } from './mat.js?v=202610020701';
+import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH } from './world.js?v=202610020729';
+import { clamp, lerp, wrapAngle } from './mat.js?v=202610020729';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -19,22 +19,27 @@ function pickKind() {
 }
 
 class Fish {
-  constructor() {
+  constructor(turtle = false) {
+    this.turtle = turtle;
     this.reset();
   }
 
   reset(fromEdge = false) {
     const mx = TANK.halfX - 0.07, mz = TANK.halfZ - 0.07;
-    this.kind = pickKind();
-    this.len = rand(0.036, 0.050) * (this.kind === 2 ? 1.08 : 1.0);
+    this.kind = this.turtle ? 0 : pickKind();
+    // 亀は金魚より一回り大きく、甲長 5cm ほど
+    this.len = this.turtle
+      ? rand(0.052, 0.068)
+      : rand(0.036, 0.050) * (this.kind === 2 ? 1.08 : 1.0);
     const y = rand(FISH_LAYER.bottom, FISH_LAYER.top);
     this.p = fromEdge
       ? [rand(-1, 1) > 0 ? mx : -mx, y, rand(-mz, mz)]
       : [rand(-mx, mx), y, rand(-mz, mz)];
     this.yaw = rand(-Math.PI, Math.PI);
-    this.speed = rand(0.018, 0.045);
+    // 亀はゆっくり漕ぐ。そのぶん逃げ足も鈍い
+    this.speed = this.turtle ? rand(0.012, 0.026) : rand(0.018, 0.045);
     this.cruise = this.speed;
-    this.beat = rand(7.5, 10.5);
+    this.beat = this.turtle ? rand(3.2, 4.6) : rand(7.5, 10.5);
     this.phase = rand(0, 10);
     this.seed = Math.random();
     this.bend = 0;
@@ -72,11 +77,15 @@ class Fish {
     // 逃げ足を速くしすぎると人間の手では追いつけず、一匹も掬えなくなる。
     // 自分と同じくらいの深さに来たときだけ嫌がる、という程度にしてある
     let alarmed = false;
-    if (poi.submerged && Math.abs(poi.y - this.p[1]) < 0.085) {
+    // 沈んだポイには強く反応する。水の上にあるときも、影が差すぶん
+    // 少しだけ嫌がる
+    const near = poi.submerged ? 0.115 : 0.070;
+    const force = poi.submerged ? 4.2 : 1.4;
+    if (Math.abs(poi.y - this.p[1]) < 0.16) {
       const ax = this.p[0] - poi.x, az = this.p[2] - poi.z;
       const d = Math.hypot(ax, az);
-      if (d < 0.062) {
-        const w = (1 - d / 0.062) * 2.2;
+      if (d < near) {
+        const w = (1 - d / near) * force;
         dx += (ax / (d || 1e-4)) * w;
         dz += (az / (d || 1e-4)) * w;
         alarmed = true;
@@ -90,7 +99,7 @@ class Fish {
 
     const want = Math.atan2(dz, dx) + this.wander * 0.22;
     const turn = wrapAngle(want - this.yaw);
-    const rate = alarmed ? 6 : 3.2;
+    const rate = alarmed ? 9 : 3.2;
     const step = turn * Math.min(1, dt * rate);
     this.yaw += step;
     this.bend = lerp(this.bend, clamp(-step / Math.max(dt, 1e-3) * 0.012, -0.09, 0.09), dt * 10);
@@ -101,9 +110,11 @@ class Fish {
       this.dashTimer = rand(2.5, 8);
       this.speed = this.cruise * rand(2.6, 4.2);
     }
-    const goal = alarmed ? this.cruise * 2.6 : this.cruise;
-    this.speed = lerp(this.speed, goal, dt * (alarmed ? 7 : 1.3));
-    this.beat = lerp(this.beat, 6 + this.speed * 125, dt * 6);
+    const goal = alarmed ? this.cruise * (this.turtle ? 3.0 : 5.0) : this.cruise;
+    this.speed = lerp(this.speed, goal, dt * (alarmed ? 11 : 1.3));
+    this.beat = this.turtle
+      ? lerp(this.beat, 2.8 + this.speed * 60, dt * 4)
+      : lerp(this.beat, 6 + this.speed * 125, dt * 6);
 
     this.p[0] += Math.cos(this.yaw) * this.speed * dt;
     this.p[2] += Math.sin(this.yaw) * this.speed * dt;
@@ -112,7 +123,10 @@ class Fish {
     this.depthTimer -= dt;
     if (this.depthTimer < 0) {
       this.depthTimer = rand(2, 6);
-      this.target = rand(FISH_LAYER.bottom, FISH_LAYER.top);
+      // 亀は時々、息をしに水面へ上がる
+      this.target = this.turtle && Math.random() < 0.35
+        ? FISH_LAYER.top
+        : rand(FISH_LAYER.bottom, FISH_LAYER.top);
     }
     // 深さはポイに関係なく自分のペースで変える。
     // 真下へ潜らせると紙の上に乗る機会が無くなり、永久に掬えなくなる
@@ -135,16 +149,26 @@ export class School {
     this.list = [];
     this.count = Math.min(count, MAX_FISH);
     for (let i = 0; i < this.count; i++) this.list.push(new Fish());
+    // 亀は別枠。たまにしか居ないので、居ないときは gone にしておく
+    for (let i = 0; i < TURTLE.max; i++) {
+      const t = new Fish(true);
+      t.gone = true;
+      t.respawnAt = 4 + i * TURTLE.interval * 0.5;
+      this.list.push(t);
+    }
     // 水底の影を落とすための uniform 配列（xz, 半径, 濃さ）
     this.shadow = new Float32Array(MAX_FISH * 4);
   }
 
   reset() {
-    for (const f of this.list) f.reset();
+    for (const f of this.list) {
+      f.reset();
+      if (f.turtle) { f.gone = true; f.respawnAt = 4 + Math.random() * TURTLE.interval; }
+    }
   }
 
   update(dt, poi, ripple) {
-    for (const f of this.list) f.update(dt, poi, ripple);
+    for (const f of this.list) if (!f.gone) f.update(dt, poi, ripple);
   }
 
   /**

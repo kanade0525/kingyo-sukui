@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610020701';
-import { Poi } from './poi.js?v=202610020701';
-import { TANK, POI, BOWL, FISH_KINDS, MAX_BOWL } from './world.js?v=202610020701';
+import { School } from './fish.js?v=202610020729';
+import { Poi } from './poi.js?v=202610020729';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL } from './world.js?v=202610020729';
 
 export const PHASE = { READY: 'ready', PLAY: 'play', OVER: 'over' };
 
@@ -91,7 +91,7 @@ export class Game {
       }
     }
 
-    const load = this.held.reduce((s, f) => s + FISH_KINDS[f.kind].weight, 0);
+    const load = this.held.reduce((s, f) => s + (f.turtle ? TURTLE.weight : FISH_KINDS[f.kind].weight), 0);
     poi.update(dt, this.ripple, load);
     this.school.update(dt, poi, this.ripple);
 
@@ -138,18 +138,19 @@ export class Game {
     // 完全に水から出たら成功。器へ移す
     if (poi.y > POI.restY * 0.72 && this.held.length) {
       for (const f of this.held) {
-        const k = FISH_KINDS[f.kind];
+        const k = f.turtle ? TURTLE : FISH_KINDS[f.kind];
         const size = Math.max(0, Math.round((f.len - 0.036) * 1400));
         this.score += k.score + size;
         this.caught++;
         this.events.push({ type: 'catch', name: k.name, score: k.score + size });
-        this.sound.chime(1180 + f.kind * 220);
+        this.sound.chime(f.turtle ? 760 : 1180 + f.kind * 220);
         this.#toBowl(f);
         f.gone = true;
         f.held = false;
-        // 掬われたぶん、舟の外から足される体で新しい金魚が入ってくる。
-        // setTimeout にすると、やり直しと競合して 1 匹だけ再抽選が走る
-        f.respawnAt = this.time + 0.9;
+        // 掬われたぶん、舟の外から足される体で新しいのが入ってくる。
+        // setTimeout にすると、やり直しと競合して 1 匹だけ再抽選が走る。
+        // 亀はたまにしか居ないので、間を長く空ける
+        f.respawnAt = this.time + (f.turtle ? TURTLE.interval * (0.6 + Math.random()) : 0.9);
       }
       this.held.length = 0;
     }
@@ -158,6 +159,7 @@ export class Game {
   /** 掬った金魚を器へ入れる。 */
   #toBowl(f) {
     this.bowl.push({
+      turtle: f.turtle,
       kind: f.kind,
       len: f.len * 0.92,
       seed: f.seed,

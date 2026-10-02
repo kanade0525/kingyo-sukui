@@ -57,6 +57,50 @@ float worley(vec2 p){
 }`;
 
 /**
+ * 素材の部品。
+ *
+ * 安っぽく見えるいちばんの原因は、どの素材にも同じ粒のノイズを一枚
+ * かけているだけ、という作り。実物は「大きなむら・中くらいの構造・
+ * 細かい粒」が重なっていて、しかも凹んだ所に汚れが溜まり、角が擦れて
+ * 色が抜ける。そこまで入れて初めて物に見える。
+ */
+export const MATERIAL = `
+/** ブルーシートの織り目。平たいテープを縦横に編んだもの。 */
+float tarpWeave(vec2 p, out vec2 bump){
+  const float PITCH = 620.0;            // テープ幅 1.6mm
+  vec2 g = p * PITCH;
+  vec2 f = fract(g), i = floor(g);
+  float flip = mod(i.x + i.y, 2.0);     // 市松に上下が入れ替わる
+  float bx = sin(f.x * PI), by = sin(f.y * PI);
+  float h = mix(bx, by, flip);
+  bump = mix(vec2(cos(f.x * PI), 0.0), vec2(0.0, cos(f.y * PI)), flip) * 0.9;
+  return h;
+}
+
+/** 板目。年輪を、板の長手方向へ強く伸ばした同心の縞として作る。 */
+float woodRings(vec2 p, float seed){
+  // 年輪の中心を板の外に置くと、板目らしい緩い弧になる
+  float r = length(vec2(p.y + 0.9 + seed, p.x * 0.085));
+  r += fbm(p * vec2(1.8, 11.0) + seed) * 0.10;
+  float t = fract(r * 23.0);
+  // 夏目（広くて淡い）と冬目（細くて濃い）
+  return smoothstep(0.0, 0.34, t) * (1.0 - smoothstep(0.52, 0.92, t));
+}
+
+/** 砂利。粒の中心ほど明るく、継ぎ目に影が溜まる。 */
+float gravel(vec2 p, float scale, out float cavity){
+  float d = worley(p * scale);
+  cavity = smoothstep(0.52, 0.16, d);         // 粒の谷
+  return smoothstep(0.62, 0.10, d);
+}
+
+/** 角の擦れ。縁に近いほど 1。色が抜けた所を作るのに使う。 */
+float wearEdge(float dist, float width){
+  return 1.0 - smoothstep(0.0, width, dist);
+}
+`;
+
+/**
  * 空と太陽。
  *
  * 光源は太陽ひとつ。方向の揃った光でないと、水底のコースティクスも
