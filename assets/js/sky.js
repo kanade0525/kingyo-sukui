@@ -53,7 +53,7 @@ export function sunFor(hour, yawDeg = 0) {
     (0.18 + 0.78 * ext * ext) * strength,
   ];
 
-  // 空。夕方は地平が橙に寄る
+  // 空。夕方は地平が橙に寄り、天頂は藍のまま残る
   const dim = 0.22 + 0.78 * ext;
   const zenith = [0.105 * dim, 0.205 * dim, 0.470 * (0.30 + 0.70 * ext)];
   const horizon = mix3([0.66, 0.34, 0.17], [0.560, 0.635, 0.745], ext);
@@ -70,10 +70,14 @@ export function sunFor(hour, yawDeg = 0) {
     horizon,
     ground,
     // 太陽が低いほど霞む
-    haze: 0.55 + 0.9 * (1 - ext),
+    haze: 0.55 + 1.4 * (1 - ext),
+    // 低い太陽ほど、画面全体が暖色に転ぶ
+    warmth: 1 - ext,
     // 画面に出す明るさ。夕方は少し持ち上げないと沈む
     exposure: 0.62 + 0.45 * (1 - ext),
   };
 }
 
-export const DEFAULT_HOUR = 13.0;
+// 午後も遅い時間。影が伸びて、光が暖色に転ぶ。
+// 真昼の真上からの光は、きれいではあるが平板になる。
+export const DEFAULT_HOUR = 14.6;

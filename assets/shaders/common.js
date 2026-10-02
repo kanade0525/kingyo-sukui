@@ -87,14 +87,18 @@ vec3 skyColor(vec3 d){
 vec3 skyWithSun(vec3 d){
   vec3 c = skyColor(d);
   float mu = max(dot(d, uSunDir), 0.0);
-  c += uSunColor * smoothstep(0.99965, 0.99988, mu) * 42.0;
+  c += uSunColor * smoothstep(0.999985, 0.999993, mu) * 320.0;   // 角半径 0.26°
   return c;
 }
 
 /** 半球の空からの照り返し。法線の向きで上下を混ぜるだけ。 */
+uniform float uWarmth;    // 0 = 真昼、1 = 日の出・日の入り
+
 vec3 skyAmbient(vec3 n){
   float up = n.y * 0.5 + 0.5;
-  return mix(uSkyGround, mix(uSkyHorizon, uSkyZenith, 0.55), up) * 0.9;
+  vec3 c = mix(uSkyGround, mix(uSkyHorizon, uSkyZenith, 0.55), up) * 0.9;
+  // 夕方は地面も壁も、西日の照り返しで暖色を帯びる
+  return mix(c, c * vec3(1.35, 1.02, 0.74), uWarmth * 0.8);
 }
 
 /** GGX 1 本。F0 はフレネルの垂直入射値。 */
@@ -152,7 +156,10 @@ uniform float uPatch;
 uniform float uRipSpan;
 uniform vec2 uTankHalf;
 
-vec2 patchUv(vec2 p){ return p / uPatch; }
+uniform float uFftN;
+// テクセルの中心に合わせる。合わせないと場が半テクセルずれ、
+// uv=0 で端どうしが混ざってわずかに鈍る
+vec2 patchUv(vec2 p){ return p / uPatch + 0.5 / uFftN; }
 vec2 ripUv(vec2 p){ return p / uRipSpan + 0.5; }
 
 /** 水面の傾き。FFT と波紋を足したもの。 */
@@ -194,8 +201,11 @@ uniform float uCausGain;
 
 /** 舟の壁が底に落とす影。光が水面に入るはずの位置が舟の外なら、そこは日陰。 */
 float wallShade(vec2 entry){
-  return smoothstep(0.010, 0.0, abs(entry.x) - uTankHalf.x)
-       * smoothstep(0.010, 0.0, abs(entry.y) - uTankHalf.y);
+  // 太陽が低いほど影は長く伸びる。縁をぼかすのは、水面が揺れていて
+  // 影の境目そのものが揺らぐため
+  float s = smoothstep(0.030, -0.004, abs(entry.x) - uTankHalf.x)
+          * smoothstep(0.030, -0.004, abs(entry.y) - uTankHalf.y);
+  return 0.42 + 0.58 * s;     // 影の中にも空からの光がよく回り込む
 }
 
 vec3 caustics(vec2 bottomP, float below){

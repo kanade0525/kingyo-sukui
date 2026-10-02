@@ -21,7 +21,46 @@ uniform vec3 uCam;
 uniform vec3 uRight, uUp, uFwd;
 uniform float uTanHalf, uAspect;
 uniform float uGroundY;
+uniform vec2 uTankOuter;   // 舟の外寸の半分
+uniform float uRimTop;     // 舟の上端
+uniform vec3 uBowlPos;
+uniform float uBowlR;
+uniform float uBowlRimY;
 out vec4 frag;
+
+/**
+ * 地面に落ちる影。
+ *
+ * 太陽へ向かう直線が、舟（直方体）か器（円柱）の上端の高さで
+ * その輪郭の中に入るなら、そこは日陰。平らな地面しか受け手がないので、
+ * この一段だけで足りる。影が無いと、物がどれだけ精密でも
+ * 「地面に貼った絵」に見える。
+ */
+float groundShadow(vec3 p){
+  float sy = max(uSunDir.y, 0.05);
+  float sh = 1.0;
+
+  // 舟
+  vec2 q = p.xz + uSunDir.xz * ((uRimTop - p.y) / sy);
+  vec2 d = abs(q) - uTankOuter;
+  sh *= smoothstep(-0.004, 0.028, max(d.x, d.y));
+
+  // 器
+  vec2 b = p.xz + uSunDir.xz * ((uBowlRimY - p.y) / sy) - uBowlPos.xz;
+  sh *= smoothstep(-0.002, 0.022, length(b) - uBowlR);
+
+  return mix(0.26, 1.0, sh);   // 影の中にも空からの光は回り込む
+}
+
+/** 接地の陰り。物の足元がいちばん濃い。 */
+float contactAO(vec3 p){
+  vec2 d = abs(p.xz) - uTankOuter;
+  float dt = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+  float ao = 1.0 - 0.55 * exp(-max(dt, 0.0) / 0.045);
+  float db = length(p.xz - uBowlPos.xz) - uBowlR;
+  ao *= 1.0 - 0.45 * exp(-max(db, 0.0) / 0.030);
+  return ao;
+}
 
 void main(){
   vec3 d = normalize(uFwd + uRight * vNdc.x * uTanHalf * uAspect + uUp * vNdc.y * uTanHalf);
@@ -37,7 +76,8 @@ void main(){
       vec3 base = mix(vec3(0.138, 0.126, 0.110), vec3(0.228, 0.212, 0.186), coarse);
       base *= 0.88 + 0.22 * fine;
       vec3 n = normalize(vec3((fine - 0.5) * 0.4, 1.0, (fbm(p.zx * 80.0) - 0.5) * 0.4));
-      vec3 lit = uSunColor * max(dot(n, uSunDir), 0.0) + skyAmbient(n);
+      vec3 lit = uSunColor * max(dot(n, uSunDir), 0.0) * groundShadow(p)
+               + skyAmbient(n) * contactAO(p);
       // 遠景のフェードは緩く。きつくすると、画面の大半が「地平線より下の
       // 空の色」に飲まれて、明るい地面が茶色く沈む
       float fog = exp(-t * 0.085);
@@ -91,6 +131,8 @@ uniform int uFishCount;
 uniform float uDepth;
 uniform float uBowlRim;
 uniform vec3 uBowlPos;
+uniform float uGroundY;
+uniform float uRimTop2;
 out vec4 frag;
 
 void main(){
@@ -104,15 +146,25 @@ void main(){
 
   if(region <= 1){
     // 舟の内側。青いビニルに細かい砂利
-    // 青いビニルの舟。素地はほぼ無地にして、模様はコースティクスに任せる。
-    // 粒立ったテクスチャを敷くと、水玉や砂嵐になって水に見えなくなる
-    float mottle = fbm(vW.xz * 7.0);
+    // 木枠に敷いたブルーシート。縁日の金魚すくいでいちばん多い作り。
+    // 素地はほぼ無地にして、模様はコースティクスに任せる。粒立った
+    // テクスチャを敷くと、水玉や砂嵐になって水に見えなくなる。
+    //
+    // シートなので、底には大きなたるみ、壁には縦の皺が入る。
+    // この皺が、ただの青い箱と「水を張ったシート」を分ける
+    float sag = fbm(vW.xz * 4.5);
     float grain = fbm(vW.xz * 90.0);
+    float wrinkle = region == 1
+      ? fbm(vec2((vW.x + vW.z) * 26.0, vW.y * 7.0))      // 壁は縦皺
+      : fbm(vW.xz * vec2(21.0, 5.0));                    // 底は流れた皺
     vec3 vinyl = vec3(0.052, 0.112, 0.148);
-    vec3 base = vinyl * (0.82 + 0.34 * mottle) * (0.95 + 0.10 * grain);
-    if(region == 1) base *= 0.88;
-    // 細かい凹凸ぶんだけ法線をずらす
-    vec3 bn = normalize(vec3((grain - 0.5) * 0.35, 1.0, (fbm(vW.zx * 90.0) - 0.5) * 0.35));
+    vec3 base = vinyl * (0.84 + 0.30 * sag) * (0.95 + 0.10 * grain)
+              * (0.90 + 0.20 * wrinkle);
+    if(region == 1) base *= 1.18;     // 壁は斜めで暗くなりがちなので素地を上げる
+    // 皺と細かい凹凸ぶん、法線をずらす
+    float wx = fbm(vec2((vW.x + vW.z) * 26.0 + 0.7, vW.y * 7.0)) - wrinkle;
+    vec3 bn = normalize(vec3((grain - 0.5) * 0.30 + wx * 1.6, 1.0,
+                             (fbm(vW.zx * 90.0) - 0.5) * 0.30 - wx * 1.2));
 
     if(uUnderwater == 1){
       float below = max(-vW.y, 0.0);                // 水面からの深さ
@@ -161,12 +213,30 @@ void main(){
         + ggx(N, V, uSunDir, 0.22, vec3(0.05)) * uSunColor * PI;
   } else {
     // 縁と外側。使い込んだ木。背景が明るいので、ここは暗く締めて輪郭を残す
-    float grain = fbm(vec2(vW.x * 5.0 + vW.z * 5.0, vW.y * 90.0)) * 0.6
-                + fbm(vec2(vW.x, vW.z) * 60.0) * 0.4;
-    vec3 wood = mix(vec3(0.038, 0.024, 0.016), vec3(0.092, 0.058, 0.034), grain);
-    if(region == 2) wood *= 1.2;              // 縁の上面は手で擦れて明るい
-    col = wood * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
+    // 使い込んだ杉板。年輪と、水が跳ねて色が抜けた染み
+    float ring = fbm(vec2((vW.x + vW.z) * 2.2, (vW.y + vW.x * 0.1) * 150.0));
+    float fine = fbm(vec2(vW.x, vW.z) * 70.0);
+    float stain = smoothstep(0.42, 0.72, fbm(vW.xz * 9.0 + 5.0));
+    float grain = ring * 0.65 + fine * 0.35;
+    vec3 wood = mix(vec3(0.032, 0.021, 0.014), vec3(0.108, 0.070, 0.042), grain);
+    wood = mix(wood, wood * 1.5 + 0.012, stain * 0.5);        // 水染みで色が抜ける
+    if(region == 2) wood *= 1.25;             // 縁の上面は手で擦れて明るい
+
+    // シートの折り返し。内側の縁に青が乗る。これがあると
+    // 「木の箱」ではなく「木枠に水を張った舟」に見える
+    if(region == 2){
+      vec2 d2 = abs(vW.xz) - uTankHalf;
+      float over = smoothstep(0.016, 0.002, max(d2.x, d2.y));
+      vec3 sheet = vec3(0.070, 0.150, 0.190) * (0.86 + 0.28 * fbm(vW.xz * 34.0));
+      wood = mix(wood, sheet, over);
+    }
+    // 上端の面取り。細い明るい線が入るだけで板に厚みが出る
+    wood *= 1.0 + 0.5 * smoothstep(0.004, 0.0, abs(vW.y - uRimTop2));
+    // 下へ行くほど地面の照り返ししか届かない
+    float toGround = smoothstep(uGroundY, uGroundY + 0.14, vW.y);
+    col = wood * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N) * (0.35 + 0.65 * toGround))
         + ggx(N, V, uSunDir, 0.42, vec3(0.04)) * uSunColor * 0.5 * PI;
+    col *= 0.55 + 0.45 * toGround;
   }
 
   frag = vec4(col, vDist);
@@ -248,17 +318,26 @@ void main(){
   // 水面がブロック状に裂ける。採否を 0..1 の重みにして混ぜ、境目をぼかす
   vec2 suv = gl_FragCoord.xy / uRes;
   vec3 Rd = refract(-V, N, 1.0 / 1.333);
-  float t = max(texture(uScene, suv).a - vDist, 0.0);
-  vec2 uvOut = suv;
-  for(int i = 0; i < 2; i++){
-    vec4 cp = uVP * vec4(vW + Rd * t, 1.0);
-    if(cp.w < 1e-4) break;
-    vec2 uv = clamp(cp.xy / cp.w * 0.5 + 0.5, vec2(0.0015), vec2(0.9985));
-    float d = texture(uScene, uv).a;
-    float ok = smoothstep(vDist, vDist + 0.020, d);
-    uvOut = mix(uvOut, uv, ok);
-    t = mix(t, d - vDist, ok);
-  }
+
+  // 進める距離には上限がある。水面から底まで、斜めに通っても水深の数倍。
+  // 上限を置かないと、浅い角度のとき遠くの金魚を拾って壁に貼り付けてしまう
+  float maxT = uDepth * 2.2;
+  float t = clamp(texture(uScene, suv).a - vDist, 0.0, maxT);
+
+  // 1 回だけ進めて、ずれの大きさに蓋をする。
+  // 反復して詰めると、金魚のように深さが急に変わる所で行き先を見失い、
+  // 同じ金魚をもう一匹、別の場所に貼り付けてしまう（幽霊が出る）。
+  // 真上から見た 16cm の水では、本来のずれは数 mm しかない
+  vec4 cp = uVP * vec4(vW + Rd * t, 1.0);
+  vec2 uv = cp.w > 1e-4 ? cp.xy / cp.w * 0.5 + 0.5 : suv;
+  vec2 off = uv - suv;
+  const float LIMIT = 0.012;            // 画面の 1.2% まで
+  float len = length(off);
+  if(len > LIMIT) off *= LIMIT / len;
+  vec2 uvOut = clamp(suv + off, vec2(0.0015), vec2(0.9985));
+  // 拾った先が水中でなければ、素直に真下を見る
+  float ok = smoothstep(vDist, vDist + 0.015, texture(uScene, uvOut).a);
+  uvOut = mix(suv, uvOut, ok);
   vec4 hit = texture(uScene, uvOut);
   float path = max(hit.a - vDist, 0.0);
 
@@ -267,7 +346,7 @@ void main(){
   // いちばん吸収される赤が最も濃くなり、水が茶色く見えてしまう
   vec3 trans = exp(-vec3(0.45, 0.075, 0.035) * path * 2.0);
   float thick = 1.0 - exp(-path * 2.4);
-  vec3 inscat = uSunColor * vec3(0.014, 0.062, 0.082) * thick;
+  vec3 inscat = uSunColor * vec3(0.012, 0.070, 0.098) * thick;
   vec3 refr = hit.rgb * trans + inscat + specks(vW, Rd);
 
   // ---- 反射 ----
@@ -294,7 +373,7 @@ void main(){
   float a2 = 0.00013 + (dot(dsx, dsx) + dot(dsy, dsy));
   float rough = sqrt(sqrt(a2));
   // ggx() の D は 1/π を持つので、ランバート側と揃えるため π を掛け戻す
-  col += min(ggx(N, V, uSunDir, rough, vec3(0.02)) * uSunColor * PI, vec3(0.9));
+  col += min(ggx(N, V, uSunDir, rough, vec3(0.02)) * uSunColor * PI, vec3(0.30));
 
   // 水際の明るい線
   col += vec3(0.06, 0.10, 0.13) * pow(1.0 - vEdge, 2.2) * 0.5;

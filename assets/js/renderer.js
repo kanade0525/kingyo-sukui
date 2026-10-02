@@ -105,8 +105,55 @@ export class Renderer {
       hdr: makeFbo(gl, [makeTex(gl, w, h, 'rgba16f', { filter: 'linear' })], { depth: true }),
       bright: makeFbo(gl, [makeTex(gl, bw, bh, 'rgba16f', { filter: 'linear' })]),
       blur: makeFbo(gl, [makeTex(gl, bw, bh, 'rgba16f', { filter: 'linear' })]),
+      dofA: makeFbo(gl, [makeTex(gl, bw, bh, 'rgba16f', { filter: 'linear' })]),
+      dofB: makeFbo(gl, [makeTex(gl, bw, bh, 'rgba16f', { filter: 'linear' })]),
     };
+    this.#makeMsaa(w, h);
     this.updateCamera();
+  }
+
+  /**
+   * 本パスだけ多重標本化する。
+   *
+   * FBO 越しに描いているので、キャンバスの MSAA は効かない。
+   * 金魚のひれや舟の角のような細い輪郭が 1 画素ずつギザつくと、
+   * どれだけ水を作り込んでも「CG の絵」に見える。
+   * 多重標本のレンダーバッファへ描いて、解決してからテクスチャへ blit する。
+   */
+  #makeMsaa(w, h) {
+    const gl = this.gl;
+    this.#dropMsaa();
+    const max = gl.getParameter(gl.MAX_SAMPLES) || 0;
+    const samples = Math.min(4, max);
+    if (samples < 2) { this.msaa = null; return; }
+    try {
+      const col = gl.createRenderbuffer();
+      gl.bindRenderbuffer(gl.RENDERBUFFER, col);
+      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA16F, w, h);
+      const dep = gl.createRenderbuffer();
+      gl.bindRenderbuffer(gl.RENDERBUFFER, dep);
+      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, w, h);
+      const fb = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, col);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, dep);
+      const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      if (!ok) throw new Error('多重標本の FBO が不完全');
+      this.msaa = { fb, col, dep, w, h, bufs: [gl.COLOR_ATTACHMENT0], tex: [], samples };
+    } catch (e) {
+      console.warn('MSAA を使えないので、そのまま描きます:', e.message);
+      this.msaa = null;
+    }
+  }
+
+  #dropMsaa() {
+    const gl = this.gl;
+    if (!this.msaa) return;
+    gl.deleteFramebuffer(this.msaa.fb);
+    gl.deleteRenderbuffer(this.msaa.col);
+    gl.deleteRenderbuffer(this.msaa.dep);
+    this.msaa = null;
   }
 
   /**
@@ -120,7 +167,7 @@ export class Renderer {
     const portrait = aspect < 0.95;
     this.portrait = portrait;
     const yaw = portrait ? Math.PI / 2 : 0;
-    const pitch = 72 * DEG;      // ほぼ真上から覗き込む
+    const pitch = 65 * DEG;      // ほぼ真上。数度倒して手前の壁の厚みを見せる
     const tanH = Math.tan(FOV_Y / 2);
 
     const rim = TANK.rimW;
@@ -132,7 +179,7 @@ export class Renderer {
     // 画面の短辺に寄せて詰める
     const dist = portrait
       ? Math.max(needW * 1.02, needH * 1.06)
-      : Math.max(needW * 1.12, needH * 1.14);
+      : Math.max(needW * 1.10, needH * 1.12);
 
     const base = [0, -0.01, 0];
     const eye = [
@@ -209,6 +256,7 @@ export class Renderer {
       .set('uSkyHorizon', s.horizon)
       .set('uSkyGround', s.ground)
       .setFloat('uHaze', s.haze)
+      .setFloat('uWarmth', s.warmth)
       // 分散コースティクス。(1 − 1/n) を 3 波長ぶん。
       // 実際の水の分散では 16cm の水深で見えないので、広がりは誇張してある
       .set('uCausC', [0.2425, 0.2502, 0.2578])
@@ -226,6 +274,7 @@ export class Renderer {
      .tex('uNormF', this.ocean.normTex)
      .tex('uRipN', this.ripple.normTex)
      .setFloat('uPatch', PATCH)
+     .setFloat('uFftN', this.ocean.N)
      .setFloat('uRipSpan', RIPPLE_SPAN)
      .set('uTankHalf', [TANK.halfX, TANK.halfZ]);
     return p;
@@ -306,6 +355,8 @@ export class Renderer {
         .setInt('uUnderwater', 1)
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
+        .setFloat('uGroundY', TANK.outBottom)
+        .setFloat('uRimTop2', TANK.rimTop)
         .set('uBowlPos', this.bowlPos)
         .vec4Array('uFish[0]', school.shadowData(), MAX_FISH)
         .setInt('uFishCount', school.shadowCount);
@@ -316,7 +367,8 @@ export class Renderer {
     if (poi.visible && poi.y < 0.02) this.#drawPoi(poi, true);
 
     // ---- 本パス ----
-    bindFbo(gl, this.fbos.hdr);
+    const main = this.msaa || this.fbos.hdr;
+    bindFbo(gl, main);
     gl.depthMask(true);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -333,6 +385,12 @@ export class Renderer {
         .setFloat('uTanHalf', this.tanH)
         .setFloat('uAspect', this.aspect)
         .setFloat('uGroundY', TANK.outBottom)
+        .setFloat('uRimTop2', TANK.rimTop)
+        .set('uTankOuter', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
+        .setFloat('uRimTop', TANK.rimTop)
+        .set('uBowlPos', this.bowlPos)
+        .setFloat('uBowlR', BOWL.outerR)
+        .setFloat('uBowlRimY', BOWL.rimY)
         .setFloat('uTime', time);
       this.full.draw();
     }
@@ -346,6 +404,8 @@ export class Renderer {
         .setInt('uUnderwater', 0)
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
+        .setFloat('uGroundY', TANK.outBottom)
+        .setFloat('uRimTop2', TANK.rimTop)
         .set('uBowlPos', this.bowlPos)
         .setInt('uFishCount', 0);
       this.mTank.draw();
@@ -372,6 +432,8 @@ export class Renderer {
         .setInt('uUnderwater', 0)
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
+        .setFloat('uGroundY', TANK.outBottom)
+        .setFloat('uRimTop2', TANK.rimTop)
         .set('uBowlPos', this.bowlPos)
         .setInt('uFishCount', 0);
       this.mBowl.body.draw();
@@ -390,6 +452,8 @@ export class Renderer {
         .setInt('uUnderwater', 0)
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
+        .setFloat('uGroundY', TANK.outBottom)
+        .setFloat('uRimTop2', TANK.rimTop)
         .set('uBowlPos', this.bowlPos)
         .setInt('uFishCount', 0);
       this.mBowl.water.draw();
@@ -404,6 +468,14 @@ export class Renderer {
       this.#drawPoi(poi, false);
       gl.depthMask(true);
       gl.disable(gl.BLEND);
+    }
+
+    // 多重標本を解決して、普通のテクスチャに戻す
+    if (this.msaa) {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.msaa.fb);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.fbos.hdr.fb);
+      gl.blitFramebuffer(0, 0, this.w, this.h, 0, 0, this.w, this.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
     // ---- 仕上げ ----
@@ -422,11 +494,24 @@ export class Renderer {
     this.pBlur.use().tex('uSrc', this.fbos.blur.tex[0]).set('uDir', [0, 1 / bh]);
     this.full.draw();
 
+    // 被写界深度用のぼかし。1/4 に落として 2 回ぼかすだけ。
+    // 焦点距離 1m・画角 46° の実物のカメラなら、この距離の被写界深度は
+    // かなり浅い。手前と奥がわずかに溶けるだけで、写真らしさが出る
+    bindFbo(gl, this.fbos.dofA);
+    this.pBlur.use().tex('uSrc', this.fbos.hdr.tex[0]).set('uDir', [1 / bw, 0]);
+    this.full.draw();
+    bindFbo(gl, this.fbos.dofB);
+    this.pBlur.use().tex('uSrc', this.fbos.dofA.tex[0]).set('uDir', [0, 1 / bh]);
+    this.full.draw();
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.w, this.h);
     this.pComp.use()
       .tex('uSrc', this.fbos.hdr.tex[0])
       .tex('uBloom', this.fbos.bright.tex[0])
+      .tex('uDof', this.fbos.dofB.tex[0])
+      .setFloat('uFocus', Math.hypot(this.cam[0], this.cam[1], this.cam[2]))
+      .setFloat('uDofScale', 0.85)
       .setFloat('uBloomAmt', 0.22)
       .setFloat('uExposure', this.sun.exposure)
       .setFloat('uTime', time);

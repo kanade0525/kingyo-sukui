@@ -55,26 +55,33 @@ vec3 shapeOf(float u, float v, int part){
     return vec3(0.5 - u, ca * r * (1.16 - 0.13 * ca) * bulge, sa * r * 0.74 * bulge);
   }
   if(part == 1){              // 尾びれ
+    // 付け根は胴の尾柄の中から出す。胴より外から生やすと、
+    // 隙間が開いて別の板が浮いているように見える
     float s = u, t = v * 2.0 - 1.0;
-    float spread = 0.055 + 0.33 * pow(s, 0.70);
-    return vec3(-0.43 - 0.46 * s, t * spread - 0.012 * s, 0.028 * s * s * sin(t * 2.2));
+    float base0 = prof(0.88) * 1.05;                 // 尾柄の太さ
+    float spread = base0 + 0.33 * pow(s, 0.78);
+    return vec3(-0.36 - 0.50 * s, t * spread - 0.010 * s, 0.026 * s * s * sin(t * 2.2));
   }
   if(part == 2){              // 背びれ
-    float uu = mix(0.26, 0.66, u);
-    float back = prof(uu) * 1.16;
-    return vec3(0.5 - uu, back + v * 0.135 * sin(3.14159 * u) * (0.45 + 0.55 * (1.0 - u)), 0.0);
+    // 胴の背の高さは prof*(1.16-0.13)。ここを 1.16 にしていたため、
+    // 背びれが胴から浮いて別の板に見えていた
+    float uu = mix(0.26, 0.68, u);
+    float back = prof(uu) * 1.03;
+    return vec3(0.5 - uu, back + v * 0.105 * sin(3.14159 * u) * (0.45 + 0.55 * (1.0 - u)), 0.0);
   }
   if(part == 5){              // 尻びれ
     float uu = mix(0.62, 0.84, u);
-    return vec3(0.5 - uu, -prof(uu) * 1.30 - v * 0.075 * sin(3.14159 * u), 0.0);
+    return vec3(0.5 - uu, -prof(uu) * 1.28 - v * 0.060 * sin(3.14159 * u), 0.0);
   }
   // 胸びれ。part 3 が右、4 が左
+  // 胸びれ。胴の半径は y が r*1.16、z が r*0.74 なので、
+  // その表面の上に根を置く
   float side = part == 3 ? 1.0 : -1.0;
   float r = prof(0.22);
-  vec3 root = vec3(0.5 - 0.22, -r * 0.30, side * r * 0.80);
-  vec3 dir  = vec3(-0.17, -0.055, side * 0.095);
-  vec3 wid  = vec3(0.022, 0.060, 0.0);
-  return root + dir * u + wid * (v - 0.5) * (0.35 + 0.65 * u);
+  vec3 root = vec3(0.5 - 0.22, -r * 0.42, side * r * 0.64);
+  vec3 dir  = vec3(-0.15, -0.050, side * 0.075);
+  vec3 wid  = vec3(0.020, 0.048, 0.0);
+  return root + dir * u + wid * (v - 0.5) * (0.22 + 0.78 * u);
 }
 
 /** 泳ぎのうねり。尾へ行くほど大きく、頭もわずかに振れる。 */
@@ -201,17 +208,18 @@ void main(){
   } else {
     // ひれ。実物は薄くて向こうが透けるので、淡く、先ほど白くする。
     // 放射状の条（骨）を入れると、一枚の板に見えなくなる
-    vec3 tint = uKind == 2 ? vec3(0.075, 0.062, 0.085)
-              : uKind == 1 ? vec3(0.620, 0.300, 0.215)
-                           : vec3(0.640, 0.215, 0.070);
+    // ひれは胴と地続きに見える濃さにする。淡くすると、水の上で
+    // 別の板が漂っているように見える
+    vec3 tint = uKind == 2 ? vec3(0.062, 0.050, 0.070)
+              : uKind == 1 ? vec3(0.600, 0.265, 0.175)
+                           : vec3(0.610, 0.175, 0.042);
     float along  = vPart == 1 ? u : (vPart == 2 || vPart == 5 ? v : u);
     float across = vPart == 1 ? v : (vPart == 2 || vPart == 5 ? u : v);
-    // 先へ行くほど薄くなるが、朱は最後まで残す。白く抜くと水の上で
-    // 破片に見える
-    base = tint * (1.0 + 0.55 * along);
-    float ray = 0.80 + 0.20 * cos(across * 6.2831853 * (vPart == 1 ? 9.0 : 6.0));
-    base *= ray * (0.93 + 0.12 * fbm(vec2(along * 12.0, across * 4.0)));
-    base *= 0.80 + 0.26 * pow(1.0 - ndv, 1.5);
+    base = tint * (0.95 + 0.35 * along);
+    float ray = 0.84 + 0.16 * cos(across * 6.2831853 * (vPart == 1 ? 9.0 : 6.0));
+    base *= ray * (0.94 + 0.10 * fbm(vec2(along * 12.0, across * 4.0)));
+    // 付け根は胴と同じ濃さ、先だけわずかに透ける
+    base *= 0.86 + 0.18 * pow(1.0 - ndv, 1.5);
   }
 
   // 水中にいる間は、水面で結んだ光の網が体にも落ちる。
@@ -223,12 +231,17 @@ void main(){
     caus = mix(vec3(1.0), caustics(vW.xz, below), edgeMask(entry));
   }
 
-  vec3 lit = underSun(N) * caus + underAmbient(N);
+  // ひれは薄い膜なので、受けた光の大半は裏へ抜ける。胴と同じ強さで
+  // 拡散させると、上を向いた面が真っ白に飛んで、水に浮いた切れ端に見える
+  float thin = vPart == 0 ? 1.0 : 0.55;
+  vec3 lit = (underSun(N) * caus + underAmbient(N)) * thin;
   float up = N.y * 0.5 + 0.5;                      // 背のほうが明るい
   vec3 col = base * lit * (0.80 + 0.30 * up);
-  // ひれは薄くて照りが乗らない。胴だけ光らせる
-  float gloss = vPart == 0 ? 0.8 : 0.18;
-  col += ggx(N, V, underSunDir(), 0.24, vec3(0.035)) * uSunColor * gloss * PI;
+  // ひれは薄くて照りが乗らない。胴だけ光らせる。
+  // ここを胴と同じにすると、ひれ一面に鏡面が乗ってセロファンに見える
+  float gloss = vPart == 0 ? 0.8 : 0.03;
+  float grough = vPart == 0 ? 0.24 : 0.55;
+  col += ggx(N, V, underSunDir(), grough, vec3(0.035)) * uSunColor * gloss * PI;
   col += base * pow(1.0 - ndv, 4.0) * 0.10 * lit;  // 縁の照り返し
 
   frag = vec4(col, vDist);

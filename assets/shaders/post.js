@@ -43,6 +43,9 @@ uniform sampler2D uBloom;
 uniform float uBloomAmt;
 uniform float uExposure;
 uniform float uTime;
+uniform sampler2D uDof;
+uniform float uFocus;
+uniform float uDofScale;
 out vec4 frag;
 
 /** わずかな倍率色収差。画面の端ほど赤と青がずれる。
@@ -56,17 +59,46 @@ vec3 fetchCA(vec2 uv){
     texture(uSrc, 0.5 + d * (1.0 - k)).b);
 }
 
-void main(){
-  vec3 c = fetchCA(vUv) + texture(uBloom, vUv).rgb * uBloomAmt;
+/**
+ * フィルムの調子。
+ *
+ * 狙いは「よく晴れた日に撮った、少し褪せた写真」。
+ * 黒を持ち上げ、彩度をわずかに落とし、ハイライトを暖色・影を青へ割る。
+ * 現像のクセをそのまま真似ているので、物理的な意味はない。
+ */
+vec3 film(vec3 c){
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  // ハイライトは陽に焼けた暖色、影は空の青を拾う
+  c += vec3(0.052, 0.022, -0.016) * smoothstep(0.42, 1.0, l);
+  c += vec3(-0.014, 0.002, 0.034) * (1.0 - smoothstep(0.0, 0.40, l));
+  // 褪せた印画紙。黒が沈みきらない
+  c = c * 0.90 + 0.052;
+  // 彩度をほんの少し抜く
+  c = mix(vec3(l * 0.90 + 0.052), c, 0.90);
+  return c;
+}
 
-  // 周辺減光。舟に目が行くように、ごく弱く
+void main(){
+  // ハレーション。滲みを暖色に寄せると、昔のレンズらしくなる
+  vec3 glow = texture(uBloom, vUv).rgb * uBloomAmt * vec3(1.00, 0.70, 0.46);
+  vec3 c = fetchCA(vUv);
+
+  // 被写界深度。α にカメラからの距離が入っているので、それで錯乱円を作る
+  float d = texture(uSrc, vUv).a;
+  float coc = d > 0.0 ? clamp(abs(d - uFocus) * uDofScale, 0.0, 1.0) : 0.0;
+  c = mix(c, texture(uDof, vUv).rgb, coc * 0.55);
+  c += glow;
+
+  // 周辺減光
   vec2 q = (vUv - 0.5) * vec2(1.0, 0.92);
-  c *= 1.0 - dot(q, q) * 0.34;
+  c *= 1.0 - dot(q, q) * 0.52;
 
   c = aces(c * uExposure);
   c = toSRGB(c);
+  c = film(c);
 
-  // 暗部のバンディングを散らす粒子
-  c += (hash12(gl_FragCoord.xy + uTime) - 0.5) * 0.006;
+  // 粒子。暗い所ほど目立つのはフィルムと同じ
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c += (hash12(gl_FragCoord.xy + uTime) - 0.5) * 0.020 * (0.35 + 0.65 * (1.0 - l));
   frag = vec4(c, 1.0);
 }`;

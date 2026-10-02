@@ -104,17 +104,18 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 /* ---------- 覆い ---------- */
 #veil{
   position:fixed;inset:0;z-index:4;display:grid;place-items:center;padding:24px;
-  background:radial-gradient(130% 95% at 50% 38%,rgba(248,250,249,.40),rgba(238,242,241,.86));
+  background:radial-gradient(120% 86% at 50% 40%,rgba(248,250,249,.18),rgba(236,240,239,.74));
 }
 .card{width:min(560px,100%);text-align:center}
 .kicker{margin:0 0 14px;font-size:11px;letter-spacing:.45em;color:var(--hi)}
 .card h1{
   margin:0 0 10px;font-family:var(--disp);font-weight:700;
-  font-size:clamp(34px,8.5vw,62px);letter-spacing:.1em;text-wrap:balance;
-  text-shadow:0 2px 22px rgba(255,255,255,.9);
+  font-size:clamp(40px,10vw,76px);letter-spacing:.22em;text-wrap:balance;
+  text-shadow:0 1px 0 rgba(255,255,255,.75), 0 3px 26px rgba(255,255,255,.95);
 }
 .card h2{margin:0 0 18px;font-family:var(--disp);font-weight:500;font-size:clamp(24px,6vw,36px);letter-spacing:.08em}
-.lede{margin:0 auto 24px;max-width:42ch;font-size:13px;line-height:2.05;color:var(--ink-dim);text-wrap:pretty}
+.lede{margin:0 auto 24px;max-width:34ch;font-size:13px;line-height:2.1;color:var(--ink);text-wrap:pretty;
+  text-shadow:0 1px 10px rgba(255,255,255,.9)}
 .lede em{font-style:normal;color:var(--ink)}
 .sub{margin:16px 0 0;font-size:11px;letter-spacing:.1em;color:var(--ink-dim)}
 .go{

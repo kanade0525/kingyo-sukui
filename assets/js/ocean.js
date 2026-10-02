@@ -55,10 +55,12 @@ function phillipsH0(N, patch, wind, windDir) {
     if (k2 < 1e-12) return 0;
     const k = Math.sqrt(k2);
     const dir = (kx / k) * wx + (kz / k) * wz;
-    let p = A * Math.exp(-1 / (k2 * L * L)) / (k2 * k2) * (dir * dir);
+    // 指向性。dir² のままだと波が強く一方向に揃い、斜めに櫛を引いたような
+    // 縞になる。舟の中の凪いだ水なら、もっと緩いほうがそれらしい
+    let p = A * Math.exp(-1 / (k2 * L * L)) / (k2 * k2) * (0.35 + 0.65 * dir * dir);
     p *= Math.exp(-k2 * small * small);
     // 風に逆らう向きの波は弱める（鏡像対称だと波が行ったり来たりして見える）
-    if (dir < 0) p *= 0.07;
+    if (dir < 0) p *= 0.3;
     return p;
   };
 

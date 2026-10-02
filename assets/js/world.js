@@ -42,8 +42,8 @@ export const FISH_KINDS = [
  *  置き場所は画面の向きから renderer が決める（uBowlPos）。 */
 export const BOWL = {
   // 置き場所は画面基準で決める（renderer）。ここは画面の右方向・手前方向への量
-  across: -0.655,
-  toward: 0.20,
+  across: -0.628,
+  toward: 0.170,
   acrossPortrait: -0.265,
   towardPortrait: 0.665,
   /** 実際のワールド座標。画面の向きが決まった時に renderer が書き込む。
