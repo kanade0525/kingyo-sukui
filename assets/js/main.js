@@ -27,6 +27,7 @@ const ui = new UI({
   wind(v) { renderer?.setWind(v); },
   fft(n) { renderer?.setFftSize(n); },
   dpr(d) { renderer?.setDpr(d); },
+  msaa(on) { renderer?.setMsaa(on); },
   audio(on) { sound.setEnabled(on); },
 });
 

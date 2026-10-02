@@ -5,19 +5,28 @@
 
 import { HEAD, TONEMAP, NOISE } from './common.js';
 
+/** NaN と Inf を落とす。1 画素でもぼかしに入ると、塊になって画面に残る。 */
+const SANE = `
+vec3 sane(vec3 c){
+  c = mix(vec3(0.0), c, vec3(equal(c, c)));     // NaN は自分自身と等しくない
+  return clamp(c, vec3(0.0), vec3(64.0));
+}`;
+
 export const FS_BRIGHT = `${HEAD}
+${SANE}
 in vec2 vUv;
 uniform sampler2D uSrc;
 uniform float uThreshold;
 out vec4 frag;
 void main(){
-  vec3 c = texture(uSrc, vUv).rgb;
+  vec3 c = sane(texture(uSrc, vUv).rgb);
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
   frag = vec4(c * smoothstep(uThreshold, uThreshold * 2.0, l), 1.0);
 }`;
 
 /** 分離ブラー。uDir に (1/w, 0) か (0, 1/h) を入れて 2 回通す。 */
 export const FS_BLUR = `${HEAD}
+${SANE}
 in vec2 vUv;
 uniform sampler2D uSrc;
 uniform vec2 uDir;
@@ -26,10 +35,10 @@ void main(){
   // 線形補間を使った 9 タップ相当の 5 タップ
   const float o[3] = float[3](0.0, 1.3846153846, 3.2307692308);
   const float w[3] = float[3](0.2270270270, 0.3162162162, 0.0702702703);
-  vec3 c = texture(uSrc, vUv).rgb * w[0];
+  vec3 c = sane(texture(uSrc, vUv).rgb) * w[0];
   for(int i=1;i<3;i++){
-    c += texture(uSrc, vUv + uDir * o[i]).rgb * w[i];
-    c += texture(uSrc, vUv - uDir * o[i]).rgb * w[i];
+    c += sane(texture(uSrc, vUv + uDir * o[i]).rgb) * w[i];
+    c += sane(texture(uSrc, vUv - uDir * o[i]).rgb) * w[i];
   }
   frag = vec4(c, 1.0);
 }`;
@@ -37,6 +46,7 @@ void main(){
 export const FS_COMPOSITE = `${HEAD}
 ${TONEMAP}
 ${NOISE}
+${SANE}
 in vec2 vUv;
 uniform sampler2D uSrc;
 uniform sampler2D uBloom;
@@ -80,13 +90,13 @@ vec3 film(vec3 c){
 
 void main(){
   // ハレーション。滲みを暖色に寄せると、昔のレンズらしくなる
-  vec3 glow = texture(uBloom, vUv).rgb * uBloomAmt * vec3(1.00, 0.70, 0.46);
-  vec3 c = fetchCA(vUv);
+  vec3 glow = sane(texture(uBloom, vUv).rgb) * uBloomAmt * vec3(1.00, 0.70, 0.46);
+  vec3 c = sane(fetchCA(vUv));
 
   // 被写界深度。α にカメラからの距離が入っているので、それで錯乱円を作る
   float d = texture(uSrc, vUv).a;
   float coc = d > 0.0 ? clamp(abs(d - uFocus) * uDofScale, 0.0, 1.0) : 0.0;
-  c = mix(c, texture(uDof, vUv).rgb, coc * 0.55);
+  c = mix(c, sane(texture(uDof, vUv).rgb), coc * 0.55);
   c += glow;
 
   // 周辺減光

@@ -61,6 +61,9 @@ export class Renderer {
 
     this.setHour(DEFAULT_HOUR);
 
+    // 既定では切る。上の #makeMsaa のコメントを参照
+    this.wantMsaa = false;
+
     this.proj = mat4();
     this.view = mat4();
     this.vp = mat4();
@@ -75,6 +78,12 @@ export class Renderer {
   setFftSize(n) { this.ocean.resize(n); }
   setWind(v) { this.ocean.setWind(v); }
   setAmp(v) { this.ocean.amp = v; }
+
+  setMsaa(on) {
+    if (this.wantMsaa === on) return;
+    this.wantMsaa = on;
+    this.resize(true);
+  }
 
   setDpr(scale) {
     this.dprScale = scale;
@@ -118,10 +127,15 @@ export class Renderer {
    * 金魚のひれや舟の角のような細い輪郭が 1 画素ずつギザつくと、
    * どれだけ水を作り込んでも「CG の絵」に見える。
    * 多重標本のレンダーバッファへ描いて、解決してからテクスチャへ blit する。
+   *
+   * ただし既定では切ってある。タイル単位で描く GPU（Apple Silicon など）で、
+   * RGBA16F の多重標本を blit で解決すると、タイルがそのまま黒く抜けることが
+   * あるため。設定から入れられるようにして、効く環境でだけ使う。
    */
   #makeMsaa(w, h) {
     const gl = this.gl;
     this.#dropMsaa();
+    if (!this.wantMsaa) { this.msaa = null; return; }
     const max = gl.getParameter(gl.MAX_SAMPLES) || 0;
     const samples = Math.min(4, max);
     if (samples < 2) { this.msaa = null; return; }
@@ -510,7 +524,7 @@ export class Renderer {
       .tex('uBloom', this.fbos.bright.tex[0])
       .tex('uDof', this.fbos.dofB.tex[0])
       .setFloat('uFocus', Math.hypot(this.cam[0], this.cam[1], this.cam[2]))
-      .setFloat('uDofScale', 0.85)
+      .setFloat('uDofScale', 0.62)
       .setFloat('uBloomAmt', 0.22)
       .setFloat('uExposure', this.sun.exposure)
       .setFloat('uTime', time);
