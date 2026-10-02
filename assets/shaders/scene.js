@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610020652';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610020701';
 
 
 
@@ -308,6 +308,18 @@ void main(){
   vec3 V = normalize(uCam - vW);
   float ndv = max(dot(N, V), 1e-3);
 
+  // 屈折に使う傾きは、細かい波をならしたもの。
+  //
+  // 実際の浅い水で底の像を動かすのは大きなうねりで、cm 級のさざ波は
+  // 照りに出るだけで像をほとんど動かさない。全部の波を同じように
+  // 屈折へ入れると、隣り合う画素が遠く離れた所を拾い、金魚の胴が
+  // 途中で切れて二匹に見える。
+  const float SMOOTH = 0.016;      // この長さより短い波は屈折に効かせない
+  vec2 slopeR = (slopeAt(vP)
+               + slopeAt(vP + vec2(SMOOTH, 0.0)) + slopeAt(vP - vec2(SMOOTH, 0.0))
+               + slopeAt(vP + vec2(0.0, SMOOTH)) + slopeAt(vP - vec2(0.0, SMOOTH))) * 0.2 * vEdge;
+  vec3 Nr = normalize(vec3(-slopeR.x, 1.0, -slopeR.y));
+
   // 水深 16cm では、底の横ずれは D·(1−1/n)·∇h ≈ 2mm しかない。
   // 誇張しても見えるほどにはならず、反射と法線がずれるだけなので素直に使う。
   // たらいの揺らぎの正体は幾何的な歪みではなく、コースティクスの明暗。
@@ -317,7 +329,7 @@ void main(){
   // 拾った先が水中でなかったときに「採らない」を if で切ると、金魚の輪郭で
   // 水面がブロック状に裂ける。採否を 0..1 の重みにして混ぜ、境目をぼかす
   vec2 suv = gl_FragCoord.xy / uRes;
-  vec3 Rd = refract(-V, N, 1.0 / 1.333);
+  vec3 Rd = refract(-V, Nr, 1.0 / 1.333);
 
   // 進める距離には上限がある。水面から底まで、斜めに通っても水深の数倍。
   // 上限を置かないと、浅い角度のとき遠くの金魚を拾って壁に貼り付けてしまう
@@ -331,7 +343,7 @@ void main(){
   vec4 cp = uVP * vec4(vW + Rd * t, 1.0);
   vec2 uv = cp.w > 1e-4 ? cp.xy / cp.w * 0.5 + 0.5 : suv;
   vec2 off = uv - suv;
-  const float LIMIT = 0.012;            // 画面の 1.2% まで
+  const float LIMIT = 0.006;            // 画面の 0.6% まで
   float len = length(off);
   if(len > LIMIT) off *= LIMIT / len;
   vec2 uvOut = clamp(suv + off, vec2(0.0015), vec2(0.9985));
