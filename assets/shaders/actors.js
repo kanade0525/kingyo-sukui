@@ -7,7 +7,7 @@
 // ひれは不透明に描く。水中パスの α にはカメラからの距離を入れていて、
 // ブレンドすると距離が壊れ、水面の屈折が狂うため。薄さは色で表す。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610020554';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610020652';
 
 // ---------------------------------------------------------------- 金魚
 
@@ -131,13 +131,17 @@ out vec4 frag;
 /**
  * 鱗。行ごとに半分ずらした六角格子ふうの並び。
  * 戻り値は「鱗の中心ほど 1、継ぎ目で 0」。
+ *
+ * 実物を真上から見ると、鱗はほとんど目立たない。濡れた体の照りのほうが
+ * ずっと強く出る。粒を細かく・濃く描くと松ぼっくりや甲虫に見えるので、
+ * 粒は大きく、濃さはごく薄くしてある。
  */
 float scales(vec2 uv){
-  vec2 g = vec2(uv.x * 23.0, uv.y * 17.0);
+  vec2 g = vec2(uv.x * 14.0, uv.y * 10.0);
   g.x += 0.5 * floor(g.y);
   vec2 f = fract(g) - 0.5;
   float d = length(f * vec2(1.0, 1.25));
-  return smoothstep(0.50, 0.26, d);
+  return smoothstep(0.54, 0.30, d);
 }
 
 void main(){
@@ -180,25 +184,26 @@ void main(){
       base = vec3(0.030, 0.025, 0.034) + vec3(0.085, 0.045, 0.020) * pow(1.0 - ndv, 2.5);
     }
 
-    // 鱗。中心が明るく、継ぎ目が暗い。頭と尾柄では小さくなる
+    // 鱗。中心がわずかに明るい程度にとどめる
     float sc = scales(vec2(u, v));
-    float amount = smoothstep(0.05, 0.20, u) * (1.0 - smoothstep(0.72, 0.95, u));
-    base *= 1.0 + (sc - 0.45) * 0.52 * amount;
-    // 鱗の真珠光沢。横腹の、こちらを向いた面で強い
-    float pearl = sc * amount * side * pow(1.0 - ndv, 1.5);
+    float amount = smoothstep(0.08, 0.26, u) * (1.0 - smoothstep(0.66, 0.92, u));
+    base *= 1.0 + (sc - 0.5) * 0.13 * amount;
+    // 体の照り。濡れた魚はここがいちばん目を引く
+    float sheen = side * pow(1.0 - ndv, 1.6) * smoothstep(0.05, 0.30, u);
+    float pearl = sheen * (0.75 + 0.25 * sc);
 
     // 目。白目のふちと黒い瞳、小さな写り込み
     vec2 e1 = vec2((u - 0.100) * 2.6, v - 0.195);
     vec2 e2 = vec2((u - 0.100) * 2.6, v - 0.805);
     float eye = min(length(e1), length(e2));
-    float eyeR = uKind == 2 ? 0.062 : 0.038;
-    base = mix(base, vec3(0.28, 0.24, 0.20), 1.0 - smoothstep(eyeR, eyeR * 1.22, eye));
+    float eyeR = uKind == 2 ? 0.050 : 0.029;
+    base = mix(base, vec3(0.30, 0.25, 0.20), 1.0 - smoothstep(eyeR, eyeR * 1.14, eye));
     base = mix(base, vec3(0.012, 0.010, 0.013), 1.0 - smoothstep(eyeR * 0.74, eyeR * 0.88, eye));
-    float glint = 1.0 - smoothstep(0.004, 0.011,
-      min(length(e1 - vec2(0.012, -0.012)), length(e2 - vec2(0.012, -0.012))));
-    base += vec3(0.55) * glint;
+    float glint = 1.0 - smoothstep(0.003, 0.008,
+      min(length(e1 - vec2(0.009, -0.009)), length(e2 - vec2(0.009, -0.009))));
+    base += vec3(0.42) * glint;
 
-    base += vec3(0.55, 0.46, 0.40) * pearl * 0.16;
+    base += vec3(0.62, 0.52, 0.45) * pearl * 0.20;
   } else {
     // ひれ。実物は薄くて向こうが透けるので、淡く、先ほど白くする。
     // 放射状の条（骨）を入れると、一枚の板に見えなくなる

@@ -3,7 +3,7 @@
 // 太陽のきらめきは輝度 1 を大きく超える。そのまま出すとただの白い点に
 // なるので、明るい所を 1/4 解像度に落としてぼかし、足してからトーンマップする。
 
-import { HEAD, TONEMAP, NOISE } from './common.js?v=202610020554';
+import { HEAD, TONEMAP, NOISE } from './common.js?v=202610020652';
 
 /** NaN と Inf を落とす。1 画素でもぼかしに入ると、塊になって画面に残る。 */
 const SANE = `
@@ -56,13 +56,15 @@ uniform float uTime;
 uniform sampler2D uDof;
 uniform float uFocus;
 uniform float uDofScale;
+uniform float uBloomOff;
+uniform float uPlain;      // 1 = フィルムの調子も粒子も外す（切り分け用）
 out vec4 frag;
 
 /** わずかな倍率色収差。画面の端ほど赤と青がずれる。
  *  実際のレンズがそうなっているので、ほんの少し入れると写真らしくなる。 */
 vec3 fetchCA(vec2 uv){
   vec2 d = uv - 0.5;
-  float k = 0.0016;
+  float k = 0.0016 * (1.0 - uPlain);
   return vec3(
     texture(uSrc, 0.5 + d * (1.0 + k)).r,
     texture(uSrc, uv).g,
@@ -90,7 +92,7 @@ vec3 film(vec3 c){
 
 void main(){
   // ハレーション。滲みを暖色に寄せると、昔のレンズらしくなる
-  vec3 glow = sane(texture(uBloom, vUv).rgb) * uBloomAmt * vec3(1.00, 0.70, 0.46);
+  vec3 glow = sane(texture(uBloom, vUv).rgb) * uBloomAmt * uBloomOff * vec3(1.00, 0.70, 0.46);
   vec3 c = sane(fetchCA(vUv));
 
   // 被写界深度。α にカメラからの距離が入っているので、それで錯乱円を作る
@@ -105,10 +107,11 @@ void main(){
 
   c = aces(c * uExposure);
   c = toSRGB(c);
-  c = film(c);
-
-  // 粒子。暗い所ほど目立つのはフィルムと同じ
-  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c += (hash12(gl_FragCoord.xy + uTime) - 0.5) * 0.020 * (0.35 + 0.65 * (1.0 - l));
+  if(uPlain < 0.5){
+    c = film(c);
+    // 粒子。暗い所ほど目立つのはフィルムと同じ
+    float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    c += (hash12(gl_FragCoord.xy + uTime) - 0.5) * 0.020 * (0.35 + 0.65 * (1.0 - l));
+  }
   frag = vec4(c, 1.0);
 }`;

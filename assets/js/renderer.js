@@ -9,17 +9,17 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610020554';
-import { VS_FULL } from '../shaders/common.js?v=202610020554';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610020554';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610020554';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js?v=202610020554';
-import { tankMesh, fishMesh, poiMesh, bowlMesh } from './meshes.js?v=202610020554';
-import { Ocean } from './ocean.js?v=202610020554';
-import { Ripple } from './ripple.js?v=202610020554';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH } from './world.js?v=202610020554';
-import { sunFor, DEFAULT_HOUR } from './sky.js?v=202610020554';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610020554';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610020652';
+import { VS_FULL } from '../shaders/common.js?v=202610020652';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610020652';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610020652';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js?v=202610020652';
+import { tankMesh, fishMesh, poiMesh, bowlMesh } from './meshes.js?v=202610020652';
+import { Ocean } from './ocean.js?v=202610020652';
+import { Ripple } from './ripple.js?v=202610020652';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH } from './world.js?v=202610020652';
+import { sunFor, DEFAULT_HOUR } from './sky.js?v=202610020652';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610020652';
 
 const DEG = Math.PI / 180;
 const FOV_Y = 46 * DEG;
@@ -64,6 +64,13 @@ export class Renderer {
     // 既定では切る。上の #makeMsaa のコメントを参照
     this.wantMsaa = false;
     this.pitchDeg = 65;
+
+    // 切り分け用。?plain で後処理を全部外し、?nodof で被写界深度だけ外す。
+    // 「手元では出ないが実機で出る」類を、往復一回で切り分けるため
+    const q = new URLSearchParams(location.search);
+    this.plain = q.has('plain');
+    this.noDof = this.plain || q.has('nodof');
+    this.noBloom = this.plain || q.has('nobloom');
 
     this.proj = mat4();
     this.view = mat4();
@@ -519,6 +526,7 @@ export class Renderer {
     this.full.draw();
 
     // 被写界深度用のぼかし。1/4 に落として 2 回ぼかすだけ。
+    // 切り分けで外されていれば飛ばす
     // 焦点距離 1m・画角 46° の実物のカメラなら、この距離の被写界深度は
     // かなり浅い。手前と奥がわずかに溶けるだけで、写真らしさが出る
     bindFbo(gl, this.fbos.dofA);
@@ -535,7 +543,9 @@ export class Renderer {
       .tex('uBloom', this.fbos.bright.tex[0])
       .tex('uDof', this.fbos.dofB.tex[0])
       .setFloat('uFocus', Math.hypot(this.cam[0], this.cam[1], this.cam[2]))
-      .setFloat('uDofScale', 0.62)
+      .setFloat('uDofScale', this.noDof ? 0.0 : 0.62)
+      .setFloat('uBloomOff', this.noBloom ? 0.0 : 1.0)
+      .setFloat('uPlain', this.plain ? 1.0 : 0.0)
       .setFloat('uBloomAmt', 0.22)
       .setFloat('uExposure', this.sun.exposure)
       .setFloat('uTime', time);
