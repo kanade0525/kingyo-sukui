@@ -147,18 +147,24 @@ export class School {
     for (const f of this.list) f.update(dt, poi, ripple);
   }
 
-  /** 水底の影。深いほど大きく薄くなる。 */
-  shadowData() {
+  /**
+   * 水底の影。深いほど大きく薄くなる。
+   * 太陽の向きへずらすのは、真下に置くと見下ろす角度のぶん本体から
+   * 離れて並び、金魚が二匹いるように見えるため。
+   */
+  shadowData(sunHoriz = [0, 0], refrTan = 0) {
     const d = this.shadow;
     let n = 0;
     for (const f of this.list) {
       if (f.gone || f.p[1] > 0) continue;
       const below = Math.max(-f.p[1], 0.001);
+      // 水底までの残りの深さだけ、光の進む向きへ流れる
+      const drop = (TANK.depth - below) * refrTan;
       const o = n * 4;
-      d[o] = f.p[0];
-      d[o + 1] = f.p[2];
+      d[o] = f.p[0] - sunHoriz[0] * drop;
+      d[o + 1] = f.p[2] - sunHoriz[1] * drop;
       d[o + 2] = f.len * (0.48 + below * 0.9);
-      d[o + 3] = 0.24 * Math.exp(-below * 3.2);
+      d[o + 3] = 0.22 * Math.exp(-below * 2.4);
       n++;
     }
     this.shadowCount = n;

@@ -371,7 +371,7 @@ export class Renderer {
         .setFloat('uGroundY', TANK.outBottom)
         .setFloat('uRimTop2', TANK.rimTop)
         .set('uBowlPos', this.bowlPos)
-        .vec4Array('uFish[0]', school.shadowData(), MAX_FISH)
+        .vec4Array('uFish[0]', school.shadowData(this.sunHoriz, this.refrTan), MAX_FISH)
         .setInt('uFishCount', school.shadowCount);
       this.mTank.draw();
     }

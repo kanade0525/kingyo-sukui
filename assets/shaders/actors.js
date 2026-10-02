@@ -151,6 +151,8 @@ void main(){
 
   float u = vUv.x, v = vUv.y;
   vec3 base;
+  // ひれの「付け根からの距離」。色の繋がりと、膜の薄さの両方に使う
+  float along = vPart == 1 ? u : (vPart == 2 || vPart == 5 ? v : u);
 
   if(vPart == 0){
     float ang = v * 6.2831853;
@@ -202,12 +204,16 @@ void main(){
     // 放射状の条（骨）を入れると、一枚の板に見えなくなる
     // ひれは胴と地続きに見える濃さにする。淡くすると、水の上で
     // 別の板が漂っているように見える
-    vec3 tint = uKind == 2 ? vec3(0.062, 0.050, 0.070)
-              : uKind == 1 ? vec3(0.600, 0.265, 0.175)
-                           : vec3(0.610, 0.175, 0.042);
-    float along  = vPart == 1 ? u : (vPart == 2 || vPart == 5 ? v : u);
+    // 付け根は胴と同じ色から始める。ここで色を落とすと、継ぎ目で値が飛んで
+    // 「胴」と「別の黒い塊」が並んでいるように見える
+    vec3 root = uKind == 2 ? vec3(0.030, 0.025, 0.034)
+              : uKind == 1 ? vec3(0.600, 0.300, 0.230)
+                           : vec3(0.600, 0.135, 0.016);
+    vec3 tip  = uKind == 2 ? vec3(0.095, 0.078, 0.105)
+              : uKind == 1 ? vec3(0.780, 0.480, 0.370)
+                           : vec3(0.820, 0.340, 0.135);
     float across = vPart == 1 ? v : (vPart == 2 || vPart == 5 ? u : v);
-    base = tint * (0.95 + 0.35 * along);
+    base = mix(root, tip, smoothstep(0.0, 0.85, along));
     float ray = 0.84 + 0.16 * cos(across * 6.2831853 * (vPart == 1 ? 9.0 : 6.0));
     base *= ray * (0.94 + 0.10 * fbm(vec2(along * 12.0, across * 4.0)));
     // 付け根は胴と同じ濃さ、先だけわずかに透ける
@@ -223,10 +229,17 @@ void main(){
     caus = mix(vec3(1.0), caustics(vW.xz, below), edgeMask(entry));
   }
 
-  // ひれは薄い膜なので、受けた光の大半は裏へ抜ける。胴と同じ強さで
-  // 拡散させると、上を向いた面が真っ白に飛んで、水に浮いた切れ端に見える
-  float thin = vPart == 0 ? 1.0 : 0.55;
-  vec3 lit = (underSun(N) * caus + underAmbient(N)) * thin;
+  vec3 lit = underSun(N) * caus + underAmbient(N);
+
+  // ひれは薄い膜で、光を透かして散らす。向きで受け止める量が決まる
+  // 不透明な面として扱うと、垂直に立った尾びれに真上からの光が
+  // 一切当たらず、胴だけ明るい「別の黒い塊」が並んで見える。
+  // 向きによらず周りの明るさを拾う形へ寄せ、付け根だけ胴と同じにする
+  if(vPart != 0){
+    vec3 up = vec3(0.0, 1.0, 0.0);
+    vec3 scattered = (underSun(up) * caus * 0.55 + underAmbient(up)) * 0.80;
+    lit = mix(lit, scattered, 0.75 * smoothstep(0.0, 0.5, along) + 0.25);
+  }
   float up = N.y * 0.5 + 0.5;                      // 背のほうが明るい
   vec3 col = base * lit * (0.80 + 0.30 * up);
   // ひれは薄くて照りが乗らない。胴だけ光らせる。
