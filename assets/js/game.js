@@ -173,6 +173,8 @@ export class Game {
     if (this.bowl.length > MAX_BOWL) this.bowl.shift();
   }
 
+  /** 制限時間もポイの消耗も止めているので、いまは誰も呼ばない。
+   *  戻すときのために形だけ残してある。 */
   #finish() {
     this.phase = PHASE.OVER;
     this.poi.visible = false;

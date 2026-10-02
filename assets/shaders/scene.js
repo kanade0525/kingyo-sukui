@@ -346,13 +346,17 @@ void main(){
   // いちばん吸収される赤が最も濃くなり、水が茶色く見えてしまう
   vec3 trans = exp(-vec3(0.45, 0.075, 0.035) * path * 2.0);
   float thick = 1.0 - exp(-path * 2.4);
-  vec3 inscat = uSunColor * vec3(0.012, 0.070, 0.098) * thick;
+  // 夕方は、水の中に回る光そのものが暖色に転ぶ
+  vec3 inscat = uSunColor * vec3(0.012, 0.070, 0.098) * thick
+              * mix(vec3(1.0), vec3(1.9, 1.15, 0.70), uWarmth);
   vec3 refr = hit.rgb * trans + inscat + specks(vW, Rd);
 
   // ---- 反射 ----
   vec3 Rr = reflect(-V, N);
   Rr.y = max(Rr.y, 0.0015);
-  vec3 refl = skyColor(Rr);
+  // 真上寄りの構図では、反射が拾うのは中天の青ばかりになる。
+  // 日が傾くと空全体が暖色になるので、地平の色を混ぜて寄せる
+  vec3 refl = mix(skyColor(Rr), uSkyHorizon * 1.3, uWarmth * 0.6);
 
   float F = fresnelSchlick(ndv, 0.02);
   vec3 col = mix(refr, refl, F);

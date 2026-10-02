@@ -31,7 +31,6 @@ export class Renderer {
       antialias: false,        // FBO 経由なのでここの MSAA は効かない
       depth: false,
       powerPreference: 'high-performance',
-      preserveDrawingBuffer: true,   // スクリーンショットを撮れるように
     });
     if (!gl) throw new Error('WebGL2 が取れません');
     if (!gl.getExtension('EXT_color_buffer_float')) {
