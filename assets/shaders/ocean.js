@@ -49,10 +49,15 @@ void main(){
     o0 = vec4(0.0); o1 = vec4(0.0); return;
   }
 
-  // tanh の引数を頭打ちにする。実装によっては内部で e^(2x) を通るので、
+  // 分散関係。重力＋表面張力。
+  // λ が 1.7cm を切ると毛管波が支配し、位相速度が重力だけの式の 2 倍以上になる。
+  // これを入れずに細かい波を足すと、さざ波がぬるぬる這って水に見えない。
+  //
+  // tanh の引数は頭打ちにする。実装によっては内部で e^(2x) を通るので、
   // kl*uDepth が 100 を超えると Inf/Inf = NaN になり、FFT 全体が壊れる。
   // 物理的にも kH > 10 は深水と変わらないので、切っても結果は同じ。
-  float w = sqrt(G * kl * tanh(min(kl * uDepth, 10.0)));
+  const float SIGMA_RHO = 7.28e-5;    // 表面張力 / 密度 [m³/s²]
+  float w = sqrt((G * kl + SIGMA_RHO * kl * kl * kl) * tanh(min(kl * uDepth, 10.0)));
   float c = cos(w * uTime), s = sin(w * uTime);
   vec2 h = cmul(h0.rg, vec2(c, s)) + cmul(h0.ba, vec2(c, -s));
 

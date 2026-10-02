@@ -143,6 +143,83 @@ vec3 underAmbient(vec3 N){
   return skyAmbient(N) * 0.7;
 }`;
 
+/** 水面の読み出しと、壁ぎわの減衰。水底のコースティクスでも使う。 */
+export const WATERLIB = `
+uniform sampler2D uDisp;    // FFT の変位 (Dx, Dy, Dz)
+uniform sampler2D uNormF;   // FFT の (∂h/∂x, ∂h/∂z, 泡, ∇²h)
+uniform sampler2D uRipN;    // 波紋の (∂h/∂x, ∂h/∂z, h, ∇²h)
+uniform float uPatch;
+uniform float uRipSpan;
+uniform vec2 uTankHalf;
+
+vec2 patchUv(vec2 p){ return p / uPatch; }
+vec2 ripUv(vec2 p){ return p / uRipSpan + 0.5; }
+
+/** 水面の傾き。FFT と波紋を足したもの。 */
+vec2 slopeAt(vec2 p){
+  return texture(uNormF, patchUv(p)).xy + texture(uRipN, ripUv(p)).xy;
+}
+
+/** 壁に近いほど 0。たらいの水は縁で動けないので、変位をここで殺す。 */
+float edgeMask(vec2 p){
+  const float fade = 0.012;
+  return smoothstep(0.0, fade, uTankHalf.x - abs(p.x))
+       * smoothstep(0.0, fade, uTankHalf.y - abs(p.y));
+}`;
+
+/**
+ * コースティクス。
+ *
+ * 太陽光が水面で屈折して底へ落ちる写像のヤコビアンから、面積の伸縮を出す。
+ * 水面の傾き ∇h が小さいとき、底での横ずれは
+ *     offset(x) ≈ +depth · c · ∇h      c = 1 − 1/n
+ * なので、面積比は det(I + depth·c·H)。H は ∇h のヤコビアン（ヘッセ行列）。
+ * 明るさはその逆数。cusp で発散するので下限で止める。
+ *
+ * 符号は refract() で確かめた。∂h/∂x = s のとき屈折方向は (+c·s, −1) に向く。
+ * 逆にすると、尖った波頭の下に細い筋が出るかわりに、広い谷の下に
+ * 太いぼやけた斑が出る。波紋のリングでは明暗がそっくり裏返る。
+ *
+ * ∇²h だけで近似する手もあるが、それだと行列式の非対角項が落ちて
+ * 「丸い斑」にしかならない。網目と尖点が出るのは det を取るから。
+ *
+ * 3 波長ぶん別々に計算して、虹の縁を出す。実際の水の分散（n が 0.4% 違う）
+ * では 16cm の水深で見えないので、広がりは誇張してある。
+ */
+export const CAUSTICS = `
+uniform vec3 uCausC;        // 波長ごとの (1 − 1/n) 相当
+uniform vec2 uSunHoriz;     // 太陽の水平方向（単位）
+uniform float uRefrTan;     // 水中での屈折角の tan
+uniform float uCausGain;
+
+/** 舟の壁が底に落とす影。光が水面に入るはずの位置が舟の外なら、そこは日陰。 */
+float wallShade(vec2 entry){
+  return smoothstep(0.010, 0.0, abs(entry.x) - uTankHalf.x)
+       * smoothstep(0.010, 0.0, abs(entry.y) - uTankHalf.y);
+}
+
+vec3 caustics(vec2 bottomP, float below){
+  // 光が水面に入った位置は、底の点から太陽の方へずれている
+  vec2 entry = bottomP + uSunHoriz * below * uRefrTan;
+  const float e = 0.010;
+  vec2 sx = (slopeAt(entry + vec2(e, 0.0)) - slopeAt(entry - vec2(e, 0.0))) / (2.0 * e);
+  vec2 sz = (slopeAt(entry + vec2(0.0, e)) - slopeAt(entry - vec2(0.0, e))) / (2.0 * e);
+  float hxx = sx.x, hzx = sx.y, hxz = sz.x, hzz = sz.y;
+
+  float k = below * uCausGain;
+  vec3 g;
+  float c0 = uCausC.x * k;
+  float c1 = uCausC.y * k;
+  float c2 = uCausC.z * k;
+  // 下限 0.42 で頭打ちにするので最大 2.4 倍。1/|det| は平均が 1 を超えるので、
+  // 全体が明るくなりすぎないよう割り戻しておく
+  const float LIM = 0.26, NRM = 0.72;
+  g.r = NRM / max(abs((1.0 + c0*hxx) * (1.0 + c0*hzz) - (c0*hxz) * (c0*hzx)), LIM);
+  g.g = NRM / max(abs((1.0 + c1*hxx) * (1.0 + c1*hzz) - (c1*hxz) * (c1*hzx)), LIM);
+  g.b = NRM / max(abs((1.0 + c2*hxx) * (1.0 + c2*hzz) - (c2*hxz) * (c2*hzx)), LIM);
+  return g;
+}`;
+
 /** ACES のフィルミックな近似。 */
 export const TONEMAP = `
 vec3 aces(vec3 x){

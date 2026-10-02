@@ -13,8 +13,14 @@ const mix3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a
 /** 日の出と日の入り。夏の縁日なので長め。 */
 const SUNRISE = 5.0;
 const SUNSET = 18.8;
-/** 屋台の向き（度）。太陽の照り返しを画面の中央から外すために回してある。 */
-const ORIENT = 95;
+/**
+ * 屋台の向き（度）。カメラの向きに対する太陽の方位差でハイライトの出方が決まる。
+ *   0°  … 照り返しが水面の中央に座り、白い靄で底が見えなくなる
+ *   14° … 必要な水面の傾きが約 1.5σ。きらめきが粒で散る（ここを採る）
+ *   95° … 10σ。確率的に一度も起きず、水面から輝きが消える
+ * カメラが回り込む縦画面では、renderer がこれにカメラの yaw を足す。
+ */
+const ORIENT = 14;
 
 /** 南中高度。日本の夏の昼ごろ。 */
 const NOON_ELEV = 70 * DEG;
@@ -26,13 +32,13 @@ const NOON_ELEV = 70 * DEG;
  * 高いほど白く明るく、低いほど赤く弱い。物理的な散乱計算ではないが、
  * 昼と夕方で水の見え方がどう変わるかを見るには十分な形。
  */
-export function sunFor(hour) {
+export function sunFor(hour, yawDeg = 0) {
   const t = clamp01((hour - SUNRISE) / (SUNSET - SUNRISE));
   const elev = Math.sin(Math.PI * t) * NOON_ELEV;
   // 東から西へ。ORIENT は屋台の向き。
   // これを 0 にすると、ほぼ真上から覗く構図では太陽の照り返しが
   // そのまま水面の真ん中に座り、白い靄で底が見えなくなる
-  const azim = (-75 + 150 * t + ORIENT) * DEG;
+  const azim = (-75 + 150 * t + ORIENT + yawDeg) * DEG;
 
   const h = Math.max(Math.sin(elev), 0.015);
   const ext = Math.pow(h, 0.42);               // 大気の厚みによる減衰

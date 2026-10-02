@@ -28,6 +28,9 @@ export class Program {
 
   use() {
     this.gl.useProgram(this.p);
+    // ユニット 0 に戻す。makeTex の bindTexture は「その時アクティブな
+    // ユニット」に効くので、進めたままだと別の結び付きを潰す
+    this.gl.activeTexture(this.gl.TEXTURE0);
     this.unit = 0;
     return this;
   }
@@ -43,9 +46,11 @@ export class Program {
 
   /**
    * 値の形から uniform の型を決める。
-   * 数値は必ず float として送る。int の uniform には setInt を使うこと
-   * （1.0 を見て int と推測する作りにすると、整数値の float で必ず事故る）。
-   * 長さ 16 の配列は mat4 とみなすので、vec4 の配列は vec4Array を使う。
+   *
+   * 数値は必ず float として送る。int には setInt、mat4 には mat4 を使うこと。
+   * 以前は「長さ 16 の配列は mat4」と推測していたが、vec4 をちょうど 4 つ
+   * 送ったときに mat4 として撃ってしまい、GL_INVALID_OPERATION になっていた。
+   * 長さで型を当てる限り同じ事故が起きるので、推測をやめた。
    */
   set(name, v) {
     const gl = this.gl;
@@ -53,10 +58,15 @@ export class Program {
     if (l === null) return this; // 最適化で消えた uniform は黙って無視
     if (typeof v === 'number') gl.uniform1f(l, v);
     else if (typeof v === 'boolean') gl.uniform1i(l, v ? 1 : 0);
-    else if (v.length === 16) { gl.uniformMatrix4fv(l, false, v); }
     else if (v.length === 2) gl.uniform2fv(l, v);
     else if (v.length === 3) gl.uniform3fv(l, v);
     else gl.uniform4fv(l, v);
+    return this;
+  }
+
+  mat4(name, m) {
+    const l = this.#loc(name);
+    if (l !== null) this.gl.uniformMatrix4fv(l, false, m);
     return this;
   }
 

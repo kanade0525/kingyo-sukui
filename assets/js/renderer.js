@@ -2,7 +2,7 @@
 //
 //   1. FFT と波紋を進める
 //   2. 水中パス … 底・内壁・沈んでいる金魚を FBO へ。α にカメラからの距離を入れる
-//   3. 本パス   … 空・提灯・舟・水面・水上の金魚・ポイ
+//   3. 本パス   … 空と太陽・舟・水面・水上の金魚・器・ポイ
 //   4. 仕上げ   … 明るい所を抜いてぼかし、足してトーンマップ
 //
 // 水面の屈折は 2 のテクスチャを screen space で読み直している。
@@ -42,7 +42,7 @@ export class Renderer {
     this.full = new FullScreen(gl);
 
     this.ocean = new Ocean(gl, this.full);
-    this.ocean.resize(128);
+    this.ocean.resize(256);
     this.ripple = new Ripple(gl, this.full);
 
     this.pSky = new Program(gl, VS_FULL, FS_SKY, 'sky');
@@ -113,8 +113,7 @@ export class Renderer {
    * 舟が画面に収まる位置へカメラを置く。
    * 縦長の画面では 90° 回り込み、舟の長辺を画面の縦に取る。
    *
-   * 真上寄りから覗き込む構図。水面の向こうに金魚がはっきり見え、
-   * 提灯は頭上に吊ってあるので、反射は水面に落ちた明るい斑として出る。
+   * 真上寄りから覗き込む構図。水面の向こうに金魚がはっきり見える。
    */
   updateCamera() {
     const aspect = this.w / this.h;
@@ -129,7 +128,11 @@ export class Renderer {
     const intoScreen = (portrait ? TANK.halfX : TANK.halfZ) + rim;
     const needW = (acrossScreen + 0.035) / (tanH * aspect);
     const needH = (intoScreen * Math.sin(pitch) + 0.085) / tanH;
-    const dist = Math.max(needW * 1.12, needH * 1.14);
+    // 縦画面は横の制約が厳しく、素直に合わせると上下が大きく余る。
+    // 画面の短辺に寄せて詰める
+    const dist = portrait
+      ? Math.max(needW * 1.02, needH * 1.06)
+      : Math.max(needW * 1.12, needH * 1.14);
 
     const base = [0, -0.01, 0];
     const eye = [
@@ -143,6 +146,10 @@ export class Renderer {
     perspective(this.proj, FOV_Y, aspect, 0.02, 12);
     lookAt(this.view, eye, target, [0, 1, 0]);
     multiply(this.vp, this.proj, this.view);
+
+    // 太陽もカメラと一緒に回す。回さないと、縦画面でだけ
+    // きらめきの出方が変わってしまう
+    this.setHour(this.hour, (yaw * 180) / Math.PI);
 
     // 器は画面基準で置く。カメラの右方向と手前方向へずらすだけ
     const across = portrait ? BOWL.acrossPortrait : BOWL.across;
@@ -181,8 +188,10 @@ export class Renderer {
 
   /** 時刻から太陽と空を決める。後で夕方や実時刻へ差し替えられるよう、
    *  光の条件はすべてこの一箇所から配る。 */
-  setHour(hour) {
-    const s = sunFor(hour);
+  setHour(hour, yawDeg = this.sunYaw || 0) {
+    this.hour = hour;
+    this.sunYaw = yawDeg;
+    const s = sunFor(hour, yawDeg);
     this.sun = s;
     // 水中での屈折角。コースティクスの横ずれに使う
     const sinA = Math.max(Math.cos(s.elev), 0);        // 天頂からの角の sin
@@ -225,7 +234,7 @@ export class Renderer {
   #drawPoi(poi, underwater) {
     const p = this.pPoi.use();
     this.#lights(p);
-    p.set('uVP', this.vp).set('uCam', this.cam)
+    p.mat4('uVP', this.vp).set('uCam', this.cam)
       .set('uPos', [poi.x, poi.y, poi.z])
       .set('uTiltAxis', poi.tiltAxis)
       .setFloat('uTilt', poi.tilt)
@@ -254,7 +263,8 @@ export class Renderer {
   #fishProgram(time) {
     const p = this.pFish.use();
     this.#lights(p);
-    p.set('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
+    this.#water(p);          // 体に落ちるコースティクスのため
+    p.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
     return p;
   }
 
@@ -274,8 +284,6 @@ export class Renderer {
     this.ocean.update(time);
     this.ripple.update();
 
-    gl.enable(gl.CULL_FACE);
-    gl.cullFace(gl.BACK);
     gl.disable(gl.CULL_FACE);   // 薄いひれや内壁を両面で見せたいので切っておく
 
     // ---- 水中パス ----
@@ -294,7 +302,7 @@ export class Renderer {
     {
       const p = this.pTank.use();
       this.#lights(p); this.#water(p);
-      p.set('uVP', this.vp).set('uCam', this.cam)
+      p.mat4('uVP', this.vp).set('uCam', this.cam)
         .setInt('uUnderwater', 1)
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
@@ -334,7 +342,7 @@ export class Renderer {
     {
       const p = this.pTank.use();
       this.#lights(p); this.#water(p);
-      p.set('uVP', this.vp).set('uCam', this.cam)
+      p.mat4('uVP', this.vp).set('uCam', this.cam)
         .setInt('uUnderwater', 0)
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
@@ -346,7 +354,7 @@ export class Renderer {
     {
       const p = this.pWater.use();
       this.#lights(p); this.#water(p);
-      p.set('uVP', this.vp).set('uCam', this.cam)
+      p.mat4('uVP', this.vp).set('uCam', this.cam)
         .tex('uScene', this.fbos.scene.tex[0])
         .set('uRes', [this.w, this.h])
         .setFloat('uDepth', TANK.depth)
@@ -360,7 +368,7 @@ export class Renderer {
     {
       const p = this.pTank.use();
       this.#lights(p); this.#water(p);
-      p.set('uVP', this.vp).set('uCam', this.cam)
+      p.mat4('uVP', this.vp).set('uCam', this.cam)
         .setInt('uUnderwater', 0)
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
@@ -378,7 +386,7 @@ export class Renderer {
     {
       const p = this.pTank.use();
       this.#lights(p); this.#water(p);
-      p.set('uVP', this.vp).set('uCam', this.cam)
+      p.mat4('uVP', this.vp).set('uCam', this.cam)
         .setInt('uUnderwater', 0)
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
@@ -392,7 +400,9 @@ export class Renderer {
     if (poi.visible) {
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);      // 半透明の紙が深度を書くと、紙の裏の枠が落ちる
       this.#drawPoi(poi, false);
+      gl.depthMask(true);
       gl.disable(gl.BLEND);
     }
 
@@ -401,7 +411,7 @@ export class Renderer {
     gl.depthMask(false);
 
     bindFbo(gl, this.fbos.bright);
-    this.pBright.use().tex('uSrc', this.fbos.hdr.tex[0]).setFloat('uThreshold', 0.62);
+    this.pBright.use().tex('uSrc', this.fbos.hdr.tex[0]).setFloat('uThreshold', 1.25);
     this.full.draw();
 
     const bw = this.fbos.bright.w, bh = this.fbos.bright.h;

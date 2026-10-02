@@ -7,7 +7,7 @@
 import { Program, makeTex, makeFbo, bindFbo } from './glx.js';
 import { VS_FULL } from '../shaders/common.js';
 import { FS_STEP, FS_NORMAL } from '../shaders/ripple.js';
-import { RIPPLE_N, RIPPLE_SPAN } from './world.js';
+import { RIPPLE_N, RIPPLE_SPAN, TANK } from './world.js';
 
 const MAX_DROPS = 12;
 
@@ -66,10 +66,12 @@ export class Ripple {
         .setInt('uN', this.N)
         .setFloat('uK', 0.42)
         .setFloat('uDamp', 0.9955)
+        .set('uTankHalf', [TANK.halfX, TANK.halfZ])
+        .setFloat('uSpan', RIPPLE_SPAN)
         // 波源は 1 回目のステップにだけ入れる。2 回入れると倍の力で叩くことになる
         .setInt('uDropCount', step === 0 ? this.dropCount : 0);
       if (step === 0 && this.dropCount > 0) {
-        p.set('uDrops[0]', this.drops.subarray(0, this.dropCount * 4));
+        p.vec4Array('uDrops[0]', this.drops, this.dropCount);
       }
       this.full.draw();
       this.cur = dst;

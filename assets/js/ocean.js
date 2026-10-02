@@ -30,7 +30,10 @@ function phillipsH0(N, patch, wind, windDir) {
   const L = (wind * wind) / G;
   // 格子で表しきれない波を捨てる長さ。下限を置いてあるのは、N を上げても
   // 見た目が細かくなりすぎないようにするため（64 だけは表現力の分だけ滑らかになる）
-  const small = Math.max(patch / N * 2.0, 0.012);
+  // 焦点距離は 1/(c·k·slope)。水深 16cm で結ばせるには λ が数 cm まで
+  // 要るので、格子が許す限り短い波を残す。格子の 2 倍より細かい波は
+  // ナイキストを割って砂嵐になるので、そこで切る
+  const small = Math.max(patch / N * 2.0, 0.005);
   const A = 8e-6;
   const wx = Math.cos(windDir), wz = Math.sin(windDir);
   const data = new Float32Array(N * N * 4);
@@ -83,8 +86,11 @@ function phillipsH0(N, patch, wind, windDir) {
   // Phillips は 1/k⁴ を持つので、振幅係数 A の意味が波数の縮尺で何桁も変わる。
   // 海（波長 100m 級）向けの A をそのまま 60cm の舟に使うと波が消える。
   // A は形だけ決めさせ、大きさはここで一度に正規化する。
+  // √2 を掛けるのは、h0 と conj(h0(-k)) を独立に引いていて
+  // エルミート対称になっていないため。IFFT の実部を取ると対称成分だけが
+  // 残り、そのパワーは slopePower が測った値のちょうど半分になる
   const rms = Math.sqrt(slopePower);
-  const scale = rms > 1e-30 ? TARGET_SLOPE / rms : 0;
+  const scale = rms > 1e-30 ? (TARGET_SLOPE * Math.SQRT2) / rms : 0;
   for (let i = 0; i < data.length; i++) data[i] *= scale;
   return data;
 }

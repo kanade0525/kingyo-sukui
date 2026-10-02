@@ -83,6 +83,14 @@ export class Game {
       return;
     }
 
+    // 掬われた金魚の復帰
+    for (const f of this.school.list) {
+      if (f.gone && f.respawnAt !== undefined && this.time >= f.respawnAt) {
+        f.reset(true);
+        f.respawnAt = undefined;
+      }
+    }
+
     const load = this.held.reduce((s, f) => s + FISH_KINDS[f.kind].weight, 0);
     poi.update(dt, this.ripple, load);
     this.school.update(dt, poi, this.ripple);
@@ -139,8 +147,9 @@ export class Game {
         this.#toBowl(f);
         f.gone = true;
         f.held = false;
-        // 掬われたぶん、舟の外から足される体で新しい金魚が入ってくる
-        setTimeout(() => { f.reset(true); }, 900);
+        // 掬われたぶん、舟の外から足される体で新しい金魚が入ってくる。
+        // setTimeout にすると、やり直しと競合して 1 匹だけ再抽選が走る
+        f.respawnAt = this.time + 0.9;
       }
       this.held.length = 0;
     }

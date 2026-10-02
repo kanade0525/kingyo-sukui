@@ -23,14 +23,13 @@
 </div>
 
 <div id="topbar" hidden>
-  <div class="stat"><span class="lbl">スクッタ数</span><span class="val" id="countVal">0</span></div>
-  <div class="stat small"><span class="lbl">テン</span><span class="val" id="scoreVal">0</span></div>
+  <div class="stat"><span class="lbl">すくった数</span><span class="val" id="countVal">0</span></div>
+  <div class="stat small"><span class="lbl">点</span><span class="val" id="scoreVal">0</span></div>
 </div>
 
 <div id="botbar">
   <p id="hint"><b>押している間だけポイが沈みます。</b>金魚の下に入れて持ち上げる。掬えた金魚は左の器へ。</p>
   <div id="tools">
-    <span id="fps"></span>
     <button id="btnPanel" aria-expanded="false" aria-controls="panel">設定</button>
   </div>
 </div>
@@ -51,9 +50,9 @@
     <input type="range" id="wind" min="25" max="150" step="1" value="55">
   </div>
   <div class="row">
-    <div class="rl"><span>FFT 格子</span><span id="fftOut">128²</span></div>
+    <div class="rl"><span>FFT 格子</span><span id="fftOut">256²</span></div>
     <div class="seg" id="segFFT">
-      <button type="button" data-n="64">64</button><button type="button" data-n="128" aria-pressed="true">128</button><button type="button" data-n="256">256</button>
+      <button type="button" data-n="64">64</button><button type="button" data-n="128">128</button><button type="button" data-n="256" aria-pressed="true">256</button>
     </div>
   </div>
   <h3>表示</h3>
@@ -62,6 +61,9 @@
     <div class="seg" id="segDpr">
       <button type="button" data-d="0.7">軽い</button><button type="button" data-d="1" aria-pressed="true">標準</button><button type="button" data-d="2">精細</button>
     </div>
+  </div>
+  <div class="row">
+    <div class="rl"><span>描画速度</span><span id="fps">—</span></div>
   </div>
   <div class="row">
     <div class="rl"><span>水音</span></div>
@@ -82,9 +84,9 @@
   <div class="card" id="cardEnd" hidden aria-hidden="true">
     <h2 id="endTitle">おしまい</h2>
     <div id="tally">
-      <div><span class="t">スクッタ数</span><span class="n" id="endCount">0</span></div>
-      <div><span class="t">テン</span><span class="n" id="endScore">0</span></div>
-      <div><span class="t">ノコリポイ</span><span class="n" id="endPoi">0</span></div>
+      <div><span class="t">すくった数</span><span class="n" id="endCount">0</span></div>
+      <div><span class="t">点</span><span class="n" id="endScore">0</span></div>
+      <div><span class="t">残りポイ</span><span class="n" id="endPoi">0</span></div>
     </div>
     <p id="grade"></p>
     <button class="go" id="btnAgain">もう一度</button>

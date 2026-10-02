@@ -39,13 +39,13 @@ export const FISH_KINDS = [
 ];
 
 /** 手元の器。掬った金魚はここへ入る。舟の左脇、地面の上に置く。
- *  縦画面でカメラが回り込むときは、器も一緒に回す（renderer の uBowlRot）。 */
+ *  置き場所は画面の向きから renderer が決める（uBowlPos）。 */
 export const BOWL = {
   // 置き場所は画面基準で決める（renderer）。ここは画面の右方向・手前方向への量
   across: -0.655,
   toward: 0.20,
-  acrossPortrait: -0.30,
-  towardPortrait: 0.62,
+  acrossPortrait: -0.265,
+  towardPortrait: 0.665,
   /** 実際のワールド座標。画面の向きが決まった時に renderer が書き込む。
    *  器の中で泳ぐ金魚はここを見る。 */
   pos: [-0.655, 0, 0.20],
@@ -59,5 +59,3 @@ export const BOWL = {
 export const MAX_FISH = 16;
 /** 器に泳がせておく数の上限。これを超えたら古いものから引っ込める。 */
 export const MAX_BOWL = 12;
-export const GAME_SECONDS = 60;
-export const POI_STOCK = 3;

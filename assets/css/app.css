@@ -70,7 +70,7 @@ body.playing canvas#scene{cursor:none}
 #hint{margin:0;font-size:12px;line-height:1.7;color:var(--ink-dim);max-width:52ch;pointer-events:none}
 #hint b{color:var(--ink);font-weight:500}
 #tools{margin-left:auto;display:flex;align-items:center;gap:10px;flex:0 0 auto}
-#fps{font-size:10px;color:var(--ink-dim);opacity:.8;font-variant-numeric:tabular-nums;letter-spacing:.06em;white-space:nowrap}
+#fps{color:var(--ink);font-variant-numeric:tabular-nums}
 
 button{
   font-family:var(--body);font-size:12px;color:var(--ink);

@@ -8,7 +8,7 @@
 // 水中パスの α にはカメラからの距離を入れているので、ここをブレンドで
 // 混ぜると距離が壊れ、水面の屈折が狂う。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT } from './common.js';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js';
 
 const BAYER = `
 float bayer4(vec2 fc){
@@ -43,7 +43,7 @@ float prof(float u){
   float nose  = smoothstep(0.0, 0.13, u);
   float taper = 1.0 - smoothstep(0.50, 0.93, u);
   float belly = 0.60 + 0.40 * sin(3.14159265 * clamp(u / 0.72, 0.0, 1.0));
-  return 0.29 * nose * (taper * 0.88 + 0.12) * belly;
+  return 0.255 * nose * (taper * 0.88 + 0.12) * belly;
 }
 
 vec3 shapeOf(float u, float v, int part){
@@ -56,13 +56,13 @@ vec3 shapeOf(float u, float v, int part){
   }
   if(part == 1){              // 尾びれ
     float s = u, t = v * 2.0 - 1.0;
-    float spread = 0.040 + 0.21 * pow(s, 0.75);
-    return vec3(-0.44 - 0.36 * s, t * spread - 0.010 * s, 0.055 * s * s * sin(t * 3.1));
+    float spread = 0.055 + 0.33 * pow(s, 0.70);
+    return vec3(-0.43 - 0.46 * s, t * spread - 0.012 * s, 0.028 * s * s * sin(t * 2.2));
   }
   if(part == 2){              // 背びれ
     float uu = mix(0.26, 0.66, u);
     float back = prof(uu) * 1.16;
-    return vec3(0.5 - uu, back + v * 0.105 * sin(3.14159 * u) * (0.45 + 0.55 * (1.0 - u)), 0.0);
+    return vec3(0.5 - uu, back + v * 0.135 * sin(3.14159 * u) * (0.45 + 0.55 * (1.0 - u)), 0.0);
   }
   if(part == 5){              // 尻びれ
     float uu = mix(0.62, 0.84, u);
@@ -117,7 +117,8 @@ export const FS_FISH = `${HEAD}
 ${NOISE}
 ${SKYLIB}
 ${AMBIENT}
-${BAYER}
+${WATERLIB}
+${CAUSTICS}
 in vec3 vW;
 in vec3 vN;
 in vec2 vUv;
@@ -127,6 +128,18 @@ uniform vec3 uCam;
 uniform int uKind;        // 0 素赤 / 1 更紗 / 2 出目金
 uniform float uSeed;
 out vec4 frag;
+
+/**
+ * 鱗。行ごとに半分ずらした六角格子ふうの並び。
+ * 戻り値は「鱗の中心ほど 1、継ぎ目で 0」。
+ */
+float scales(vec2 uv){
+  vec2 g = vec2(uv.x * 23.0, uv.y * 17.0);
+  g.x += 0.5 * floor(g.y);
+  vec2 f = fract(g) - 0.5;
+  float d = length(f * vec2(1.0, 1.25));
+  return smoothstep(0.50, 0.26, d);
+}
 
 void main(){
   vec3 N = normalize(vN);
@@ -139,49 +152,84 @@ void main(){
 
   float u = vUv.x, v = vUv.y;
   vec3 base;
-  float alpha = 1.0;
 
   if(vPart == 0){
-    float side = abs(sin(v * 6.2831853));          // 横腹ほど 1
-    float up = cos(v * 6.2831853) * 0.5 + 0.5;     // 背が 1、腹が 0
+    float ang = v * 6.2831853;
+    float up = cos(ang) * 0.5 + 0.5;               // 背が 1、腹が 0
+    float side = abs(sin(ang));                    // 横腹ほど 1
+
     if(uKind == 0){
-      base = mix(vec3(1.00, 0.56, 0.20), vec3(0.86, 0.15, 0.015), smoothstep(0.15, 0.85, up));
+      // 素赤。背の濃い緋から、横腹の朱、腹の淡い金へ
+      vec3 back  = vec3(0.330, 0.052, 0.008);
+      vec3 flank = vec3(0.600, 0.135, 0.016);
+      vec3 belly = vec3(0.660, 0.430, 0.200);
+      base = mix(belly, flank, smoothstep(0.08, 0.52, up));
+      base = mix(base, back, smoothstep(0.58, 0.95, up));
     } else if(uKind == 1){
-      float n = fbm(vec2(u * 4.2 + uSeed * 13.0, v * 3.0 + uSeed * 7.0));
-      float blotch = smoothstep(0.44, 0.56, n + up * 0.14);
-      base = mix(vec3(0.94, 0.91, 0.87), vec3(0.90, 0.15, 0.02), blotch);
+      // 更紗。白地に緋の斑。境目は実物どおり硬い
+      float n = fbm(vec2(u * 3.4 + uSeed * 13.0, v * 2.2 + uSeed * 7.0));
+      float blotch = smoothstep(0.49, 0.53, n + up * 0.10);
+      vec3 white = vec3(0.700, 0.665, 0.610);
+      vec3 red   = vec3(0.565, 0.105, 0.016);
+      base = mix(white, red, blotch);
+      // 斑のふちだけ色が濃くなる
+      base = mix(base, red * 0.72, smoothstep(0.46, 0.50, n) * (1.0 - blotch));
     } else {
-      base = vec3(0.045, 0.032, 0.052) + vec3(0.11, 0.03, 0.15) * pow(1.0 - ndv, 3.0);
+      // 出目金。黒天鵞絨に、斜めから見ると青銅の照り
+      base = vec3(0.030, 0.025, 0.034) + vec3(0.085, 0.045, 0.020) * pow(1.0 - ndv, 2.5);
     }
-    // 鱗
-    base *= 0.92 + 0.08 * sin(u * 118.0) * sin(v * 46.0);
-    // 目
-    float eye = min(length(vec2((u - 0.105) * 2.7, v - 0.195)),
-                    length(vec2((u - 0.105) * 2.7, v - 0.805)));
-    float eyeR = uKind == 2 ? 0.052 : 0.034;
-    float m = 1.0 - smoothstep(eyeR * 0.78, eyeR, eye);
-    base = mix(base, vec3(0.015, 0.012, 0.014), m);
-    base += vec3(0.9) * (1.0 - smoothstep(0.004, 0.010, length(vec2((u - 0.085) * 2.7, v - 0.182)))) * m;
+
+    // 鱗。中心が明るく、継ぎ目が暗い。頭と尾柄では小さくなる
+    float sc = scales(vec2(u, v));
+    float amount = smoothstep(0.05, 0.20, u) * (1.0 - smoothstep(0.72, 0.95, u));
+    base *= 1.0 + (sc - 0.45) * 0.52 * amount;
+    // 鱗の真珠光沢。横腹の、こちらを向いた面で強い
+    float pearl = sc * amount * side * pow(1.0 - ndv, 1.5);
+
+    // 目。白目のふちと黒い瞳、小さな写り込み
+    vec2 e1 = vec2((u - 0.100) * 2.6, v - 0.195);
+    vec2 e2 = vec2((u - 0.100) * 2.6, v - 0.805);
+    float eye = min(length(e1), length(e2));
+    float eyeR = uKind == 2 ? 0.062 : 0.038;
+    base = mix(base, vec3(0.28, 0.24, 0.20), 1.0 - smoothstep(eyeR, eyeR * 1.22, eye));
+    base = mix(base, vec3(0.012, 0.010, 0.013), 1.0 - smoothstep(eyeR * 0.74, eyeR * 0.88, eye));
+    float glint = 1.0 - smoothstep(0.004, 0.011,
+      min(length(e1 - vec2(0.012, -0.012)), length(e2 - vec2(0.012, -0.012))));
+    base += vec3(0.55) * glint;
+
+    base += vec3(0.55, 0.46, 0.40) * pearl * 0.16;
   } else {
-    // ひれ。先へ行くほど薄く、体の色をわずかに引き継ぐ
-    vec3 tint = uKind == 2 ? vec3(0.09, 0.07, 0.11)
-              : uKind == 1 ? vec3(0.95, 0.60, 0.48)
-                           : vec3(0.95, 0.38, 0.16);
-    float along = vPart == 1 ? u : (vPart == 2 || vPart == 5 ? v : u);
-    // 透けて見えるぶんは色で表す。ディザで抜くと、小さく映ったときに
-    // 網目だけが見えて、かえって汚くなる
-    base = mix(tint, vec3(0.98, 0.80, 0.74), 0.18 + along * 0.42);
-    base *= 0.88 + 0.24 * fbm(vec2(u * 18.0, v * 6.0));
-    base *= 0.55 + 0.45 * pow(1.0 - ndv, 1.5);     // 斜めに見ると厚く、濃く見える
+    // ひれ。実物は薄くて向こうが透けるので、淡く、先ほど白くする。
+    // 放射状の条（骨）を入れると、一枚の板に見えなくなる
+    vec3 tint = uKind == 2 ? vec3(0.075, 0.062, 0.085)
+              : uKind == 1 ? vec3(0.620, 0.300, 0.215)
+                           : vec3(0.640, 0.215, 0.070);
+    float along  = vPart == 1 ? u : (vPart == 2 || vPart == 5 ? v : u);
+    float across = vPart == 1 ? v : (vPart == 2 || vPart == 5 ? u : v);
+    // 先へ行くほど薄くなるが、朱は最後まで残す。白く抜くと水の上で
+    // 破片に見える
+    base = tint * (1.0 + 0.55 * along);
+    float ray = 0.80 + 0.20 * cos(across * 6.2831853 * (vPart == 1 ? 9.0 : 6.0));
+    base *= ray * (0.93 + 0.12 * fbm(vec2(along * 12.0, across * 4.0)));
+    base *= 0.80 + 0.26 * pow(1.0 - ndv, 1.5);
   }
 
-  if(alpha < 0.999 && bayer4(gl_FragCoord.xy) > alpha) discard;
+  // 水中にいる間は、水面で結んだ光の網が体にも落ちる。
+  // これが無いと、水の上に貼ったシールに見える
+  vec3 caus = vec3(1.0);
+  if(vW.y < -0.002){
+    float below = -vW.y;
+    vec2 entry = vW.xz + uSunHoriz * below * uRefrTan;
+    caus = mix(vec3(1.0), caustics(vW.xz, below), edgeMask(entry));
+  }
 
-  vec3 lit = underSun(N) + underAmbient(N);
+  vec3 lit = underSun(N) * caus + underAmbient(N);
   float up = N.y * 0.5 + 0.5;                      // 背のほうが明るい
-  vec3 col = base * lit * (0.78 + 0.35 * up);
-  col += ggx(N, V, underSunDir(), 0.30, vec3(0.03)) * uSunColor * 0.7;
-  col += base * pow(1.0 - ndv, 4.0) * 0.12 * lit;  // 縁の照り返し
+  vec3 col = base * lit * (0.80 + 0.30 * up);
+  // ひれは薄くて照りが乗らない。胴だけ光らせる
+  float gloss = vPart == 0 ? 0.8 : 0.18;
+  col += ggx(N, V, underSunDir(), 0.24, vec3(0.035)) * uSunColor * gloss * PI;
+  col += base * pow(1.0 - ndv, 4.0) * 0.10 * lit;  // 縁の照り返し
 
   frag = vec4(col, vDist);
 }`;
@@ -274,7 +322,7 @@ void main(){
              + uSunColor * max(dot(-N, uSunDir), 0.0) * 0.30
              + skyAmbient(N) * 0.6;
     col *= lit;
-    col += ggx(N, V, uSunDir, 0.30, vec3(0.03)) * uSunColor * uWet;
+    col += ggx(N, V, uSunDir, 0.30, vec3(0.03)) * uSunColor * uWet * PI;
     alpha = mix(0.72, 0.42, uWet) * (0.55 + 0.45 * lip);
     alpha = mix(alpha, 1.0, pow(1.0 - ndv, 3.0) * 0.4);
   } else if(region == 1){
@@ -282,14 +330,14 @@ void main(){
     col = vec3(0.78, 0.17, 0.09);
     col *= 0.8 + 0.3 * fbm(vUv * 30.0);
     col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
-        + ggx(N, V, uSunDir, 0.20, vec3(0.05)) * uSunColor;
+        + ggx(N, V, uSunDir, 0.20, vec3(0.05)) * uSunColor * PI;
     alpha = 1.0;
   } else {
     // 柄。竹
     float grain = fbm(vec2(vW.y * 70.0, 0.5)) * 0.5 + 0.5;
     col = mix(vec3(0.52, 0.42, 0.24), vec3(0.72, 0.62, 0.40), grain);
     col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
-        + ggx(N, V, uSunDir, 0.35, vec3(0.04)) * uSunColor * 0.6;
+        + ggx(N, V, uSunDir, 0.35, vec3(0.04)) * uSunColor * 0.6 * PI;
     alpha = 1.0;
   }
 
