@@ -4,10 +4,10 @@
 // 進めないので、1 フレーム 1 回だと 256 格子 1m では波が遅すぎて、
 // 水を叩いた輪が広がる前に減衰してしまう。
 
-import { Program, makeTex, makeFbo, bindFbo } from './glx.js?v=202610021520';
-import { VS_FULL } from '../shaders/common.js?v=202610021520';
-import { FS_STEP, FS_NORMAL } from '../shaders/ripple.js?v=202610021520';
-import { RIPPLE_N, RIPPLE_SPAN, TANK } from './world.js?v=202610021520';
+import { Program, makeTex, makeFbo, bindFbo } from './glx.js?v=202610022334';
+import { VS_FULL } from '../shaders/common.js?v=202610022334';
+import { FS_STEP, FS_NORMAL } from '../shaders/ripple.js?v=202610022334';
+import { RIPPLE_N, RIPPLE_SPAN, TANK } from './world.js?v=202610022334';
 
 const MAX_DROPS = 12;
 

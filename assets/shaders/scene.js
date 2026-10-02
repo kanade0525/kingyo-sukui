@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610021520';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610022334';
 
 
 
@@ -531,10 +531,16 @@ void main(){
   // してローブを細くし、きらめきを粒に割る。
   // 画素内のばらつきは α² の空間で足す（Kaplanyan / Tokuyoshi）
   vec2 dsx = dFdx(slope), dsy = dFdy(slope);
-  float a2 = 0.00013 + (dot(dsx, dsx) + dot(dsy, dsy));
+  float a2 = 0.00013 + (dot(dsx, dsx) + dot(dsy, dsy)) * 0.45;
   float rough = sqrt(sqrt(a2));
   // ggx() の D は 1/π を持つので、ランバート側と揃えるため π を掛け戻す
-  col += min(ggx(N, V, uSunDir, rough, vec3(0.02)) * uSunColor * PI, vec3(0.30));
+  //
+  // 頭打ちは低く取る。ここを 0.30 にしていたら、きらめくはずの範囲が
+  // まるごと上限に貼り付いて、平らな灰色の板になっていた。
+  // 画素を測ると、飽和は 0% なのに一帯が 220 前後の無彩色になっていて、
+  // 「白飛び」ではなく「頭打ちの平野」だと分かった。
+  // 1 枚の板にするくらいなら、数画素の粒が散るほうが水に見える
+  col += min(ggx(N, V, uSunDir, rough, vec3(0.02)) * uSunColor * PI, vec3(0.085));
 
   // 水際の明るい線
   col += vec3(0.06, 0.10, 0.13) * pow(1.0 - vEdge, 2.2) * 0.5;

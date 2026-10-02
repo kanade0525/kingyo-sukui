@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610021520';
-import { Poi } from './poi.js?v=202610021520';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL } from './world.js?v=202610021520';
+import { School } from './fish.js?v=202610022334';
+import { Poi } from './poi.js?v=202610022334';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR } from './world.js?v=202610022334';
 
 export const PHASE = { READY: 'ready', PLAY: 'play', OVER: 'over' };
 
@@ -73,6 +73,20 @@ export class Game {
     const poi = this.poi;
 
     this.#updateBowl(dt);
+
+    // エアストーンの泡が水面ではじける。
+    // 1 粒ずつ追わず、出る量に見合う間隔で小さな波紋を立てる。
+    // これが無いと、泡が上がってきて水面にそっと吸い込まれる
+    this.burstAt = (this.burstAt ?? 0) - dt;
+    if (this.burstAt < 0 && this.ripple) {
+      this.burstAt = 0.045 + Math.random() * 0.05;
+      this.ripple.drop(
+        AIR.stone[0] + (Math.random() - 0.5) * 0.030,
+        AIR.stone[2] + (Math.random() - 0.5) * 0.020,
+        0.009 + Math.random() * 0.006,
+        0.00055,
+      );
+    }
 
     if (this.phase !== PHASE.PLAY) {
       // 遊んでいない間も水面は動かす。開始前の画面がただの静止画にならない

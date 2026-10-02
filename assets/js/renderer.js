@@ -9,19 +9,19 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610021520';
-import { VS_FULL } from '../shaders/common.js?v=202610021520';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610021520';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610021520';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610021520';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js?v=202610021520';
-import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR } from '../shaders/props.js?v=202610021520';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh } from './meshes.js?v=202610021520';
-import { Ocean } from './ocean.js?v=202610021520';
-import { Ripple } from './ripple.js?v=202610021520';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR } from './world.js?v=202610021520';
-import { sunFor, DEFAULT_HOUR } from './sky.js?v=202610021520';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610021520';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610022334';
+import { VS_FULL } from '../shaders/common.js?v=202610022334';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610022334';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610022334';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610022334';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js?v=202610022334';
+import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR } from '../shaders/props.js?v=202610022334';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh } from './meshes.js?v=202610022334';
+import { Ocean } from './ocean.js?v=202610022334';
+import { Ripple } from './ripple.js?v=202610022334';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR } from './world.js?v=202610022334';
+import { sunFor, DEFAULT_HOUR } from './sky.js?v=202610022334';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610022334';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -29,6 +29,13 @@ const TANK_OUTER = [
   TANK.halfZ + TANK.draftZ * TANK.rimTop + TANK.rimW,
 ];
 const TANK_OUTER_R = TANK.cornerR + TANK.draftX * TANK.rimTop + TANK.rimW;
+
+/**
+ * 屋台の天幕。高さ 2.2m、間口 4.8m・奥行 4m のパイプテント。
+ * 舟は客が手を伸ばせるよう、天幕の前端より手前（z が大きい側）に置く。
+ * だから日は直接当たり、水面が奥を向いて返す光だけが天幕に当たる。
+ */
+const TENT = { y: 2.2, box: [-2.4, 2.4, -4.0, -0.55] };
 
 const DEG = Math.PI / 180;
 const FOV_Y = 46 * DEG;
@@ -310,7 +317,19 @@ export class Renderer {
       .setFloat('uRefrTan', this.refrTan)
             // 水深 16cm の舟では、屈折のずれが小さすぎてコースティクスがほとんど
       // 出ない（clearwater は水深 1.6m）。見える強さまで誇張している
-      .setFloat('uCausGain', 6.0);
+      .setFloat('uCausGain', 6.0)
+      // 屋台の天幕。舟より奥と真上を覆い、手前は開けておく。
+      // 水面がこちらへ返す光は上と奥を向くので、そこを塞ぐと
+      // 映り込みに構造が入り、灰色の靄が消える
+      .setFloat('uTentY', TENT.y)
+      .set('uTentBox', TENT.box)
+      // 幌布を透かしてくる光。白い布なので日向の空よりずっと暗く、
+      // わずかに暖かい
+      .set('uTentTint', [
+        this.sun.sunColor[0] * 0.105 + this.sun.zenith[0] * 0.5,
+        this.sun.sunColor[1] * 0.100 + this.sun.zenith[1] * 0.5,
+        this.sun.sunColor[2] * 0.092 + this.sun.zenith[2] * 0.5,
+      ]);
     return p;
   }
 

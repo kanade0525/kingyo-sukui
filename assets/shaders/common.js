@@ -220,7 +220,46 @@ uniform float uHaze;
 
 const float PI = 3.14159265;
 
+// 屋台の天幕。
+//
+// 縁日の金魚すくいは、必ずテントで日陰を作って出す。天幕は白、
+// または白と水色（赤・黄・桃もある）の縞のビニル幌布。
+//
+// 絵のうえでもこれが要る。天幕が無いと、水面はどこを向いても
+// のっぺり明るい空しか映さない。照りが一面に広がって彩度が抜け、
+// 水が灰色の靄になる。実際の水面が水に見えるのは、天幕や人影のような
+// 構造のあるものを映しているから。測ってみると、白飛びではなく
+// 「どこも 220 前後の無彩色」という形でそれが出ていた。
+//
+// 舟は客が手を伸ばせるよう天幕の前端より手前に置く。だから日は
+// 直接当たる（コースティクスは残る）。変わるのは映り込みだけ。
+uniform float uTentY;      // 天幕の高さ [m]
+uniform vec4 uTentBox;     // 覆う範囲 xmin, xmax, zmin, zmax
+uniform vec3 uTentTint;    // 幌布を透かしてくる光の色
+
+/** 見上げた先が天幕なら rgb と w=1 を返す。空なら w=0。 */
+vec4 tentLook(vec3 d){
+  if(d.y < 0.02) return vec4(0.0);
+  vec2 h = d.xz * (uTentY / d.y);
+  if(h.x < uTentBox.x || h.x > uTentBox.y || h.y < uTentBox.z || h.y > uTentBox.w) return vec4(0.0);
+  // 縞。幌布の定尺で幅 45cm。白地に水色
+  float st = step(0.5, fract(h.x / 0.45 + 0.25));
+  vec3 c = uTentTint * mix(1.0, 0.42, st);
+  // 骨組み。1m ごとに単管が渡る
+  float bar = 1.0 - smoothstep(0.0, 0.045, abs(fract(h.y + 0.5) - 0.5));
+  c *= 1.0 - bar * 0.60;
+  // 幌の継ぎ目のたるみ
+  c *= 0.90 + 0.14 * sin(h.x * 7.0) * sin(h.y * 2.0);
+  // 端ほど外の光が回り込んで明るい
+  float edge = min(min(h.x - uTentBox.x, uTentBox.y - h.x),
+                   min(h.y - uTentBox.z, uTentBox.w - h.y));
+  c *= 1.0 + smoothstep(0.70, 0.0, edge) * 1.1;
+  return vec4(c, 1.0);
+}
+
 vec3 skyColor(vec3 d){
+  vec4 tent = tentLook(d);
+  if(tent.w > 0.5) return tent.rgb;
   float up = clamp(d.y, -1.0, 1.0);
   vec3 c = up > 0.0
     ? mix(uSkyHorizon, uSkyZenith, pow(up, 0.42))
@@ -234,6 +273,7 @@ vec3 skyColor(vec3 d){
 /** 太陽の本体まで描く版。背景のフルスクリーンパスだけで使う。 */
 vec3 skyWithSun(vec3 d){
   vec3 c = skyColor(d);
+  if(tentLook(d).w > 0.5) return c;      // 天幕の向こうの太陽は見えない
   float mu = max(dot(d, uSunDir), 0.0);
   c += uSunColor * smoothstep(0.999985, 0.999993, mu) * 320.0;   // 角半径 0.26°
   return c;
