@@ -7,9 +7,53 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610020915';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610021121';
 
 
+
+/**
+ * 視差遮蔽（POM）。
+ *
+ * 1 段の視差は「模様をずらす」だけだが、こちらは高さの場に向かって
+ * 視線を進め、潜った所で止める。手前の山が奥を隠すので、本当に凹凸が
+ * あるように見える。代わりに、1 画素あたり何度も高さを引く。
+ *
+ * uDetail で段数を変える。真上に近いほど視差そのものが小さいので、
+ * 見込み角に応じて段数も落とす。
+ */
+const POM = `
+uniform float uDetail;      // 0 = 使わない, 1 = 標準, 2 = 細かく
+
+float groundHeight(vec2 q){
+  float c;
+  return gravel(q, 165.0, c) * 0.55 + fbm(q * 120.0) * 0.20;
+}
+
+vec2 groundPOM(vec2 p, vec3 V, float depth){
+  if(uDetail < 0.5) return p;
+  float ndv = max(V.y, 0.08);
+  // 真上から見ているときは、ずれようがないので段数を使わない
+  int steps = int(clamp(mix(4.0, 16.0, (1.0 - ndv) * 1.6) * uDetail, 3.0, 18.0));
+  vec2 dir = -V.xz / ndv;
+  float inv = 1.0 / float(steps);
+  vec2 stepUV = dir * depth * inv;
+
+  float h = 1.0;
+  vec2 q = p;
+  float hs = groundHeight(q);
+  for(int i = 0; i < 18; i++){
+    if(i >= steps || hs >= h) break;
+    h -= inv;
+    q += stepUV;
+    hs = groundHeight(q);
+  }
+  // 1 段戻って線形に詰める
+  vec2 qPrev = q - stepUV;
+  float a = hs - h;
+  float b = groundHeight(qPrev) - (h + inv);
+  return mix(q, qPrev, clamp(a / max(a - b, 1e-4), 0.0, 1.0));
+}
+`;
 
 // ---------------------------------------------------------------- 空と地面
 
@@ -17,6 +61,7 @@ export const FS_SKY = `${HEAD}
 ${NOISE}
 ${SKYLIB}
 ${MATERIAL}
+${POM}
 in vec2 vNdc;
 uniform vec3 uCam;
 uniform vec3 uRight, uUp, uFwd;
@@ -79,8 +124,7 @@ void main(){
       // 四つを足す。平らな面に模様を貼っただけだと、斜めから見ても
       // 模様が動かないので、すぐ「絵が貼ってある」と分かってしまう。
       float cav0;
-      float h0 = gravel(p.xz, 165.0, cav0) * 0.55 + fbm(p.xz * 120.0) * 0.20;
-      vec2 pp = parallax(p.xz, h0, -d, vec3(0.0, 1.0, 0.0), 0.012);
+      vec2 pp = groundPOM(p.xz, -d, 0.016);
 
       float coarse = fbm(pp * 2.4);
       float fine = fbm(pp * 120.0);
@@ -116,7 +160,7 @@ void main(){
       base = base * (uSunColor * max(dot(n, uSunDir), 0.0) * sh
                    + skyAmbient(n) * contactAO(p) * ao)
            + ggx(n, -d, uSunDir, rough, vec3(0.035)) * uSunColor * PI * sh * 0.5
-           + clearcoat(n, -d, uSunDir, wet, uSunColor * sh, sky);
+           + clearcoat(n, -d, uSunDir, wet, uSunColor * sh, sky) * 0.55;
       float fog = exp(-t * 0.085);
       col = mix(col, base, clamp(fog, 0.0, 1.0));
     }
@@ -156,6 +200,7 @@ ${NOISE}
 ${SKYLIB}
 ${AMBIENT}
 ${MATERIAL}
+${POM}
 ${WATERLIB}
 ${CAUSTICS}
 in vec3 vW;
@@ -191,14 +236,20 @@ void main(){
     // 編んだ織り目。それに、折り畳んだ跡の折り目（白く色が抜ける）と、
     // 水を張ったときの大きなたるみ。この三つを入れると、
     // 「青く塗った箱」ではなく「水を張ったシート」になる
-    // 壁は縦に、底は平面に貼る。壁で xz を使うと目が引き伸ばされる
-    vec2 sp0 = region == 1 ? vec2(vW.x + vW.z, vW.y) : vW.xz;
-    vec2 wb0;
-    float w0 = tarpWeave(sp0, wb0);
-    // 織り目の山を視差でずらす。テープが編んであることが見えてくる
-    vec2 sp = region == 0 ? parallax(sp0, w0, V, vec3(0.0, 1.0, 0.0), 0.0024) : sp0;
-    vec2 wb;
-    float w = tarpWeave(sp, wb);
+    // 織り目は三面投影で貼る。平面投影だと、壁で目が引き伸びる
+    vec3 tw3 = triWeights(N, 6.0);
+    vec2 wbx, wby, wbz;
+    // 底は視差でずらす。テープが編んであることが見えてくる
+    vec2 spY = vW.xz;
+    if(uDetail > 0.5){
+      vec2 tmp; float hY = tarpWeave(spY, tmp);
+      spY = parallax(spY, hY, V, vec3(0.0, 1.0, 0.0), 0.0026);
+    }
+    float wX = tarpWeave(vW.zy, wbx);
+    float wY = tarpWeave(spY, wby);
+    float wZ = tarpWeave(vW.xy, wbz);
+    float w = wX * tw3.x + wY * tw3.y + wZ * tw3.z;
+    vec2 wb = wbx * tw3.x + wby * tw3.y + wbz * tw3.z;
     float sag = fbm(vW.xz * 4.0);
     float creaseN = fbm(region == 1 ? vec2((vW.x + vW.z) * 13.0, vW.y * 2.6)
                                     : vW.xz * vec2(9.0, 3.2));
@@ -284,7 +335,11 @@ void main(){
                       : vec2(vW.z, vW.y * 3.0 + vW.x * 0.6);
     float seed = floor((lengthX ? vW.z : vW.x) * 2.0) * 0.7;
 
-    float ring = woodRings(wp * vec2(2.6, 2.2), seed);
+    // 板目も三面で混ぜる。面が切り替わる所で模様が食い違わない
+    vec3 ww3 = triWeights(N, 4.0);
+    float ring = woodRings(vec2(vW.z, vW.y * 3.0) * vec2(2.6, 2.2), seed) * ww3.x
+               + woodRings(vec2(vW.x, vW.z * 3.0) * vec2(2.6, 2.2), seed) * ww3.y
+               + woodRings(vec2(vW.x, vW.y * 3.0) * vec2(2.6, 2.2), seed) * ww3.z;
     float fibre = fbm(wp * vec2(90.0, 320.0));
     float grain = ring * 0.72 + fibre * 0.28;
     vec3 wood = mix(vec3(0.028, 0.018, 0.011), vec3(0.118, 0.078, 0.046), grain);

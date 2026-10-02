@@ -119,6 +119,18 @@ vec2 parallax(vec2 p, float h, vec3 V, vec3 N, float depth){
 }
 
 /**
+ * 三面投影の重み。
+ *
+ * 平面投影は、その面に対して斜めになるほど模様が引き伸びる。
+ * 法線の向きで三方向の投影を混ぜると、どの向きの面でも伸びない。
+ * sharp を上げるほど、どれか一面に寄る（境目は硬くなる）。
+ */
+vec3 triWeights(vec3 n, float sharp){
+  vec3 w = pow(abs(n), vec3(sharp));
+  return w / max(w.x + w.y + w.z, 1e-4);
+}
+
+/**
  * 異方性のハイライト。
  *
  * 木目や織り目は、繊維の向きに沿って光が伸びる。等方の GGX だと

@@ -9,7 +9,7 @@
 // 壁は Neumann（傾き 0）にして反射させる。たらいの中の波は端で跳ね返るので、
 // これが無いと波紋が端で消えて嘘くさくなる。
 
-import { HEAD } from './common.js?v=202610020915';
+import { HEAD } from './common.js?v=202610021121';
 
 export const FS_STEP = `${HEAD}
 uniform sampler2D uPrev;   // r = h[n], g = h[n-1]

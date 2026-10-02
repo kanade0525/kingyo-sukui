@@ -9,18 +9,18 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610020915';
-import { VS_FULL } from '../shaders/common.js?v=202610020915';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610020915';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610020915';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610020915';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js?v=202610020915';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh } from './meshes.js?v=202610020915';
-import { Ocean } from './ocean.js?v=202610020915';
-import { Ripple } from './ripple.js?v=202610020915';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH } from './world.js?v=202610020915';
-import { sunFor, DEFAULT_HOUR } from './sky.js?v=202610020915';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610020915';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610021121';
+import { VS_FULL } from '../shaders/common.js?v=202610021121';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610021121';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610021121';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610021121';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js?v=202610021121';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh } from './meshes.js?v=202610021121';
+import { Ocean } from './ocean.js?v=202610021121';
+import { Ripple } from './ripple.js?v=202610021121';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH } from './world.js?v=202610021121';
+import { sunFor, DEFAULT_HOUR } from './sky.js?v=202610021121';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610021121';
 
 const DEG = Math.PI / 180;
 const FOV_Y = 46 * DEG;
@@ -67,6 +67,7 @@ export class Renderer {
     // 既定では切る。上の #makeMsaa のコメントを参照
     this.wantMsaa = false;
     this.pitchDeg = 65;
+    this.detail = 1;
 
     // 切り分け用。?plain で後処理を全部外し、?nodof で被写界深度だけ外す。
     // 「手元では出ないが実機で出る」類を、往復一回で切り分けるため
@@ -104,6 +105,8 @@ export class Renderer {
 
   setDpr(scale) {
     this.dprScale = scale;
+    // 視差遮蔽は 1 画素あたり何度も高さを引くので、画質と一緒に上げ下げする
+    this.detail = scale < 0.9 ? 0 : scale > 1.5 ? 2 : 1;
     this.resize(true);
   }
 
@@ -310,7 +313,8 @@ export class Renderer {
      .setFloat('uPatch', PATCH)
      .setFloat('uFftN', this.ocean.N)
      .setFloat('uRipSpan', RIPPLE_SPAN)
-     .set('uTankHalf', [TANK.halfX, TANK.halfZ]);
+     .set('uTankHalf', [TANK.halfX, TANK.halfZ])
+     .setFloat('uDetail', this.detail);
     return p;
   }
 
@@ -408,6 +412,7 @@ export class Renderer {
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
+        .setFloat('uDetail', this.detail)
         .setFloat('uRimTop2', TANK.rimTop)
         .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
         .set('uBowlPos', this.bowlPos)
@@ -438,6 +443,7 @@ export class Renderer {
         .setFloat('uTanHalf', this.tanH)
         .setFloat('uAspect', this.aspect)
         .setFloat('uGroundY', TANK.outBottom)
+        .setFloat('uDetail', this.detail)
         .setFloat('uRimTop2', TANK.rimTop)
         .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
         .set('uTankOuter', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
@@ -459,6 +465,7 @@ export class Renderer {
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
+        .setFloat('uDetail', this.detail)
         .setFloat('uRimTop2', TANK.rimTop)
         .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
         .set('uBowlPos', this.bowlPos)
@@ -488,6 +495,7 @@ export class Renderer {
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
+        .setFloat('uDetail', this.detail)
         .setFloat('uRimTop2', TANK.rimTop)
         .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
         .set('uBowlPos', this.bowlPos)
@@ -521,6 +529,7 @@ export class Renderer {
         .setFloat('uDepth', TANK.depth)
         .setFloat('uBowlRim', BOWL.rimY)
         .setFloat('uGroundY', TANK.outBottom)
+        .setFloat('uDetail', this.detail)
         .setFloat('uRimTop2', TANK.rimTop)
         .set('uTankOuter2', [TANK.halfX + TANK.rimW, TANK.halfZ + TANK.rimW])
         .set('uBowlPos', this.bowlPos)
