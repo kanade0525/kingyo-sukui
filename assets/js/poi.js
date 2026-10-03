@@ -4,8 +4,8 @@
 // 水中で速く動かしたときの方が一気に傷む。斜めに入れて静かに抜くのが
 // 上手い人のやり方なので、ゲームとしてもそこに報いる。
 
-import { TANK, POI } from './world.js?v=202610030248';
-import { clamp, lerp } from './mat.js?v=202610030248';
+import { TANK, POI } from './world.js?v=202610030454';
+import { clamp, lerp } from './mat.js?v=202610030454';
 
 export class Poi {
   constructor() {
@@ -93,11 +93,23 @@ export class Poi {
       }
     }
 
-    // 紙は濡れるだけで破れない（いまは掬う手応えだけを見たいので）。
-    // 消耗の式は後で戻せるよう、計算はせず health は 1 のまま置く。
     this.wet = this.submerged
       ? Math.min(1, this.wet + dt * 1.1)
       : Math.max(0, this.wet - dt * 0.12);
     this.sag = (0.0035 + 0.004 * load) * this.wet;
+
+    // 紙の消耗。
+    //
+    // 実物は、水に浸かっている時間そのものより「水中で速く動かしたとき」に
+    // 一気に傷む。斜めに静かに入れて、水の抵抗を受けないように抜くのが
+    // 上手い人のやり方なので、ゲームとしてもそこに報いる。
+    //
+    // 丁寧に動かせば 40 秒近くもち、水中で振り回せば 8 秒ほどで破れる。
+    // 実物の 5 号より優しいが、初見の人が数十秒で終わらない程度にはしてある。
+    if (this.submerged && !this.broke) {
+      const drag = Math.min(this.speed, 0.55);
+      this.health -= dt * (0.012 + drag * 0.30 + load * 0.022);
+      if (this.health <= 0) { this.health = 0; this.broke = true; }
+    }
   }
 }

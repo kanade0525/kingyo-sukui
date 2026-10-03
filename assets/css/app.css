@@ -14,7 +14,9 @@
   --hi-soft:#ef7a3c;
   --beni:#c42f1c;       /* 紅 */
 
-  --disp:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+  /* 見出し。解星デコール（Kaisei Decol）は、少しクセのあるフォルムで
+     昭和レトロ・大正ロマンの雰囲気が出る明朝。縁日の看板の字に近い */
+  --disp:"Kaisei Decol","Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
   --body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
 }
 

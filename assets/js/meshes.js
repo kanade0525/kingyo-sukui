@@ -4,8 +4,8 @@
 // 形は頂点シェーダで作る。泳ぎのうねりを毎フレーム CPU で計算して
 // 転送するのは無駄で、しかも法線を作り直す手間が増えるため。
 
-import { Mesh } from './glx.js?v=202610030248';
-import { TANK, POI, BOWL, AIR } from './world.js?v=202610030248';
+import { Mesh } from './glx.js?v=202610030454';
+import { TANK, POI, BOWL, AIR } from './world.js?v=202610030454';
 
 /** 位置・法線・領域の 3 属性を貯めて Mesh にする小さな入れ物。 */
 class Builder {
@@ -329,7 +329,8 @@ export function bowlMesh(gl) {
   const x = 0, z = 0;   // 置き場所は uBowlPos で動かす
   const SEG = 40;
   const body = new Builder();
-  const ground = TANK.outBottom;
+  // 浮いているので、外側は底で丸く閉じる。地面までは伸ばさない
+  const ground = floorY - 0.009;
 
   const ring = (r0, y0, r1, y1, region, nOut) => {
     const base = body.pos.length / 3;
@@ -351,7 +352,20 @@ export function bowlMesh(gl) {
   };
 
   // 外側（下すぼまり）、縁の上面、内側、底
-  ring(outerR * 0.72, ground, outerR, rimY, 4, 1);
+  ring(outerR * 0.52, ground, outerR * 0.88, floorY + 0.012, 4, 1);
+  ring(outerR * 0.88, floorY + 0.012, outerR, rimY, 4, 1);
+  // 外底のふた
+  {
+    const c = body.pos.length / 3;
+    body.pos.push(x, ground, z); body.nrm.push(0, -1, 0); body.reg.push(4);
+    const b0 = body.pos.length / 3;
+    for (let j = 0; j <= SEG; j++) {
+      const a = (j / SEG) * Math.PI * 2;
+      body.pos.push(x + Math.cos(a) * outerR * 0.52, ground, z + Math.sin(a) * outerR * 0.52);
+      body.nrm.push(0, -1, 0); body.reg.push(4);
+    }
+    for (let j = 0; j < SEG; j++) body.idx.push(c, b0 + j, b0 + j + 1);
+  }
   ring(outerR, rimY, innerR, rimY, 4, 0);
   ring(innerR, rimY, innerR * 0.78, floorY, 5, -1);
 

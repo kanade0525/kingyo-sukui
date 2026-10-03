@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030248';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030454';
 
 
 
@@ -56,19 +56,14 @@ float groundShadow(vec3 p){
   vec2 q = p.xz + uSunDir.xz * ((uRimTop - p.y) / sy);
   sh *= smoothstep(-0.004, 0.028, outerDist(q));
 
-  // 器
-  vec2 b = p.xz + uSunDir.xz * ((uBowlRimY - p.y) / sy) - uBowlPos.xz;
-  sh *= smoothstep(-0.002, 0.022, length(b) - uBowlR);
+  // お椀は水面に浮いているので、地面には影を落とさない
 
   return mix(0.26, 1.0, sh);   // 影の中にも空からの光は回り込む
 }
 
 /** 接地の陰り。物の足元がいちばん濃い。 */
 float contactAO(vec3 p){
-  float ao = 1.0 - 0.55 * exp(-max(outerDist(p.xz), 0.0) / 0.045);
-  float db = length(p.xz - uBowlPos.xz) - uBowlR;
-  ao *= 1.0 - 0.45 * exp(-max(db, 0.0) / 0.030);
-  return ao;
+  return 1.0 - 0.55 * exp(-max(outerDist(p.xz), 0.0) / 0.045);
 }
 
 void main(){

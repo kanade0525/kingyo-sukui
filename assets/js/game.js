@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610030248';
-import { Poi } from './poi.js?v=202610030248';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610030248';
+import { School } from './fish.js?v=202610030454';
+import { Poi } from './poi.js?v=202610030454';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610030454';
 
 /** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
 const h11 = (x) => {
@@ -34,6 +34,8 @@ export class Game {
     // 店じまい。ポイを貸してもらえないので、水面をなでることしかできない
     this.closed = false;
     this.touch = null;
+    this.renewAt = undefined;
+    this.holding = false;
     this.time = 0;          // シェーダへ渡す経過時間。止めない
     this.reset();
   }
@@ -81,6 +83,10 @@ export class Game {
 
   press(down) {
     if (this.phase !== PHASE.PLAY) return;
+    // 押している状態は Game 側でも覚えておく。
+    // 破れて新しいポイに替わるとき poi.reset() が押下を落とすので、
+    // 指を離していないのに沈まなくなってしまう
+    this.holding = down;
     if (this.closed) { this.stroking = down; return; }
     this.poi.pressed = down;
   }
@@ -111,7 +117,7 @@ export class Game {
       this.school.update(dt, { submerged: false, x: 0, z: 0, y: 1 }, this.ripple);
       return;
     }
-    poi.visible = true;
+    poi.visible = !poi.broke;
 
     if (this.phase !== PHASE.PLAY) {
       // 遊んでいない間も水面は動かす。開始前の画面がただの静止画にならない
@@ -129,6 +135,24 @@ export class Game {
 
     const load = this.held.reduce((s, f) => s + (f.turtle ? TURTLE.weight : FISH_KINDS[f.kind].weight), 0);
     poi.update(dt, this.ripple, load);
+
+    // 破れた。乗っていた金魚は水へ戻り、少し置いて新しいポイが渡される
+    if (poi.broke && this.renewAt === undefined) {
+      for (const f of this.held) { f.held = false; f.holdOff[0] = f.holdOff[1] = 0; }
+      this.held.length = 0;
+      this.showUntil = 0;
+      poi.locked = false;
+      this.renewAt = this.time + 1.3;
+      this.ripple.drop(poi.x, poi.z, POI.radius * 1.6, -0.0030);
+    }
+    if (this.renewAt !== undefined && this.time >= this.renewAt) {
+      this.renewAt = undefined;
+      const x = poi.x, z = poi.z;
+      poi.reset();
+      poi.x = poi.tx = x; poi.z = poi.tz = z;
+      poi.visible = true;
+      poi.pressed = !!this.holding;   // 指を離していなければ、そのまま沈む
+    }
     this.school.update(dt, poi, this.ripple);
 
     // 乗せる判定。

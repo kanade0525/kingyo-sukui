@@ -9,19 +9,19 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610030248';
-import { VS_FULL } from '../shaders/common.js?v=202610030248';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610030248';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610030248';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610030248';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610030248';
-import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610030248';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610030248';
-import { Ocean } from './ocean.js?v=202610030248';
-import { Ripple } from './ripple.js?v=202610030248';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610030248';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610030248';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610030248';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610030454';
+import { VS_FULL } from '../shaders/common.js?v=202610030454';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610030454';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610030454';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610030454';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610030454';
+import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610030454';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610030454';
+import { Ocean } from './ocean.js?v=202610030454';
+import { Ripple } from './ripple.js?v=202610030454';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610030454';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610030454';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610030454';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -189,7 +189,10 @@ export class Renderer {
     // 余白はほとんど取らない。舟で画面を埋める
     const needW = (acrossScreen + 0.004) / (tanH * aspect);
     const needH = (intoScreen * Math.sin(pitch) + 0.030) / tanH;
-    const dist = Math.max(needW, needH) * 1.005;
+    // 縦画面は、舟の比（0.67）と画面の比（0.46）が違うので、
+    // 横を合わせると上下に 3 割の余白が出る。長辺の端を少しだけ切って詰める。
+    // 切りすぎると側面の縁が消えて、舟が何だか分からなくなる
+    const dist = Math.max(needW * (portrait ? 0.90 : 1.0), needH) * 1.005;
 
     const base = [0, -0.01, 0];
     const eye = [
@@ -382,9 +385,16 @@ export class Renderer {
     this.#lights(p); this.#water(p);
     p.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
     PAD.leaves.forEach((c, i) => {
-      p.set('uPadPos', [c.x, c.z])
+      // 浮いた葉は水の動きでゆっくり流れて回る。
+      // 貼り付いたまま動かないと、波を立てても葉だけ止まって見える
+      const ph = i * 2.1;
+      const dx = Math.sin(time * 0.11 + ph) * PAD.drift
+               + Math.sin(time * 0.047 + ph * 1.7) * PAD.drift * 1.6;
+      const dz = Math.cos(time * 0.093 + ph * 1.3) * PAD.drift
+               + Math.cos(time * 0.039 + ph) * PAD.drift * 1.4;
+      p.set('uPadPos', [c.x + dx, c.z + dz])
        .setFloat('uPadR', c.r)
-       .setFloat('uYaw', c.yaw)
+       .setFloat('uYaw', c.yaw + Math.sin(time * 0.055 + ph) * 0.22)
        .setFloat('uSeed', 0.137 + i * 0.311);
       this.mPad.draw();
     });
@@ -420,6 +430,12 @@ export class Renderer {
   render(state) {
     const gl = this.gl;
     const { time, school, poi } = state;
+
+    // お椀は水面に浮かべてあるので、波に合わせて上下に揺れる。
+    // 水面の高さを GPU から読み戻すのは高くつくので、
+    // 波が穏やかな前提で、ゆるい二つの正弦で代える
+    this.bowlPos[1] = Math.sin(time * 0.9) * 0.0024 + Math.sin(time * 1.37 + 1.1) * 0.0015;
+    BOWL.pos[1] = this.bowlPos[1];
 
     this.ocean.update(time);
     this.ripple.update();
@@ -460,6 +476,21 @@ export class Renderer {
       this.#lights(p); this.#water(p);
       p.mat4('uVP', this.vp).set('uCam', this.cam).setInt('uUnderwater', 1);
       this.mGear.draw();
+    }
+    // お椀の沈んでいる側は、水面を通して見える
+    {
+      const p = this.pTank.use();
+      this.#lights(p); this.#water(p);
+      p.mat4('uVP', this.vp).set('uCam', this.cam)
+        .setInt('uUnderwater', 0)
+        .setFloat('uDepth', TANK.depth)
+        .setFloat('uBowlRim', BOWL.rimY)
+        .setFloat('uGroundY', TANK.outBottom)
+        .setFloat('uRimTop2', TANK.rimTop)
+        .set('uTankOuter2', TANK_OUTER)
+        .set('uBowlPos', this.bowlPos)
+        .setInt('uFishCount', 0);
+      this.mBowl.body.draw();
     }
     this.#drawFish(school, false, time);
     // ポイは水中パスにも必ず描く。

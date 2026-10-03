@@ -34,11 +34,16 @@ for await (const file of walk(join(ROOT, 'assets'))) {
   if (out !== src) { await writeFile(file, out); n++; }
 }
 
-const html = join(ROOT, 'index.html');
-const h = await readFile(html, 'utf8');
-const h2 = h
-  .replace(/(src="assets\/js\/main\.js)(\?v=\d+)?(")/, `$1?v=${VERSION}$3`)
-  .replace(/(href="assets\/css\/app\.css)(\?v=\d+)?(")/, `$1?v=${VERSION}$3`);
-if (h2 !== h) await writeFile(html, h2);
+// HTML 側。モジュールと CSS の読み込みに同じ版を押す。
+// perf.html は renderer と game を直接読むので、そこも忘れずに
+let pages = 0;
+for (const name of ['index.html', 'perf.html']) {
+  const file = join(ROOT, name);
+  const h = await readFile(file, 'utf8');
+  const h2 = h
+    .replace(/(assets\/js\/[\w.]+\.js)(\?v=\d+)?/g, `$1?v=${VERSION}`)
+    .replace(/(href="assets\/css\/app\.css)(\?v=\d+)?(")/, `$1?v=${VERSION}$3`);
+  if (h2 !== h) { await writeFile(file, h2); pages++; }
+}
 
-console.log(`版 ${VERSION} を押した（js ${n} 本 + index.html）`);
+console.log(`版 ${VERSION} を押した（js ${n} 本 + HTML ${pages} 枚）`);

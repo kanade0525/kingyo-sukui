@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>金魚掬い — 実機で測る</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="assets/css/app.css?v=202610030454">
+<style>
+  body{overflow:auto}
+  #sheet{
+    position:relative;z-index:5;max-width:760px;margin:0 auto;
+    padding:28px 20px calc(40px + env(safe-area-inset-bottom,0px));
+    font-size:13px;line-height:1.9;color:var(--ink);
+  }
+  #sheet h1{font-family:var(--disp);font-size:22px;letter-spacing:.14em;margin:0 0 6px}
+  #sheet p{margin:0 0 14px;color:var(--ink-dim)}
+  #scene{position:fixed;inset:0;z-index:0;filter:saturate(.5) brightness(.45)}
+  table{border-collapse:collapse;width:100%;margin:10px 0 20px;font-variant-numeric:tabular-nums}
+  th,td{padding:7px 10px;text-align:right;border-bottom:1px solid rgba(0,0,0,.10)}
+  th:first-child,td:first-child{text-align:left}
+  th{font-size:11px;letter-spacing:.1em;color:var(--ink-dim);font-weight:500}
+  td.ok{color:#1b6b3a;font-weight:700}
+  td.ng{color:#9c2b2b;font-weight:700}
+  #go{font-family:var(--disp);font-size:14px;letter-spacing:.16em;padding:11px 30px;
+      background:var(--hi);color:#fff;border-color:var(--hi)}
+  #env{font-size:11px;color:var(--ink-dim);word-break:break-all;margin:0 0 20px}
+  #now{min-height:1.9em;font-size:12px;color:var(--hi)}
+  pre{background:rgba(0,0,0,.05);padding:12px;border-radius:8px;font-size:11px;
+      line-height:1.7;white-space:pre-wrap;word-break:break-all}
+</style>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<div id="sheet">
+  <h1>実機で測る</h1>
+  <p>この端末で、設定ごとに何フレーム出るかを実測します。描画中は画面がちらつきます。速い端末なら 10 秒ほど、遅い端末ほど長くかかります。</p>
+  <p id="env">—</p>
+  <button id="go">測る</button>
+  <p id="now"></p>
+  <div id="out"></div>
+</div>
+
+<script type="module">
+import { Renderer } from './assets/js/renderer.js?v=202610030454';
+import { Game } from './assets/js/game.js?v=202610030454';
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('scene');
+let renderer = null, game = null;
+
+/** GPU の名前。分からない環境もある。 */
+function envText(gl) {
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  const gpu = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : '（名前を取れません）';
+  const dpr = window.devicePixelRatio || 1;
+  return `${gpu}　/　画面 ${innerWidth}×${innerHeight} · 実画素比 ${dpr}`;
+}
+
+/**
+ * 1 つの設定で測る。
+ *
+ * 最初の数フレームはシェーダの用意や確保が混じるので捨てる。
+ * 代表値は平均ではなく中央値を取る。1 フレームだけ長い回（GC など）に
+ * 引きずられると、設定の優劣が逆に見えることがあるため。
+ */
+async function measure(dprScale, fft, frames = 45, warm = 12) {
+  renderer.setDpr(dprScale);
+  renderer.setFftSize(fft);
+  renderer.resize(true);
+  const times = [];
+  let last = performance.now();
+  return new Promise((resolve) => {
+    const step = () => {
+      const now = performance.now();
+      const dt = now - last;
+      last = now;
+      game.update(Math.min(dt / 1000, 1 / 12));
+      renderer.render({ time: game.time, school: game.school, poi: game.poi, bowl: game.bowl });
+      times.push(dt);
+      if (times.length < frames + warm) return requestAnimationFrame(step);
+      const kept = times.slice(warm).sort((a, b) => a - b);
+      resolve(kept[kept.length >> 1]);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+$('go').addEventListener('click', async () => {
+  $('go').disabled = true;
+  $('out').innerHTML = '';
+  const rows = [];
+  const cases = [
+    ['軽い', 0.7, 128], ['軽い', 0.7, 256],
+    ['標準', 1.0, 128], ['標準', 1.0, 256],
+    ['精細', 2.0, 128], ['精細', 2.0, 256],
+  ];
+  for (const [name, d, n] of cases) {
+    $('now').textContent = `${name} / FFT ${n}² を測っています…`;
+    const ms = await measure(d, n);
+    rows.push({ name, d, n, ms });
+  }
+  $('now').textContent = '';
+
+  // 60fps は 16.7ms、30fps は 33.3ms
+  const cell = (ms) => {
+    const fps = 1000 / ms;
+    const cls = ms <= 17.5 ? 'ok' : ms >= 34 ? 'ng' : '';
+    return `<td>${ms.toFixed(1)}</td><td class="${cls}">${fps.toFixed(0)}</td>`;
+  };
+  $('out').innerHTML = `
+    <table>
+      <tr><th>解像度</th><th>FFT</th><th>1 フレーム (ms)</th><th>fps</th></tr>
+      ${rows.map((r) => `<tr><td>${r.name}（×${r.d}）</td><td>${r.n}²</td>${cell(r.ms)}</tr>`).join('')}
+    </table>
+    <p>緑が 60fps 以上、赤が 30fps 未満です。いまの既定は「軽い / 256²」。
+    緑になる組み合わせのうち、いちばん重いものを設定から選ぶのがちょうどよい点です。</p>
+    <pre>${envText(renderer.gl)}
+${rows.map((r) => `${r.name}(${r.d}) FFT${r.n}  ${r.ms.toFixed(1)}ms  ${(1000 / r.ms).toFixed(0)}fps`).join('\n')}</pre>
+    <p>この四角の中身をそのまま貼れば、どの環境でどうだったか伝わります。</p>`;
+  $('go').disabled = false;
+});
+
+try {
+  renderer = new Renderer(canvas);
+  renderer.resize();
+  game = new Game();
+  game.ripple = renderer.ripple;
+  game.start();
+  $('env').textContent = envText(renderer.gl);
+} catch (err) {
+  $('env').textContent = `動かせません: ${err.message}`;
+  $('go').disabled = true;
+}
+</script>
+</body>
+</html>
