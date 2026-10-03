@@ -4,8 +4,8 @@
 // 整列させるより、それぞれが勝手に漂って壁で向きを変えるほうが
 // 実際の金魚に近い動きになる。
 
-import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD, BOWL } from './world.js?v=202610030826';
-import { clamp, lerp, wrapAngle } from './mat.js?v=202610030826';
+import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD, BOWL } from './world.js?v=202610030834';
+import { clamp, lerp, wrapAngle } from './mat.js?v=202610030834';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -81,14 +81,17 @@ class Fish {
     if (this.p[2] < -edgeZ) dz += (-edgeZ - this.p[2]) / 0.05;
 
     // ポイが沈んでいたら逃げる。
+    //
+    // 逃げ足は全体に底上げしてある。遅いと、ポイを置いておくだけで
+    // 勝手に乗ってしまい、掬った手応えが無い。
     // 逃げ足を速くしすぎると人間の手では追いつけず、一匹も掬えなくなる。
     // 自分と同じくらいの深さに来たときだけ嫌がる、という程度にしてある
     let alarmed = false;
     // 沈んだポイには強く反応する。水の上にあるときも、影が差すぶん
     // 少しだけ嫌がる
     // 用心深い個体ほど、遠くから気づいて強く逃げる
-    const near = (poi.submerged ? 0.115 : 0.070) * this.wary;
-    const force = (poi.submerged ? 4.2 : 1.4) * this.wary;
+    const near = (poi.submerged ? 0.150 : 0.094) * this.wary;
+    const force = (poi.submerged ? 5.8 : 2.0) * this.wary;
     if (Math.abs(poi.y - this.p[1]) < 0.16) {
       const ax = this.p[0] - poi.x, az = this.p[2] - poi.z;
       const d = Math.hypot(ax, az);
@@ -141,7 +144,7 @@ class Fish {
 
     const want = Math.atan2(dz, dx) + this.wander * 0.22;
     const turn = wrapAngle(want - this.yaw);
-    const rate = alarmed ? 9 * this.wary : 3.2;
+    const rate = alarmed ? 12.5 * this.wary : 3.2;
     const step = turn * Math.min(1, dt * rate);
     this.yaw += step;
     this.bend = lerp(this.bend, clamp(-step / Math.max(dt, 1e-3) * 0.012, -0.09, 0.09), dt * 10);
@@ -152,8 +155,8 @@ class Fish {
       this.dashTimer = rand(2.5, 8);
       this.speed = this.cruise * rand(2.6, 4.2);
     }
-    const goal = alarmed ? this.cruise * (this.turtle ? 3.0 : 5.0 * this.wary) : this.cruise;
-    this.speed = lerp(this.speed, goal, dt * (alarmed ? 11 : 1.3));
+    const goal = alarmed ? this.cruise * (this.turtle ? 3.4 : 6.8 * this.wary) : this.cruise;
+    this.speed = lerp(this.speed, goal, dt * (alarmed ? 15 : 1.3));
     this.beat = this.turtle
       ? lerp(this.beat, 2.8 + this.speed * 60, dt * 4)
       : lerp(this.beat, 6 + this.speed * 125, dt * 6);

@@ -214,6 +214,6 @@ export const RAIN = {
  * 以前は底のシェーダが画素ごとに全部を舐めていたので 30 で止めていて、
  * 52 匹いるのに影が 30 個しか出ていなかった。
  */
-export const MAX_FISH = 56;
+export const MAX_FISH = 108;
 /** 器に泳がせておく数の上限。これを超えたら古いものから引っ込める。 */
 export const MAX_BOWL = 12;

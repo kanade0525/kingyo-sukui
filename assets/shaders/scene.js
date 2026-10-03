@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030826';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030834';
 
 
 
@@ -30,8 +30,8 @@ import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } f
  * ついでに、影を魚の形にできる。
  */
 export const FS_FISHSHADOW = `${HEAD}
-uniform vec4 uFish[56];    // xy = 位置, z = 体長, w = 濃さ
-uniform vec4 uFishB[56];   // xy = 進む向き, z = ぼけ具合, w = 1 なら亀
+uniform vec4 uFish[108];    // xy = 位置, z = 体長, w = 濃さ
+uniform vec4 uFishB[108];   // xy = 進む向き, z = ぼけ具合, w = 1 なら亀
 uniform int uFishCount;
 uniform vec2 uArea;        // この絵が覆う範囲（半分）
 in vec2 vUv;
@@ -40,7 +40,7 @@ out vec4 frag;
 void main(){
   vec2 p = (vUv * 2.0 - 1.0) * uArea;
   float dark = 0.0;
-  for(int i = 0; i < 56; i++){
+  for(int i = 0; i < 108; i++){
     if(i >= uFishCount) break;
     vec4 f = uFish[i];
     vec4 b = uFishB[i];
