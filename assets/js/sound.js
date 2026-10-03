@@ -21,9 +21,26 @@
 
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 
+/**
+ * 録音を使う層。
+ *
+ * ほとんどは合成だが、この 2 つだけ CC0 の録音がある。
+ * ただし種類が違う（ニュージーランドのセミ、西洋の音階付き風鈴）ので、
+ * 合成版も残して切り替えられるようにしてある。出どころは
+ * assets/sound/CREDITS.md。
+ */
+const CLIPS = {
+  cicada: 'assets/sound/semi.ogg',
+  furin: 'assets/sound/furin.ogg',
+};
+
 export class Sound {
   constructor() {
     this.ctx = null;
+    // 'synth' = 合成, 'rec' = 録音
+    this.source = 'rec';
+    this.buffers = {};
+    this.recNodes = {};
     this.on = true;
     this.master = null;
     this.layers = null;
@@ -69,11 +86,19 @@ export class Sound {
     this.noise = buf;
 
     this.layers = {};
+    // 合成側の元栓。録音に切り替えたときに閉じる
+    this.synthGate = {};
     for (const k of ['pump', 'cicada', 'minmin', 'furin', 'festival', 'crowd', 'insect', 'rain']) {
       const g = ctx.createGain();
       g.gain.value = 0;
       g.connect(this.master);
       this.layers[k] = g;
+      if (CLIPS[k]) {
+        const sg = ctx.createGain();
+        sg.gain.value = 1;
+        sg.connect(g);
+        this.synthGate[k] = sg;
+      }
     }
     // 遠くから聞こえるものは、残響にも送る
     for (const k of ['festival', 'crowd', 'furin']) this.layers[k].connect(this.verb);
@@ -81,6 +106,7 @@ export class Sound {
     this.#startCicada();
     this.#startMinmin();
     this.#startRain();
+    this.#loadClips();
     this.#startCrowd();
     this.#startFestival();
     this.#loop('furin', () => 4 + Math.random() * 9, () => this.#furin());
@@ -92,6 +118,38 @@ export class Sound {
   setEnabled(v) {
     this.on = v;
     if (this.master) this.master.gain.setTargetAtTime(v ? 0.9 * this.mix.master : 0, this.ctx.currentTime, 0.08);
+  }
+
+  /** 合成と録音の切り替え。 */
+  setSource(mode) {
+    this.source = mode;
+    this.apply();
+  }
+
+  /**
+   * 録音を読み込んで、その層に重ねて流す。
+   * 合成側と録音側は別の枝にしておき、apply() でどちらかを 0 にする。
+   */
+  async #loadClips() {
+    for (const [key, url] of Object.entries(CLIPS)) {
+      try {
+        const res = await fetch(url);
+        const buf = await this.ctx.decodeAudioData(await res.arrayBuffer());
+        this.buffers[key] = buf;
+        const g = this.ctx.createGain();
+        g.gain.value = 0;
+        g.connect(this.layers[key]);
+        const src = this.ctx.createBufferSource();
+        src.buffer = buf;
+        src.loop = true;
+        src.connect(g);
+        src.start(this.ctx.currentTime + Math.random() * 2);
+        this.recNodes[key] = g;
+      } catch {
+        // 読めなければ合成のまま。鳴らないよりはよい
+      }
+    }
+    this.apply();
   }
 
   /** 画面のつまみから、層ごとの音量を動かす。 */
@@ -141,6 +199,13 @@ export class Sound {
       // 層が増えたときに want の鍵が欠けても落ちないようにする
       const w = this.want[k] ?? 0;
       this.layers[k].gain.setTargetAtTime(w * vol[k] * (this.mix[k] ?? 1), t, 1.2);
+    }
+    // 録音がある層は、合成と録音のどちらかだけを鳴らす
+    const useRec = this.source === 'rec';
+    for (const k of Object.keys(CLIPS)) {
+      const g = this.recNodes[k];
+      if (g) g.gain.setTargetAtTime(useRec ? 1 : 0, t, 0.5);
+      if (this.synthGate[k]) this.synthGate[k].gain.setTargetAtTime(useRec ? 0 : 1, t, 0.5);
     }
   }
 
@@ -339,7 +404,7 @@ export class Sound {
         g.gain.setValueAtTime(0, ht);
         g.gain.linearRampToValueAtTime(0.22 * lv * amp, ht + 0.004);
         g.gain.exponentialRampToValueAtTime(0.0004, ht + dec);
-        o.connect(g).connect(this.layers.furin);
+        o.connect(g).connect(this.synthGate.furin ?? this.layers.furin);
         o.start(ht);
         o.stop(ht + dec + 0.05);
       }
@@ -401,7 +466,7 @@ export class Sound {
       const sg = ctx.createGain();
       sg.gain.value = 0.3;
       slow.connect(sg).connect(sw.gain);
-      src.connect(bp).connect(am).connect(sw).connect(this.layers.cicada);
+      src.connect(bp).connect(am).connect(sw).connect(this.synthGate.cicada ?? this.layers.cicada);
       src.start(); lfo.start(); slow.start();
     }
   }

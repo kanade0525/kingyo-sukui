@@ -27,7 +27,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@400;700&family=Shippori+Mincho+B1:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="assets/css/app.css?v=202610030535">
+<link rel="stylesheet" href="assets/css/app.css?v=202610030554">
 </head>
 <body>
 
@@ -63,6 +63,12 @@
     <button type="button" id="btnNow" class="wide">いまの時刻と天気に戻す</button>
   </div>
   <h3>音</h3>
+  <div class="row">
+    <div class="rl"><span>蝉と風鈴</span><span id="srcNote">録音</span></div>
+    <div class="seg" id="segSrc">
+      <button type="button" data-s="rec" aria-pressed="true">録音</button><button type="button" data-s="synth">合成</button>
+    </div>
+  </div>
   <div class="row tight">
     <label class="rl" for="v_master"><span>全体</span><span id="o_master">100</span></label>
     <input type="range" id="v_master" min="0" max="200" step="5" value="100">
@@ -139,6 +145,6 @@
 </div>
 
 
-<script type="module" src="assets/js/main.js?v=202610030535"></script>
+<script type="module" src="assets/js/main.js?v=202610030554"></script>
 </body>
 </html>

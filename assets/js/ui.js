@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 export class UI {
   constructor(handlers) {
     this.el = {
-      fps: $('fps'), hourOut: $('hourOut'), wxNote: $('wxNote'),
+      fps: $('fps'), hourOut: $('hourOut'), wxNote: $('wxNote'), srcNote: $('srcNote'),
       loading: $('loading'),
       panel: $('panel'), btnPanel: $('btnPanel'),
       fallback: $('fallback'), fallbackWhy: $('fallbackWhy'),
@@ -47,6 +47,10 @@ export class UI {
       const on = b.getAttribute('aria-pressed') !== 'true';
       b.setAttribute('aria-pressed', String(on));
       handlers.audio(on);
+    });
+    this.#seg('segSrc', 's', (v) => {
+      handlers.soundSource(v);
+      this.el.srcNote.textContent = v === 'rec' ? '録音' : '合成';
     });
     // 音の調整つまみ。層ごとに動かせる
     for (const k of ['master','pump','cicada','minmin','furin','festival','crowd','insect','rain']) {

@@ -4,8 +4,8 @@
 // 整列させるより、それぞれが勝手に漂って壁で向きを変えるほうが
 // 実際の金魚に近い動きになる。
 
-import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD, BOWL } from './world.js?v=202610030535';
-import { clamp, lerp, wrapAngle } from './mat.js?v=202610030535';
+import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD, BOWL } from './world.js?v=202610030554';
+import { clamp, lerp, wrapAngle } from './mat.js?v=202610030554';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
