@@ -27,7 +27,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@400;700&family=Shippori+Mincho+B1:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="assets/css/app.css?v=202610030528">
+<link rel="stylesheet" href="assets/css/app.css?v=202610030535">
 </head>
 <body>
 
@@ -62,29 +62,6 @@
   <div class="row">
     <button type="button" id="btnNow" class="wide">いまの時刻と天気に戻す</button>
   </div>
-  <h3>水面</h3>
-  <div class="row">
-    <label class="rl" for="amp"><span>波の高さ</span><span id="ampOut">0.10</span></label>
-    <input type="range" id="amp" min="0" max="250" step="5" value="10">
-  </div>
-  <div class="row">
-    <label class="rl" for="wind"><span>風速</span><span id="windOut">0.34 m/s</span></label>
-    <input type="range" id="wind" min="25" max="150" step="1" value="34">
-  </div>
-  <div class="row">
-    <div class="rl"><span>FFT 格子</span><span id="fftOut">256²</span></div>
-    <div class="seg" id="segFFT">
-      <button type="button" data-n="64">64</button><button type="button" data-n="128">128</button><button type="button" data-n="256" aria-pressed="true">256</button>
-    </div>
-  </div>
-  <h3>表示</h3>
-  <div class="row">
-    <div class="rl"><span>見下ろす角度</span><span id="pitchOut">標準</span></div>
-    <div class="seg" id="segPitch">
-      <button type="button" data-p="55">浅め</button><button type="button" data-p="65" aria-pressed="true">標準</button><button type="button" data-p="87">真上</button>
-    </div>
-  </div>
-        </div>
   <h3>音</h3>
   <div class="row tight">
     <label class="rl" for="v_master"><span>全体</span><span id="o_master">100</span></label>
@@ -122,6 +99,29 @@
     <label class="rl" for="v_rain"><span>雨</span><span id="o_rain">100</span></label>
     <input type="range" id="v_rain" min="0" max="200" step="5" value="100">
   </div>
+  <h3>水面</h3>
+  <div class="row">
+    <label class="rl" for="amp"><span>波の高さ</span><span id="ampOut">0.10</span></label>
+    <input type="range" id="amp" min="0" max="250" step="5" value="10">
+  </div>
+  <div class="row">
+    <label class="rl" for="wind"><span>風速</span><span id="windOut">0.34 m/s</span></label>
+    <input type="range" id="wind" min="25" max="150" step="1" value="34">
+  </div>
+  <div class="row">
+    <div class="rl"><span>FFT 格子</span><span id="fftOut">256²</span></div>
+    <div class="seg" id="segFFT">
+      <button type="button" data-n="64">64</button><button type="button" data-n="128">128</button><button type="button" data-n="256" aria-pressed="true">256</button>
+    </div>
+  </div>
+  <h3>表示</h3>
+  <div class="row">
+    <div class="rl"><span>見下ろす角度</span><span id="pitchOut">標準</span></div>
+    <div class="seg" id="segPitch">
+      <button type="button" data-p="55">浅め</button><button type="button" data-p="65" aria-pressed="true">標準</button><button type="button" data-p="87">真上</button>
+    </div>
+  </div>
+        </div>
   <div class="row">
     <div class="rl"><span>描画速度</span><span id="fps">—</span></div>
   </div>
@@ -139,6 +139,6 @@
 </div>
 
 
-<script type="module" src="assets/js/main.js?v=202610030528"></script>
+<script type="module" src="assets/js/main.js?v=202610030535"></script>
 </body>
 </html>

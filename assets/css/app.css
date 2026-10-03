@@ -62,11 +62,17 @@ button:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
 /* ---------- 設定 ---------- */
 #panel{
   position:fixed;right:16px;bottom:calc(60px + env(safe-area-inset-bottom,0px));z-index:3;
-  width:258px;max-width:calc(100vw - 32px);
+  width:272px;max-width:calc(100vw - 32px);
+  /* 高さを決めずに下端から積み上げていたので、項目が増えたとき
+     画面の上へはみ出して、そこから先に触れなくなっていた */
+  max-height:calc(100vh - 96px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+  overflow-y:auto;overscroll-behavior:contain;
   background:var(--ai-pane);border:1px solid rgba(23,34,43,.16);border-radius:12px;
   padding:14px;display:flex;flex-direction:column;gap:12px;
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
 }
+#panel::-webkit-scrollbar{width:6px}
+#panel::-webkit-scrollbar-thumb{background:rgba(23,34,43,.22);border-radius:3px}
 #panel h3{margin:2px 0 -2px;font-family:var(--disp);font-size:12px;font-weight:500;letter-spacing:.14em;color:var(--hi)}
 .row{display:flex;flex-direction:column;gap:6px}
 .rl{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px;color:var(--ink-dim)}

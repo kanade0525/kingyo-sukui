@@ -4,8 +4,8 @@
 // 整列させるより、それぞれが勝手に漂って壁で向きを変えるほうが
 // 実際の金魚に近い動きになる。
 
-import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD } from './world.js?v=202610030528';
-import { clamp, lerp, wrapAngle } from './mat.js?v=202610030528';
+import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD, BOWL } from './world.js?v=202610030535';
+import { clamp, lerp, wrapAngle } from './mat.js?v=202610030535';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -100,6 +100,20 @@ class Fish {
       }
     }
 
+    // 浮かべたお椀。中へは入れないし、突き抜けもしない。
+    // お椀の底より深い所を泳いでいる魚は、下をくぐれる
+    const underBowl = this.p[1] < BOWL.floorY - 0.014;
+    if (!underBowl) {
+      const bx = this.p[0] - BOWL.pos[0], bz = this.p[2] - BOWL.pos[2];
+      const bd = Math.hypot(bx, bz);
+      const keep = BOWL.outerR + this.len * 0.8;
+      if (bd < keep) {
+        const w = (1 - bd / keep) * 3.4;
+        dx += (bx / (bd || 1e-4)) * w;
+        dz += (bz / (bd || 1e-4)) * w;
+      }
+    }
+
     // 浮き葉の下へ逃げる。日陰は金魚にとっての隠れ場所で、
     // 驚かされると真っ先にここへ入る。落ち着いている時も、
     // 近くにあればそちらに寄っていく
@@ -167,6 +181,20 @@ class Fish {
     const mx = TANK.halfX - 0.035, mz = TANK.halfZ - 0.035;
     this.p[0] = clamp(this.p[0], -mx, mx);
     this.p[2] = clamp(this.p[2], -mz, mz);
+
+    // お椀の中にも入れない。
+    // 向きを変えさせるだけだと、勢いがついているときに突き抜ける。
+    // 入ってしまったら、いちばん近い外側へ押し出す
+    if (this.p[1] >= BOWL.floorY - 0.014) {
+      const bx = this.p[0] - BOWL.pos[0], bz = this.p[2] - BOWL.pos[2];
+      const bd = Math.hypot(bx, bz);
+      const keep = BOWL.outerR + this.len * 0.45;
+      if (bd < keep) {
+        const k = keep / (bd || 1e-4);
+        this.p[0] = BOWL.pos[0] + bx * k;
+        this.p[2] = BOWL.pos[2] + bz * k;
+      }
+    }
 
     // 水面近くを速く泳ぐと波が立つ
     if (ripple && this.p[1] > -0.05 && this.speed > this.cruise * 1.8) {
