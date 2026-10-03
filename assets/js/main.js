@@ -4,11 +4,11 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610030505';
-import { Game } from './game.js?v=202610030505';
-import { UI } from './ui.js?v=202610030505';
-import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610030505';
-import { Sound } from './sound.js?v=202610030505';
+import { Renderer } from './renderer.js?v=202610030528';
+import { Game } from './game.js?v=202610030528';
+import { UI } from './ui.js?v=202610030528';
+import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610030528';
+import { Sound } from './sound.js?v=202610030528';
 
 const canvas = document.getElementById('scene');
 let renderer = null;
@@ -21,12 +21,11 @@ const ui = new UI({
   hour(v) { renderer?.setHour(v); },
   weather(w) { renderer?.setWeather(w); game.rain = w === 2 ? 1 : 0; },
   audio(on) { sound.setEnabled(on); if (on) sound.unlock(); },
+  mix(k, v) { sound.setMix(k, v); },
   now() { applyNow(true); },
   amp(v) { renderer?.setAmp(v); },
   wind(v) { renderer?.setWind(v); },
   fft(n) { renderer?.setFftSize(n); },
-  dpr(d) { renderer?.setDpr(d); },
-  msaa(on) { renderer?.setMsaa(on); },
   pitch(d) { renderer?.setPitch(d); },
 });
 
@@ -127,6 +126,32 @@ let fpsAcc = 0, fpsN = 0, fpsShown = null;
 // 1 フレーム目は水面の場がまだ立ち上がっていない
 let warmup = 3;
 
+/**
+ * 解像度の自動調整。
+ *
+ * つまみで選ばせていたが、実機では「軽い」しか快適に動かないので、
+ * 選ぶ意味が無かった。代わりに、出ているフレームレートを見て
+ * 機械ごとにちょうどの所へ寄せる。
+ * 速い機械では上げて精細に、遅い機械では下げて滑らかに。
+ */
+const DPR = { min: 0.5, max: 1.4, step: 1.08 };
+let fpsWin = [], lastTune = 0;
+
+function tuneResolution(now, dt) {
+  fpsWin.push(dt);
+  if (fpsWin.length > 90) fpsWin.shift();
+  if (now - lastTune < 2000 || fpsWin.length < 60) return;
+  lastTune = now;
+  const sorted = [...fpsWin].sort((a, b) => a - b);
+  const med = sorted[sorted.length >> 1];
+  const cur = renderer.dprScale;
+  // 60fps なら 16.7ms。余裕を見て 19ms を上限、13ms を下限にする
+  if (med > 0.019 && cur > DPR.min) renderer.setDpr(Math.max(DPR.min, cur / DPR.step));
+  else if (med < 0.013 && cur < DPR.max) renderer.setDpr(Math.min(DPR.max, cur * DPR.step));
+  else return;
+  fpsWin = [];
+}
+
 function frame(now) {
   const dt = Math.min((now - last) / 1000, 1 / 12);
   last = now;
@@ -140,6 +165,7 @@ function frame(now) {
   renderer.render({ time: game.time, school: game.school, poi: game.poi, bowl: game.bowl });
 
   if (warmup > 0 && --warmup === 0) ui.ready();
+  if (warmup === 0) tuneResolution(now, dt);
 
   fpsAcc += dt; fpsN++;
   if (fpsAcc > 0.5) {

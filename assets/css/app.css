@@ -108,3 +108,16 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 
 .wide{width:100%;font-size:11px;padding:8px 0}
 
+
+/* 音の入切。設定の隣に出す */
+#btnSound{min-width:38px;padding:7px 0;text-align:center;font-size:14px;line-height:1}
+#btnSound[aria-pressed=false]{color:var(--ink-dim)}
+#btnSound[aria-pressed=false] #soundMark::after{
+  content:"";position:absolute;width:20px;height:1.5px;background:currentColor;
+  transform:translate(-14px,7px) rotate(-38deg);
+}
+#btnSound{position:relative}
+
+.row.tight{gap:2px}
+.row.tight .rl{font-size:11px}
+.row.tight input[type=range]{height:16px}

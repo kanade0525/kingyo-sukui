@@ -7,7 +7,7 @@
 // ひれは不透明に描く。水中パスの α にはカメラからの距離を入れていて、
 // ブレンドすると距離が壊れ、水面の屈折が狂うため。薄さは色で表す。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030505';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030528';
 
 // ---------------------------------------------------------------- 金魚
 
@@ -190,7 +190,7 @@ in vec2 vUv;
 in float vDist;
 flat in int vPart;
 uniform vec3 uCam;
-uniform int uKind;        // 0 小赤 / 1 黒出目金 / 2 更紗出目金
+uniform int uKind;        // 0 小赤 / 1 小黒 / 2 黒出目金 / 3 更紗出目金
 uniform float uSeed;
 out vec4 frag;
 
@@ -237,6 +237,12 @@ void main(){
       base = mix(belly, flank, smoothstep(0.08, 0.52, up));
       base = mix(base, back, smoothstep(0.58, 0.95, up));
     } else if(uKind == 1){
+      // 小黒。和金型の黒い金魚。出目金の黒天鵞絨より、やや鉄っぽい。
+      // 真上から形が読める程度には明るさを残す
+      base = vec3(0.048, 0.046, 0.052)
+           + vec3(0.070, 0.058, 0.040) * pow(1.0 - ndv, 2.0)
+           + vec3(0.035, 0.034, 0.033) * up;
+    } else if(uKind == 2){
       // 黒出目金。黒天鵞絨に、斜めから見ると青銅の照り。
       // 真っ黒にすると真上から形がまるで読めず、黒い塊になる。
       // 実物も、光が当たる面はうっすら茶を帯びて明るい
@@ -266,12 +272,12 @@ void main(){
 
     // 目。白目のふちと黒い瞳、小さな写り込み
     // 目。出目金は横へ張り出した球の頂点に来るので、v が真横（0.25 / 0.75）
-    float ev = uKind == 0 ? 0.195 : 0.250;
-    float eu = uKind == 0 ? 0.100 : 0.118;
+    float ev = uKind <= 1 ? 0.195 : 0.250;
+    float eu = uKind <= 1 ? 0.100 : 0.118;
     vec2 e1 = vec2((u - eu) * 2.6, v - ev);
     vec2 e2 = vec2((u - eu) * 2.6, v - (1.0 - ev));
     float eye = min(length(e1), length(e2));
-    float eyeR = uKind == 0 ? 0.029 : 0.062;   // 出目金は目が張り出す
+    float eyeR = uKind <= 1 ? 0.029 : 0.062;   // 出目金は目が張り出す
     base = mix(base, vec3(0.30, 0.25, 0.20), 1.0 - smoothstep(eyeR, eyeR * 1.14, eye));
     base = mix(base, vec3(0.012, 0.010, 0.013), 1.0 - smoothstep(eyeR * 0.74, eyeR * 0.88, eye));
     float glint = 1.0 - smoothstep(0.003, 0.008,
@@ -300,7 +306,7 @@ void main(){
                            : vec3(0.600, 0.175, 0.055);
     float across = vPart == 1 ? v : (vPart == 2 || vPart == 5 ? u : v);
     // 更紗は、ひれにも緋と白が斑に出る
-    if(uKind == 2){
+    if(uKind == 3){
       float fn = fbm(vec2(along * 5.0 + uSeed * 17.0, across * 4.0));
       root = mix(root, vec3(0.390, 0.360, 0.325), smoothstep(0.46, 0.56, fn));
       tip = mix(tip, vec3(0.450, 0.420, 0.385), smoothstep(0.46, 0.56, fn));
@@ -344,7 +350,7 @@ void main(){
   vec3 col = base * lit * (0.80 + 0.30 * up);
   // ひれは薄くて照りが乗らない。胴だけ光らせる。
   // ここを胴と同じにすると、ひれ一面に鏡面が乗ってセロファンに見える
-  float gloss = vPart == 0 ? (uKind == 1 ? 1.5 : 0.8) : 0.03;
+  float gloss = vPart == 0 ? (uKind >= 1 && uKind <= 2 ? 1.4 : 0.8) : 0.03;
   float grough = vPart == 0 ? 0.24 : 0.55;
   col += ggx(N, V, underSunDir(), grough, vec3(0.035)) * uSunColor * gloss * PI;
   col += base * pow(1.0 - ndv, 4.0) * 0.10 * lit;  // 縁の照り返し

@@ -11,7 +11,7 @@
 // 水深は 14.5cm しかないので、15cm を超える茎は途中で倒れて水面の下を這う。
 // 真上から見る絵でこれは大事で、まっすぐ立てると茎が点にしか見えない。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030505';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030528';
 
 // ---------------------------------------------------------------- 浮き葉
 
@@ -446,11 +446,12 @@ export const VS_RAIN = `${HEAD}
 layout(location=0) in vec3 aUvi;   // xy = 板の中 (-1..1), z = 粒の通し番号
 uniform mat4 uVP;
 uniform vec3 uCam;
-uniform vec3 uRight, uUp;
+uniform vec3 uRight;
 uniform vec2 uArea;      // ふらせる範囲（舟の内寸の半分より少し広く）
 uniform float uTime;
 uniform float uCount;
-uniform float uFall;     // 落ちはじめる高さ
+uniform vec4 uFall;      // x = 高さ, y = 速さ, z = 傾き(tan), w = 風の向き
+uniform float uStreak;
 out vec2 vP;
 out float vFade;
 
@@ -459,19 +460,26 @@ float h11(float x){ return fract(sin(x * 127.1) * 43758.5453); }
 void main(){
   float i = aUvi.z;
   float r1 = h11(i * 1.7), r2 = h11(i * 3.1 + 5.0), r3 = h11(i * 7.3 + 11.0);
-  // 1 周の長さ。粒ごとに違う速さで、ばらばらに落ちてくる
-  float period = 0.70 + r1 * 0.55;
-  float t = fract(uTime / period + r2);
-  float y = uFall * (1.0 - t);
 
-  vec2 at = (vec2(r1, r3) * 2.0 - 1.0) * uArea;
-  float rad = 0.0007 + r2 * 0.0006;
+  // 落ちる向き。鉛直ではなく、風で斜めに降る。
+  // 真上から見る絵では、鉛直の筋は点に潰れて見えない
+  vec2 wind = vec2(cos(uFall.w), sin(uFall.w)) * uFall.z;
+  vec3 fd = normalize(vec3(wind.x, -1.0, wind.y));   // 傾き 0 なら真下
+
+  float speed = uFall.y * (0.85 + r2 * 0.30);
+  float period = uFall.x / speed;
+  float t = fract(uTime / period + r1 * 3.7 + r3);
+
+  // 着水する位置を先に決めて、そこから逆に遡る。
+  // こうしておくと、波紋を落とす側（game.js）と場所が揃う
+  vec2 land = (vec2(r1, r3) * 2.0 - 1.0) * uArea;
+  vec3 at = vec3(land.x, 0.0, land.y) - fd * (uFall.x * t);
+
+  float rad = 0.0008 + r2 * 0.0006;
   vP = aUvi.xy;
-  // 縦に引き伸ばす。速いので筋に見える
-  vec3 w = vec3(at.x, y, at.y)
-         + uRight * aUvi.x * rad
-         + uUp * aUvi.y * rad * (7.0 + r1 * 9.0);
-  vFade = step(i, uCount) * smoothstep(0.0, 0.08, t) * step(0.0, y);
+  // 筋は落ちる向きに伸ばす
+  vec3 w = at + uRight * aUvi.x * rad + fd * aUvi.y * uStreak * (0.7 + r2 * 0.6);
+  vFade = step(i, uCount) * smoothstep(0.0, 0.06, t) * smoothstep(1.0, 0.94, t);
   gl_Position = uVP * vec4(w, 1.0);
 }`;
 

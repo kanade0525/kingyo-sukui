@@ -27,7 +27,9 @@ export class Sound {
     this.on = true;
     this.master = null;
     this.layers = null;
-    this.want = { pump: 1, cicada: 0, furin: 0, festival: 0, crowd: 0, insect: 0 };
+    this.want = { pump: 1, cicada: 0, minmin: 0, furin: 0, festival: 0, crowd: 0, insect: 0, rain: 0 };
+    // 画面から動かせる係数。1 が既定
+    this.mix = { master: 1, pump: 1, cicada: 1, minmin: 1, furin: 1, festival: 1, crowd: 1, insect: 1, rain: 1 };
   }
 
   /** 最初の操作で呼ぶ。自動再生は塞がれているので、ここまで遅らせる。 */
@@ -42,7 +44,7 @@ export class Sound {
     this.ctx = ctx;
 
     this.master = ctx.createGain();
-    this.master.gain.value = this.on ? 0.9 : 0;
+    this.master.gain.value = this.on ? 0.9 * this.mix.master : 0;
     // 層が重なった時に割れないよう、最後に軽く頭を抑える
     const lim = ctx.createDynamicsCompressor();
     lim.threshold.value = -8;
@@ -67,7 +69,7 @@ export class Sound {
     this.noise = buf;
 
     this.layers = {};
-    for (const k of ['pump', 'cicada', 'furin', 'festival', 'crowd', 'insect']) {
+    for (const k of ['pump', 'cicada', 'minmin', 'furin', 'festival', 'crowd', 'insect', 'rain']) {
       const g = ctx.createGain();
       g.gain.value = 0;
       g.connect(this.master);
@@ -77,6 +79,8 @@ export class Sound {
     for (const k of ['festival', 'crowd', 'furin']) this.layers[k].connect(this.verb);
 
     this.#startCicada();
+    this.#startMinmin();
+    this.#startRain();
     this.#startCrowd();
     this.#startFestival();
     this.#loop('furin', () => 4 + Math.random() * 9, () => this.#furin());
@@ -87,21 +91,33 @@ export class Sound {
 
   setEnabled(v) {
     this.on = v;
-    if (this.master) this.master.gain.setTargetAtTime(v ? 0.9 : 0, this.ctx.currentTime, 0.08);
+    if (this.master) this.master.gain.setTargetAtTime(v ? 0.9 * this.mix.master : 0, this.ctx.currentTime, 0.08);
+  }
+
+  /** 画面のつまみから、層ごとの音量を動かす。 */
+  setMix(key, v) {
+    this.mix[key] = v;
+    if (!this.ctx) return;
+    if (key === 'master') this.setEnabled(this.on);
+    else this.apply();
   }
 
   /**
    * 絵と同じ光の状態から、層ごとの音量を決める。
    * daylight 1 = 昼、lanternOn 1 = 提灯が点いている、closed 1 = 店じまい。
    */
-  setScene({ daylight, lanternOn, closed }) {
+  setScene({ daylight, lanternOn, closed, weather }) {
     const day = clamp01(daylight);
     const lit = clamp01(lanternOn);
     const shut = clamp01(closed);
     this.want = {
       pump: 1,
+      // 雨。降っていれば、昼夜を問わず鳴る
+      rain: weather === 2 ? 1 : 0,
       // 蝉は昼だけ。日が傾くと鳴き止む
-      cicada: day * day,
+      // 蝉。雨の日は鳴かない
+      cicada: day * day * (weather === 2 ? 0 : 1),
+      minmin: day * day * (weather === 2 ? 0 : 1),
       // 風鈴も昼。夕方まで少し残る
       furin: Math.pow(day, 0.6),
       // 祭囃子と人声は、提灯が点いているあいだ。店じまいで引く
@@ -119,9 +135,12 @@ export class Sound {
     // 層ごとの音量。実測して決めた。
     // 最初に置いた値は全部で頂点 0.069（ほぼ聞こえない）だったので、
     // 合わせて 6 倍ほどまで上げてある
-    const vol = { pump: 0.52, cicada: 0.30, furin: 1.10, festival: 0.34, crowd: 0.26, insect: 0.38 };
+    const vol = { pump: 0.085, cicada: 0.26, minmin: 0.80, furin: 1.10,
+                  festival: 0.34, crowd: 0.26, insect: 0.38, rain: 0.30 };
     for (const k of Object.keys(this.layers)) {
-      this.layers[k].gain.setTargetAtTime(this.want[k] * vol[k], t, 1.2);
+      // 層が増えたときに want の鍵が欠けても落ちないようにする
+      const w = this.want[k] ?? 0;
+      this.layers[k].gain.setTargetAtTime(w * vol[k] * (this.mix[k] ?? 1), t, 1.2);
     }
   }
 
@@ -154,6 +173,14 @@ export class Sound {
     // 跳ねた水が落ちる粒
     const n = out ? 8 : 4;
     for (let i = 0; i < n; i++) this.#bubble(t + 0.02 + Math.random() * 0.22, 0.8 + Math.random() * 1.3);
+  }
+
+  /** 雨粒が水面を打つ音。game.js が着水の瞬間に呼ぶ。 */
+  raindrop() {
+    if (!this.ctx || !this.on || this.want.rain < 0.1) return;
+    // 一粒ずつ鳴らすと数が多すぎるので、間引く
+    if (Math.random() > 0.35) return;
+    this.#bubble(this.ctx.currentTime, 1.6 + Math.random() * 1.2);
   }
 
   // ------------------------------------------------------------ 合成の部品
@@ -202,6 +229,97 @@ export class Sound {
     o.connect(g).connect(this.layers.pump);
     o.start(t);
     o.stop(t + 0.08);
+  }
+
+  /**
+   * 雨。たくさんの粒が当たる音は、帯域の広い雑音にしか聞こえない。
+   * 高いほうを少し落として、強さをゆっくり揺らす。
+   */
+  #startRain() {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 5200;
+    lp.Q.value = 0.5;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 420;
+    const g = ctx.createGain();
+    g.gain.value = 0.75;
+    // 降りが強くなったり弱くなったりする
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.085;
+    const lg = ctx.createGain();
+    lg.gain.value = 0.22;
+    lfo.connect(lg).connect(g.gain);
+    src.connect(lp).connect(hp).connect(g).connect(this.layers.rain);
+    src.start(); lfo.start();
+  }
+
+  /**
+   * ミンミンゼミ。
+   *
+   * アブラゼミの乾いた地鳴りと違って、はっきり音程がある。
+   * 「ミーン」で立ち上がり、「ミンミンミン」を 4〜5Hz で繰り返し、
+   * 「ミー」と下がって終わる。この三段が無いと、ただの唸りになる。
+   * 基本波は 2.7kHz あたりで、倍音がよく出る。
+   */
+  #startMinmin() {
+    const ctx = this.ctx;
+    const out = ctx.createGain();
+    out.gain.value = 0;
+    out.connect(this.layers.minmin);
+    this.minminGate = out;
+
+    // 倍音を重ねた音源
+    const carrier = ctx.createOscillator();
+    carrier.type = 'sawtooth';
+    carrier.frequency.value = 2700;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 3400;
+    bp.Q.value = 1.6;
+    // 「ミンミン」の刻み
+    const pulse = ctx.createGain();
+    pulse.gain.value = 0.5;
+    const lfo = ctx.createOscillator();
+    lfo.type = 'triangle';
+    lfo.frequency.value = 4.6;
+    const lg = ctx.createGain();
+    lg.gain.value = 0.46;
+    lfo.connect(lg).connect(pulse.gain);
+    carrier.connect(bp).connect(pulse).connect(out);
+    carrier.start(); lfo.start();
+    this.minminPitch = carrier.frequency;
+
+    // ひと鳴きの形。立ち上がり → 刻み → 尻下がり → 休み
+    const phrase = () => {
+      if (!this.ctx) return;
+      let wait = 2.4 + Math.random() * 3.0;
+      if (this.on && this.want.minmin > 0.02) {
+        const t = ctx.currentTime + 0.05;
+        const body = 2.6 + Math.random() * 2.2;
+        const f0 = 2500 + Math.random() * 420;
+        this.minminPitch.cancelScheduledValues(t);
+        this.minminPitch.setValueAtTime(f0 * 0.86, t);
+        this.minminPitch.linearRampToValueAtTime(f0, t + 0.55);          // ミーン
+        this.minminPitch.setValueAtTime(f0, t + 0.55 + body);
+        this.minminPitch.linearRampToValueAtTime(f0 * 0.72, t + 1.05 + body);  // ミー
+        const g = out.gain;
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(0, t);
+        g.linearRampToValueAtTime(0.34, t + 0.55);
+        g.setValueAtTime(0.34, t + 0.55 + body);
+        g.linearRampToValueAtTime(0, t + 1.15 + body);
+        wait = 1.3 + body + 1.6 + Math.random() * 2.6;
+      }
+      setTimeout(phrase, wait * 1000);
+    };
+    setTimeout(phrase, 500 + Math.random() * 1500);
   }
 
   /** 風鈴。叩いた硝子は、倍音が整数比にならない。 */

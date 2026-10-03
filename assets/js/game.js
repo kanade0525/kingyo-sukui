@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610030505';
-import { Poi } from './poi.js?v=202610030505';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610030505';
+import { School } from './fish.js?v=202610030528';
+import { Poi } from './poi.js?v=202610030528';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610030528';
 
 /** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
 const h11 = (x) => {
@@ -66,7 +66,9 @@ export class Game {
       f.r += Math.sin(this.time * 0.7 + f.phase) * 0.004 * dt;
       f.p[0] = BOWL.pos[0] + Math.cos(f.a) * f.r;
       f.p[2] = BOWL.pos[2] + Math.sin(f.a) * f.r;
-      f.p[1] = BOWL.waterY - 0.012 + Math.sin(this.time * 1.3 + f.phase) * 0.004;
+      // お椀の水面のすぐ下。お椀ごと波で上下するので、その分も足す。
+      // 舟の水面（y = 0）より上に居ないと、水面に深度で落とされて見えなくなる
+      f.p[1] = BOWL.pos[1] + BOWL.waterY - 0.009 + Math.sin(this.time * 1.3 + f.phase) * 0.003;
       f.yaw = f.a + (f.spin > 0 ? Math.PI / 2 : -Math.PI / 2);
     }
   }
@@ -159,14 +161,18 @@ export class Game {
     this.school.update(dt, poi, this.ripple);
 
     // 乗せる判定。
-    // いまは「ポイの上にいる金魚は乗る」だけの素直な形にしてある。
-    // 窓を狭めると、まず一匹も掬えない。難度の調整は後回し。
-    if (poi.vy > 0.001 && poi.y < 0.015) {
+    //
+    // 紙が破れていたら、当然すくえない。
+    // 破れかけでも、残っているのは外周だけなので、乗る範囲が狭くなる。
+    // 紙の破れはシェーダ側で「中心から外へ」広がるので、それに合わせて
+    // 有効な半径を health で縮める。
+    if (poi.vy > 0.001 && poi.y < 0.015 && !poi.broke && poi.health > 0.02) {
+      const reach = POI.radius * 1.35 * Math.sqrt(poi.health);
       for (const f of this.school.list) {
         if (f.held || f.gone) continue;
         const d = Math.hypot(f.p[0] - poi.x, f.p[2] - poi.z);
         const above = f.p[1] - poi.y;
-        if (d < POI.radius * 1.35 && above > -0.030 && above < 0.095) {
+        if (d < reach && above > -0.030 && above < 0.095) {
           f.held = true;
           this.held.push(f);
         }
@@ -249,17 +255,20 @@ export class Game {
     if (this.rain > 0) {
       for (let i = 0; i < RAIN.count; i++) {
         const r1 = h11(i * 1.7), r2 = h11(i * 3.1 + 5.0), r3 = h11(i * 7.3 + 11.0);
-        const period = 0.70 + r1 * 0.55;
-        // 位相が 1 周したら、その粒が水面に着いたということ
-        if (Math.floor(this.time / period + r2) === Math.floor(prev / period + r2)) continue;
+        const speed = RAIN.speed * (0.85 + r2 * 0.30);
+        const period = RAIN.fall / speed;
+        const off = r1 * 3.7 + r3;
+        // 位相が 1 周した＝その粒が水面に着いた
+        if (Math.floor(this.time / period + off) === Math.floor(prev / period + off)) continue;
         // 波紋は格子（4mm 刻み）より十分大きく取る。小さいと波が
         // 格子の縦横にしか進めず、輪ではなく菱形に広がる
         this.ripple.drop(
-          (r1 * 2 - 1) * TANK.halfX * 1.05,
-          (r3 * 2 - 1) * TANK.halfZ * 1.05,
-          0.014 + r2 * 0.008,
-          0.0013,
+          (r1 * 2 - 1) * TANK.halfX * 1.02,
+          (r3 * 2 - 1) * TANK.halfZ * 1.02,
+          0.013 + r2 * 0.007,
+          0.0011,
         );
+        this.sound?.raindrop();
       }
     }
 
@@ -290,14 +299,14 @@ export class Game {
     this.bowl.push({
       turtle: f.turtle,
       kind: f.kind,
-      len: f.len * 0.92,
+      len: f.len,
       seed: f.seed,
       a: Math.random() * Math.PI * 2,
       r: BOWL.innerR * (0.30 + Math.random() * 0.34),
       spin: (Math.random() > 0.5 ? 1 : -1) * (0.8 + Math.random() * 0.9),
       phase: Math.random() * 10,
       beat: 9 + Math.random() * 4,
-      p: [BOWL.pos[0], BOWL.waterY - 0.012, BOWL.pos[2]],
+      p: [BOWL.pos[0], BOWL.waterY - 0.009, BOWL.pos[2]],
       yaw: 0,
       bend: 0,
     });

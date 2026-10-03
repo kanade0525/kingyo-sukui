@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030505';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030528';
 
 
 
@@ -16,6 +16,65 @@ import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } f
 // 1 段の視差で十分に厚みは出る。
 
 // ---------------------------------------------------------------- 空と地面
+
+/**
+ * 金魚の影を 1 枚の絵に焼く。
+ *
+ * これまでは舟の底のシェーダが、画素ごとに全部の魚を舐めて丸い斑を
+ * 落としていた。1 画素あたり 30 回も繰り返すので匹数を増やせず、
+ * 52 匹いるのに影は 30 個しか出ていなかった。しかも形が円なので、
+ * 日が傾いて影が長く伸びる時刻に「丸くておかしい」と分かる。
+ *
+ * 256² の絵に先に焼いてしまえば、繰り返しは 6 万画素ぶんで済む。
+ * 舟の底は 1 回読むだけ。匹数を増やしても底の負荷は変わらない。
+ * ついでに、影を魚の形にできる。
+ */
+export const FS_FISHSHADOW = `${HEAD}
+uniform vec4 uFish[56];    // xy = 位置, z = 体長, w = 濃さ
+uniform vec4 uFishB[56];   // xy = 進む向き, z = ぼけ具合, w = 1 なら亀
+uniform int uFishCount;
+uniform vec2 uArea;        // この絵が覆う範囲（半分）
+in vec2 vUv;
+out vec4 frag;
+
+void main(){
+  vec2 p = (vUv * 2.0 - 1.0) * uArea;
+  float dark = 0.0;
+  for(int i = 0; i < 56; i++){
+    if(i >= uFishCount) break;
+    vec4 f = uFish[i];
+    vec4 b = uFishB[i];
+    float L = max(f.z, 1e-4);
+    vec2 d = p - f.xy;
+    // 粗い切り落とし。遠い魚は計算しない
+    if(dot(d, d) > L * L * 2.6) continue;
+    // 進む向きを +x に合わせて回す
+    vec2 q = vec2(d.x * b.x + d.y * b.y, -d.x * b.y + d.y * b.x);
+    float soft = b.z;
+
+    float shape;
+    if(b.w > 0.5){
+      // 亀は甲羅なので、ほぼ楕円
+      shape = 1.0 - smoothstep(0.52 - soft, 1.0 + soft,
+        length(vec2(q.x / (0.52 * L), q.y / (0.42 * L))));
+    } else {
+      // 胴。前寄りの楕円
+      float body = 1.0 - smoothstep(0.50 - soft, 1.0 + soft,
+        length(vec2((q.x - 0.07 * L) / (0.36 * L), q.y / (0.165 * L))));
+      // 尾。後ろへ広がって薄れる
+      float ts = (-q.x / L - 0.18) / 0.66;
+      float tail = 0.0;
+      if(ts > 0.0 && ts < 1.0){
+        float tw = (0.05 + 0.33 * ts) * L;
+        tail = (1.0 - smoothstep(0.45 - soft, 1.0 + soft, abs(q.y) / tw))
+             * (1.0 - ts * ts) * 0.82;
+      }
+      shape = max(body, tail);
+    }
+    dark += f.w * shape;
+  }
+  frag = vec4(clamp(dark, 0.0, 0.95), 0.0, 0.0, 1.0);
+}`;
 
 export const FS_SKY = `${HEAD}
 ${NOISE}
@@ -112,6 +171,17 @@ void main(){
       slab *= 0.93 + 0.14 * fbm(pp * vec2(90.0, 24.0) + sid * 30.0);
 
       // 玉砂利。石畳より暗く、黄みが強い。粒ごとに色が振れる
+      // 砂利の被り。
+      //
+      // なだらかに混ぜていたら、灰色の濃淡が塗ってあるようにしか
+      // 見えなかった。砂利は 1 粒ずつ置かれているので、石畳との境は
+      // 粒の単位で切れる。粒ごとの乱数で「在る／無い」を決め、
+      // 粒の形で切り抜く
+      float density = smoothstep(0.26, 0.80, fbm(pp * 1.6 + 3.0));
+      float here = step(1.0 - density, hash12(floor(pp * 38.0) + 3.0));
+      float here2 = step(1.0 - density * 0.8, hash12(floor(pp * 82.0 + 11.0) + 7.0));
+      float cover = clamp(here * peb + here2 * peb2 * 0.9, 0.0, 1.0);
+
       // 粒ごとの色。
       //
       // 玉砂利は 1 粒ずつ色が違う。白っぽい石、灰色の石、茶や黒が
@@ -127,13 +197,10 @@ void main(){
                               : vec3(0.058, 0.055, 0.052);     // 黒い石
       stone *= 0.80 + 0.40 * fract(pid * 37.0);
       vec3 stone2 = mix(vec3(0.092, 0.086, 0.074), vec3(0.182, 0.172, 0.148), pid2);
-      vec3 gravelCol = mix(mix(soil, stone, peb), stone2, peb2 * 0.45);
+      vec3 gravelCol = mix(mix(soil, stone, peb), stone2, here2 * peb2 * 0.55);
       gravelCol *= 0.86 + 0.28 * grit;
       gravelCol = mix(gravelCol, soil * 0.72, cav * 0.55);
 
-      // 砂利の被り。溜まる所と、掃けて石畳が出る所がある
-      float cover = clamp(smoothstep(0.34, 0.74, fbm(pp * 1.6 + 3.0)) * 1.10
-                        + peb * 0.22, 0.0, 1.0);
       vec3 base = mix(slab, gravelCol, cover);
       // 目地は最後に落とす。砂が溜まっていても、凹んでいるぶんは必ず暗い
       base = mix(base, vec3(0.055, 0.048, 0.038), joint * 0.80 * (1.0 - cover * 0.45));
@@ -221,7 +288,8 @@ in float vRegion;
 in float vDist;
 uniform vec3 uCam;
 uniform int uUnderwater;
-uniform vec4 uFish[20];     // xy = 位置, z = 影の半径, w = 濃さ
+uniform sampler2D uFishShadow;   // 焼いておいた金魚の影
+uniform vec2 uShadowArea;
 uniform int uFishCount;
 uniform float uDepth;
 uniform float uBowlRim;
@@ -320,12 +388,8 @@ void main(){
       col += ggx(bn, V, underSunDir(), 0.30, vec3(0.042))
            * uSunColor * PI * 0.22 * caus;
 
-      // 金魚の影
-      for(int i=0;i<20;i++){
-        if(i >= uFishCount) break;
-        float d = length(vW.xz - uFish[i].xy) / max(uFish[i].z, 1e-3);
-        col *= 1.0 - uFish[i].w * (1.0 - smoothstep(0.55, 1.0, d));
-      }
+      // 金魚の影。先に 1 枚へ焼いてあるので、ここは読むだけ
+      col *= 1.0 - texture(uFishShadow, vW.xz / (uShadowArea * 2.0) + 0.5).r;
     } else {
       // 水の上に出ている内壁。濡れて黒く光る
       // 水から出ている内壁。水位が下がったばかりで濡れているので、

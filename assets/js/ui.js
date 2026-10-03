@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 export class UI {
   constructor(handlers) {
     this.el = {
-      fps: $('fps'), hourOut: $('hourOut'), wxNote: $('wxNote'), audioNote: $('audioNote'),
+      fps: $('fps'), hourOut: $('hourOut'), wxNote: $('wxNote'),
       loading: $('loading'),
       panel: $('panel'), btnPanel: $('btnPanel'),
       fallback: $('fallback'), fallbackWhy: $('fallbackWhy'),
@@ -41,27 +41,26 @@ export class UI {
       this.el.wxNote.textContent = '手動';
       return null;
     });
-    this.#seg('segAudio', 'a', (v) => {
-      handlers.audio(v === '1');
-      this.el.audioNote.textContent = v === '1' ? '鳴らす' : '消す';
+    // 音の入切。画面に出しておく
+    $('btnSound').addEventListener('click', () => {
+      const b = $('btnSound');
+      const on = b.getAttribute('aria-pressed') !== 'true';
+      b.setAttribute('aria-pressed', String(on));
+      handlers.audio(on);
     });
+    // 音の調整つまみ。層ごとに動かせる
+    for (const k of ['master','pump','cicada','minmin','furin','festival','crowd','insect','rain']) {
+      this.#range('v_' + k, 'o_' + k, (v) => { handlers.mix(k, v / 100); return String(Math.round(v)); });
+    }
     $('btnNow').addEventListener('click', () => handlers.now());
 
     this.#seg('segFFT', 'n', (v) => {
       handlers.fft(Number(v));
       $('fftOut').textContent = `${v}²`;
     });
-    this.#seg('segDpr', 'd', (v) => {
-      handlers.dpr(Number(v));
-      $('dprOut').textContent = { '0.7': '軽い', '1': '標準', '2': '精細' }[v] ?? v;
-    });
     this.#seg('segPitch', 'p', (v) => {
       handlers.pitch(Number(v));
       $('pitchOut').textContent = { 55: '浅め', 65: '標準', 87: '真上' }[v] ?? v;
-    });
-    this.#seg('segMsaa', 'm', (v) => {
-      handlers.msaa(v === '1');
-      $('msaaNote').textContent = v === '1' ? '入' : '切';
     });
   }
 

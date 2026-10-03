@@ -27,7 +27,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@400;700&family=Shippori+Mincho+B1:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="assets/css/app.css?v=202610030505">
+<link rel="stylesheet" href="assets/css/app.css?v=202610030528">
 </head>
 <body>
 
@@ -42,6 +42,7 @@
 
 <div id="botbar">
   <div id="tools">
+    <button id="btnSound" aria-pressed="true" aria-label="音の入切" title="音の入切"><span id="soundMark">♪</span></button>
     <button id="btnPanel" aria-expanded="false" aria-controls="panel">設定</button>
   </div>
 </div>
@@ -83,23 +84,43 @@
       <button type="button" data-p="55">浅め</button><button type="button" data-p="65" aria-pressed="true">標準</button><button type="button" data-p="87">真上</button>
     </div>
   </div>
-  <div class="row">
-    <div class="rl"><span>解像度</span><span id="dprOut">軽い</span></div>
-    <div class="seg" id="segDpr">
-      <button type="button" data-d="0.7" aria-pressed="true">軽い</button><button type="button" data-d="1">標準</button><button type="button" data-d="2">精細</button>
-    </div>
+        </div>
+  <h3>音</h3>
+  <div class="row tight">
+    <label class="rl" for="v_master"><span>全体</span><span id="o_master">100</span></label>
+    <input type="range" id="v_master" min="0" max="200" step="5" value="100">
   </div>
-  <div class="row">
-    <div class="rl"><span>縁の滑らか化</span><span id="msaaNote">入</span></div>
-    <div class="seg" id="segMsaa">
-      <button type="button" data-m="0">切</button><button type="button" data-m="1" aria-pressed="true">入</button>
-    </div>
+  <div class="row tight">
+    <label class="rl" for="v_pump"><span>ポンプ</span><span id="o_pump">100</span></label>
+    <input type="range" id="v_pump" min="0" max="200" step="5" value="100">
   </div>
-  <div class="row">
-    <div class="rl"><span>音</span><span id="audioNote">鳴らす</span></div>
-    <div class="seg" id="segAudio">
-      <button type="button" data-a="1" aria-pressed="true">鳴らす</button><button type="button" data-a="0">消す</button>
-    </div>
+  <div class="row tight">
+    <label class="rl" for="v_cicada"><span>あぶらぜみ</span><span id="o_cicada">100</span></label>
+    <input type="range" id="v_cicada" min="0" max="200" step="5" value="100">
+  </div>
+  <div class="row tight">
+    <label class="rl" for="v_minmin"><span>みんみんぜみ</span><span id="o_minmin">100</span></label>
+    <input type="range" id="v_minmin" min="0" max="200" step="5" value="100">
+  </div>
+  <div class="row tight">
+    <label class="rl" for="v_furin"><span>風鈴</span><span id="o_furin">100</span></label>
+    <input type="range" id="v_furin" min="0" max="200" step="5" value="100">
+  </div>
+  <div class="row tight">
+    <label class="rl" for="v_festival"><span>祭囃子</span><span id="o_festival">100</span></label>
+    <input type="range" id="v_festival" min="0" max="200" step="5" value="100">
+  </div>
+  <div class="row tight">
+    <label class="rl" for="v_crowd"><span>ざわめき</span><span id="o_crowd">100</span></label>
+    <input type="range" id="v_crowd" min="0" max="200" step="5" value="100">
+  </div>
+  <div class="row tight">
+    <label class="rl" for="v_insect"><span>虫</span><span id="o_insect">100</span></label>
+    <input type="range" id="v_insect" min="0" max="200" step="5" value="100">
+  </div>
+  <div class="row tight">
+    <label class="rl" for="v_rain"><span>雨</span><span id="o_rain">100</span></label>
+    <input type="range" id="v_rain" min="0" max="200" step="5" value="100">
   </div>
   <div class="row">
     <div class="rl"><span>描画速度</span><span id="fps">—</span></div>
@@ -118,6 +139,6 @@
 </div>
 
 
-<script type="module" src="assets/js/main.js?v=202610030505"></script>
+<script type="module" src="assets/js/main.js?v=202610030528"></script>
 </body>
 </html>

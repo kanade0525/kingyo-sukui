@@ -9,19 +9,19 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610030505';
-import { VS_FULL } from '../shaders/common.js?v=202610030505';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610030505';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610030505';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610030505';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610030505';
-import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610030505';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610030505';
-import { Ocean } from './ocean.js?v=202610030505';
-import { Ripple } from './ripple.js?v=202610030505';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610030505';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610030505';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610030505';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610030528';
+import { VS_FULL } from '../shaders/common.js?v=202610030528';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610030528';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610030528';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610030528';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610030528';
+import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610030528';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610030528';
+import { Ocean } from './ocean.js?v=202610030528';
+import { Ripple } from './ripple.js?v=202610030528';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610030528';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610030528';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610030528';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -75,6 +75,7 @@ export class Renderer {
     this.pBlur = new Program(gl, VS_FULL, FS_BLUR, 'blur');
     this.pComp = new Program(gl, VS_FULL, FS_COMPOSITE, 'composite');
     this.pFxaa = new Program(gl, VS_FULL, FS_FXAA, 'fxaa');
+    this.pFishShadow = new Program(gl, VS_FULL, FS_FISHSHADOW, 'fishShadow');
 
     this.mTank = tankMesh(gl);
     this.mFish = fishMesh(gl);
@@ -87,6 +88,10 @@ export class Renderer {
     this.mRain = splashMesh(gl, RAIN.count);
     this.mGear = gearMesh(gl, -TANK.depth);
     this.stonePos = [AIR.stone[0], -TANK.depth + 0.014, AIR.stone[2]];
+    // 金魚の影を焼く絵。画面の大きさとは関係ないので、ここで一度だけ作る。
+    // 舟より一回り広く取るのは、影が屈折のぶん外へずれるため
+    this.shadowArea = [TANK.halfX * 1.22, TANK.halfZ * 1.22];
+    this.fboShadow = makeFbo(gl, [makeTex(gl, 256, 256, 'rgba8', { filter: 'linear' })]);
     this.mWater = gridMesh(gl, 220, 150);
 
     this.weather = WEATHER.CLEAR;
@@ -363,9 +368,9 @@ export class Renderer {
       .setFloat('uPhase', f.phase)
       .setFloat('uBeat', f.beat)
       .setFloat('uBend', f.bend || 0)
-      .setFloat('uBulge', f.kind === 0 ? 0.0 : 0.55)
+      .setFloat('uBulge', f.kind <= 1 ? 0.0 : 0.55)
       // 小赤は和金型（細長くフナ尾）、出目金は琉金型（短く丸く四つ尾）
-      .setFloat('uFancy', f.kind === 0 ? 0.0 : 1.0)
+      .setFloat('uFancy', f.kind <= 1 ? 0.0 : 1.0)
       .setFloat('uSeed', f.seed)
       .setInt('uKind', f.kind);
     this.mFish.draw();
@@ -442,6 +447,21 @@ export class Renderer {
 
     gl.disable(gl.CULL_FACE);   // 薄いひれや内壁を両面で見せたいので切っておく
 
+    // ---- 金魚の影を 1 枚に焼く ----
+    bindFbo(gl, this.fboShadow);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    {
+      const p = this.pFishShadow.use();
+      p.vec4Array('uFish[0]', school.shadowData(this.sunHoriz, this.refrTan), MAX_FISH)
+       .vec4Array('uFishB[0]', school.shadowB, MAX_FISH)
+       .setInt('uFishCount', school.shadowCount)
+       .set('uArea', this.shadowArea);
+      this.full.draw();
+    }
+
     // ---- 水中パス ----
     bindFbo(gl, this.fbos.scene);
     // depthMask は clear より先に戻すこと。false のまま clear すると
@@ -466,8 +486,8 @@ export class Renderer {
         .setFloat('uRimTop2', TANK.rimTop)
         .set('uTankOuter2', TANK_OUTER)
         .set('uBowlPos', this.bowlPos)
-        .vec4Array('uFish[0]', school.shadowData(this.sunHoriz, this.refrTan), MAX_FISH)
-        .setInt('uFishCount', school.shadowCount);
+        .tex('uFishShadow', this.fboShadow.tex[0])
+        .set('uShadowArea', this.shadowArea);
       this.mTank.draw();
     }
 
@@ -489,7 +509,8 @@ export class Renderer {
         .setFloat('uRimTop2', TANK.rimTop)
         .set('uTankOuter2', TANK_OUTER)
         .set('uBowlPos', this.bowlPos)
-        .setInt('uFishCount', 0);
+        .tex('uFishShadow', this.fboShadow.tex[0])
+        .set('uShadowArea', this.shadowArea);
       this.mBowl.body.draw();
     }
     this.#drawFish(school, false, time);
@@ -544,7 +565,8 @@ export class Renderer {
         .setFloat('uRimTop2', TANK.rimTop)
         .set('uTankOuter2', TANK_OUTER)
         .set('uBowlPos', this.bowlPos)
-        .setInt('uFishCount', 0);
+        .tex('uFishShadow', this.fboShadow.tex[0])
+        .set('uShadowArea', this.shadowArea);
       this.mTank.draw();
     }
 
@@ -607,9 +629,9 @@ export class Renderer {
         this.#lights(rp);
         rp.mat4('uVP', this.vp).set('uCam', this.cam)
           .set('uRight', this.basis.right)
-          .set('uUp', this.basis.up)
-          .set('uArea', [TANK.halfX * 1.05, TANK.halfZ * 1.05])
-          .setFloat('uFall', RAIN.fall)
+          .set('uArea', [TANK.halfX * 1.02, TANK.halfZ * 1.02])
+          .set('uFall', [RAIN.fall, RAIN.speed, RAIN.tilt, RAIN.dir])
+          .setFloat('uStreak', RAIN.streak)
           .setFloat('uCount', RAIN.count)
           .setFloat('uTime', time);
         this.mRain.draw();
@@ -634,7 +656,8 @@ export class Renderer {
         .setFloat('uRimTop2', TANK.rimTop)
         .set('uTankOuter2', TANK_OUTER)
         .set('uBowlPos', this.bowlPos)
-        .setInt('uFishCount', 0);
+        .tex('uFishShadow', this.fboShadow.tex[0])
+        .set('uShadowArea', this.shadowArea);
       this.mBowl.body.draw();
     }
     if (state.bowl && state.bowl.length) {
@@ -667,7 +690,8 @@ export class Renderer {
         .setFloat('uRimTop2', TANK.rimTop)
         .set('uTankOuter2', TANK_OUTER)
         .set('uBowlPos', this.bowlPos)
-        .setInt('uFishCount', 0);
+        .tex('uFishShadow', this.fboShadow.tex[0])
+        .set('uShadowArea', this.shadowArea);
       this.mBowl.water.draw();
     }
     gl.depthMask(true);

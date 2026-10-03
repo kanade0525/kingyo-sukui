@@ -4,8 +4,8 @@
 // 整列させるより、それぞれが勝手に漂って壁で向きを変えるほうが
 // 実際の金魚に近い動きになる。
 
-import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD } from './world.js?v=202610030505';
-import { clamp, lerp, wrapAngle } from './mat.js?v=202610030505';
+import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD } from './world.js?v=202610030528';
+import { clamp, lerp, wrapAngle } from './mat.js?v=202610030528';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -29,9 +29,10 @@ class Fish {
     this.kind = this.turtle ? 0 : pickKind();
     // 小赤は全長 3cm ほど。出目金はひと回り大きい。
     // 亀は甲長 3cm の子ガメで、小赤と同じくらいしかない
+    // 小赤と小黒は全長 3cm ほど。出目金はひと回り大きい
     this.len = this.turtle
       ? rand(0.030, 0.038)
-      : this.kind === 0 ? rand(0.026, 0.035) : rand(0.040, 0.050);
+      : this.kind <= 1 ? rand(0.026, 0.035) : rand(0.040, 0.050);
     const y = rand(FISH_LAYER.bottom, FISH_LAYER.top);
     this.p = fromEdge
       ? [rand(-1, 1) > 0 ? mx : -mx, y, rand(-mz, mz)]
@@ -39,8 +40,10 @@ class Fish {
     this.yaw = rand(-Math.PI, Math.PI);
     // 亀はゆっくり漕ぐ。そのぶん逃げ足も鈍い
     // 小さい魚ほど忙しなく動く
+    // 用心深さ。小黒はよく逃げる
+    this.wary = this.turtle ? 0.6 : (FISH_KINDS[this.kind].wary ?? 1);
     this.speed = this.turtle ? rand(0.010, 0.022)
-               : this.kind === 0 ? rand(0.026, 0.055) : rand(0.018, 0.038);
+               : this.kind <= 1 ? rand(0.026, 0.055) * this.wary : rand(0.018, 0.038);
     this.cruise = this.speed;
     this.beat = this.turtle ? rand(3.2, 4.6) : rand(9.0, 13.0);
     this.phase = rand(0, 10);
@@ -83,8 +86,9 @@ class Fish {
     let alarmed = false;
     // 沈んだポイには強く反応する。水の上にあるときも、影が差すぶん
     // 少しだけ嫌がる
-    const near = poi.submerged ? 0.115 : 0.070;
-    const force = poi.submerged ? 4.2 : 1.4;
+    // 用心深い個体ほど、遠くから気づいて強く逃げる
+    const near = (poi.submerged ? 0.115 : 0.070) * this.wary;
+    const force = (poi.submerged ? 4.2 : 1.4) * this.wary;
     if (Math.abs(poi.y - this.p[1]) < 0.16) {
       const ax = this.p[0] - poi.x, az = this.p[2] - poi.z;
       const d = Math.hypot(ax, az);
@@ -123,7 +127,7 @@ class Fish {
 
     const want = Math.atan2(dz, dx) + this.wander * 0.22;
     const turn = wrapAngle(want - this.yaw);
-    const rate = alarmed ? 9 : 3.2;
+    const rate = alarmed ? 9 * this.wary : 3.2;
     const step = turn * Math.min(1, dt * rate);
     this.yaw += step;
     this.bend = lerp(this.bend, clamp(-step / Math.max(dt, 1e-3) * 0.012, -0.09, 0.09), dt * 10);
@@ -134,7 +138,7 @@ class Fish {
       this.dashTimer = rand(2.5, 8);
       this.speed = this.cruise * rand(2.6, 4.2);
     }
-    const goal = alarmed ? this.cruise * (this.turtle ? 3.0 : 5.0) : this.cruise;
+    const goal = alarmed ? this.cruise * (this.turtle ? 3.0 : 5.0 * this.wary) : this.cruise;
     this.speed = lerp(this.speed, goal, dt * (alarmed ? 11 : 1.3));
     this.beat = this.turtle
       ? lerp(this.beat, 2.8 + this.speed * 60, dt * 4)
@@ -187,6 +191,7 @@ export class School {
     }
     // 水底の影を落とすための uniform 配列（xz, 半径, 濃さ）
     this.shadow = new Float32Array(MAX_FISH * 4);
+    this.shadowB = new Float32Array(MAX_FISH * 4);
   }
 
   reset() {
@@ -208,38 +213,30 @@ export class School {
   /**
    * 底に落とす影。
    *
-   * 底のシェーダはこの配列を 1 画素ごとに舐めるので、匹数を増やすと
-   * そのまま重くなる。枠は MAX_FISH で止めて、溢れたら「いちばん薄い影」と
-   * 入れ替える。浅い所にいる魚ほど影が濃いので、見えているものから残る。
+   * 影は 256² の絵へ先に焼くので、匹数を絞る必要はもう無い。
+   * 位置・体長・濃さに加えて、進む向きとぼけ具合も渡す。
+   * 円ではなく魚の形にするため。
    */
   shadowData(sunHoriz = [0, 0], refrTan = 0) {
-    const d = this.shadow;
+    const d = this.shadow, e = this.shadowB;
     let n = 0;
-    let weakest = 0, weakAlpha = Infinity;
     for (const f of this.list) {
-      if (f.gone || f.p[1] > 0) continue;
+      if (f.gone || f.p[1] > 0 || n >= MAX_FISH) continue;
       const below = Math.max(-f.p[1], 0.001);
-      // 深いほど薄く、ぼける。水面が揺れているので輪郭も残らない
-      const alpha = 0.17 * Math.exp(-below * 3.2);
-      let slot;
-      if (n < MAX_FISH) {
-        slot = n++;
-      } else {
-        if (alpha <= weakAlpha) continue;
-        slot = weakest;
-      }
       // 水底までの残りの深さだけ、光の進む向きへ流れる
       const drop = (TANK.depth - below) * refrTan;
-      const o = slot * 4;
+      const o = n * 4;
       d[o] = f.p[0] - sunHoriz[0] * drop;
       d[o + 1] = f.p[2] - sunHoriz[1] * drop;
-      d[o + 2] = f.len * (0.52 + below * 3.4);   // 深いほど大きく広がる
-      d[o + 3] = alpha;
-      // いちばん薄いものを探し直す
-      weakAlpha = Infinity;
-      for (let i = 0; i < n; i++) {
-        if (d[i * 4 + 3] < weakAlpha) { weakAlpha = d[i * 4 + 3]; weakest = i; }
-      }
+      d[o + 2] = f.len * 1.9;                       // 影の長さ。尾まで入る
+      d[o + 3] = 0.34 * Math.exp(-below * 2.0);     // 深いほど薄い
+      e[o] = Math.cos(f.yaw);
+      e[o + 1] = Math.sin(f.yaw);
+      // 深いほどぼける。ただし掛けすぎると、せっかくの魚の形が
+      // ただの大きな染みになる
+      e[o + 2] = 0.05 + below * 1.2;
+      e[o + 3] = f.turtle ? 1 : 0;
+      n++;
     }
     this.shadowCount = n;
     return d;
