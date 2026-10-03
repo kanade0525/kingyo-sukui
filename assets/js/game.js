@@ -8,23 +8,28 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610022334';
-import { Poi } from './poi.js?v=202610022334';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR } from './world.js?v=202610022334';
+import { School } from './fish.js?v=202610030002';
+import { Poi } from './poi.js?v=202610030002';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR } from './world.js?v=202610030002';
 
 export const PHASE = { READY: 'ready', PLAY: 'play', OVER: 'over' };
 
+/** 掬えた金魚を、器へ移す前に手元で見せている時間 [秒]。 */
+const SHOW_TIME = 1.1;
+
 export class Game {
   constructor() {
-    this.school = new School(26);
+    this.school = new School(52);
     this.poi = new Poi();
     this.poi.visible = false;
     this.phase = PHASE.READY;
+    this.showUntil = 0;
     this.time = 0;          // シェーダへ渡す経過時間。止めない
     this.reset();
   }
 
   reset() {
+    this.showUntil = 0;
     this.left = Infinity;    // 制限時間は今は無し（UI も出していない）
     this.stock = 1;
     this.score = 0;
@@ -136,6 +141,13 @@ export class Game {
       f.p[0] = poi.x + f.holdOff[0];
       f.p[2] = poi.z + f.holdOff[1];
       f.p[1] = poi.y + f.len * 0.16 + poi.sag * -0.5;
+      // 見せている間は、紙の上でぴちぴち跳ねる。
+      // 跳ねは片側だけ（sin の正の側を二乗）にすると、紙を蹴って
+      // 飛び上がって落ちる、という動きになる
+      if (this.showUntil > 0) {
+        const hop = Math.max(0, Math.sin(f.flop * 1.15));
+        f.p[1] += hop * hop * f.len * 0.60;
+      }
     }
 
     // 水面を割った瞬間の音
@@ -145,8 +157,17 @@ export class Game {
       this.lifting = false;
     }
 
-    // 完全に水から出たら成功。器へ移す
-    if (poi.y > POI.restY * 0.72 && this.held.length) {
+    // 完全に水から出たら成功。
+    //
+    // ここですぐ器へ飛ばすと、掬えたのかどうかが分からない。
+    // ポイを上で止めて、紙の上で跳ねているところを一拍見せてから移す
+    if (poi.y > POI.restY * 0.72 && this.held.length && this.showUntil === 0) {
+      this.showUntil = this.time + SHOW_TIME;
+      poi.locked = true;
+    }
+    if (this.showUntil > 0 && this.time >= this.showUntil) {
+      this.showUntil = 0;
+      poi.locked = false;
       for (const f of this.held) {
         const k = f.turtle ? TURTLE : FISH_KINDS[f.kind];
         const size = Math.max(0, Math.round((f.len - 0.036) * 1400));
@@ -156,6 +177,7 @@ export class Game {
         this.#toBowl(f);
         f.gone = true;
         f.held = false;
+        f.flop = 0;
         // 掬われたぶん、舟の外から足される体で新しいのが入ってくる。
         // setTimeout にすると、やり直しと競合して 1 匹だけ再抽選が走る。
         // 亀はたまにしか居ないので、間を長く空ける

@@ -4,8 +4,8 @@
 // 水中で速く動かしたときの方が一気に傷む。斜めに入れて静かに抜くのが
 // 上手い人のやり方なので、ゲームとしてもそこに報いる。
 
-import { TANK, POI } from './world.js?v=202610022334';
-import { clamp, lerp } from './mat.js?v=202610022334';
+import { TANK, POI } from './world.js?v=202610030002';
+import { clamp, lerp } from './mat.js?v=202610030002';
 
 export class Poi {
   constructor() {
@@ -28,6 +28,8 @@ export class Poi {
     this.speed = 0;
     this.pressed = false;
     this.broke = false;
+    // 掬えた金魚を見せている間、ポイを上で固定する
+    this.locked = false;
     if (full) {
       this.x = this.z = this.tx = this.tz = 0;
     }
@@ -55,7 +57,9 @@ export class Poi {
     this.speed = lerp(this.speed, moved / Math.max(dt, 1e-3), 0.35);
 
     const wasUnder = this.submerged;
-    const goal = this.pressed ? POI.deepY : POI.restY;
+    // 見せている間は、押されていても沈めない。
+    // ここで沈むと、せっかく掬った金魚がそのまま水へ戻ってしまう
+    const goal = (this.pressed && !this.locked) ? POI.deepY : POI.restY;
     const prevY = this.y;
     this.y = lerp(this.y, goal, Math.min(1, dt * (this.pressed ? 7.5 : 9)));
     this.vy = (this.y - prevY) / Math.max(dt, 1e-3);

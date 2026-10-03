@@ -4,8 +4,8 @@
 // 形は頂点シェーダで作る。泳ぎのうねりを毎フレーム CPU で計算して
 // 転送するのは無駄で、しかも法線を作り直す手間が増えるため。
 
-import { Mesh } from './glx.js?v=202610022334';
-import { TANK, POI, BOWL, AIR } from './world.js?v=202610022334';
+import { Mesh } from './glx.js?v=202610030002';
+import { TANK, POI, BOWL, AIR } from './world.js?v=202610030002';
 
 /** 位置・法線・領域の 3 属性を貯めて Mesh にする小さな入れ物。 */
 class Builder {
@@ -219,10 +219,10 @@ export function fishMesh(gl) {
   };
 
   sheet(28, 18, 0);   // 胴
-  sheet(10, 10, 1);   // 尾びれ
+  sheet(12, 24, 1);   // 尾びれ。v が尾の軸まわりを一周するので細かく要る
   sheet(12, 4, 2);    // 背びれ
-  sheet(6, 3, 3);     // 右胸びれ
-  sheet(6, 3, 4);     // 左胸びれ
+  sheet(8, 5, 3);     // 右胸びれ
+  sheet(8, 5, 4);     // 左胸びれ
   sheet(8, 3, 5);     // 尻びれ
 
   return new Mesh(gl, [

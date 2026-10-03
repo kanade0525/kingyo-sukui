@@ -7,7 +7,7 @@
 // ひれは不透明に描く。水中パスの α にはカメラからの距離を入れていて、
 // ブレンドすると距離が壊れ、水面の屈折が狂うため。薄さは色で表す。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610022334';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030002';
 
 // ---------------------------------------------------------------- 金魚
 
@@ -24,18 +24,29 @@ uniform float uPhase;
 uniform float uBeat;
 uniform float uBulge;     // 出目金の目の張り出し
 uniform float uBend;      // 旋回中の体の曲がり
+uniform float uFancy;     // 0 = 和金型（細長い）, 1 = 琉金型（短く丸い）
 out vec3 vW;
 out vec3 vN;
 out vec2 vUv;
 out float vDist;
 flat out int vPart;
 
-/** 胴の半径。鼻先で丸まり、腹で膨らみ、尾柄で細る。 */
+/**
+ * 胴の半径。鼻先で丸まり、腹で膨らみ、尾柄で細る。
+ *
+ * 小赤（和金）はフナ型で細長い。出目金は琉金から出た品種なので、
+ * 胴が短くて卵のように丸い。この二つを同じ形で描くと、
+ * 色違いの同じ魚にしか見えない。
+ */
 float prof(float u){
-  float nose  = smoothstep(0.0, 0.13, u);
-  float taper = 1.0 - smoothstep(0.50, 0.93, u);
-  float belly = 0.60 + 0.40 * sin(3.14159265 * clamp(u / 0.72, 0.0, 1.0));
-  return 0.255 * nose * (taper * 0.88 + 0.12) * belly;
+  float nose = smoothstep(0.0, 0.13, u);
+  // 和金。フナ型
+  float slim = 0.248 * (1.0 - smoothstep(0.50, 0.93, u) * 0.88)
+             * (0.60 + 0.40 * sin(3.14159265 * clamp(u / 0.72, 0.0, 1.0)));
+  // 琉金型。重心が前に寄った、短くて深い胴
+  float fat = 0.360 * (1.0 - smoothstep(0.38, 0.86, u) * 0.93)
+            * (0.42 + 0.58 * sin(3.14159265 * clamp(u / 0.58, 0.0, 1.0)));
+  return nose * mix(slim, fat, uFancy);
 }
 
 vec3 shapeOf(float u, float v, int part){
@@ -46,34 +57,59 @@ vec3 shapeOf(float u, float v, int part){
     float bulge = 1.0 + uBulge * exp(-pow((u - 0.105) / 0.075, 2.0)) * abs(sa);
     return vec3(0.5 - u, ca * r * (1.16 - 0.13 * ca) * bulge, sa * r * 0.74 * bulge);
   }
-  if(part == 1){              // 尾びれ
-    // 付け根は胴の尾柄の中から出す。胴より外から生やすと、
-    // 隙間が開いて別の板が浮いているように見える
-    float s = u, t = v * 2.0 - 1.0;
+  if(part == 1){
+    // 尾びれ。
+    //
+    // 縦一枚の板にしていたが、真上から見る絵ではそれは線にしか写らない。
+    // 実物の尾は尾柄から後ろへ開く「裾」で、三つ尾・四つ尾なら
+    // 何枚かの葉に割れて横にも大きく広がる。真上から金魚だと分かるのは、
+    // だいたいこの広がりのおかげ。
+    //
+    // 全長は体長の 2〜2.5 倍になるので、尾は胴と同じくらい長い。
+    // v を尾の軸まわりの角 として一周させ、裾を張る。
+    float s = u;
+    float th = v * 6.2831853;
     float base0 = prof(0.88) * 1.05;                 // 尾柄の太さ
-    float spread = base0 + 0.33 * pow(s, 0.78);
-    return vec3(-0.36 - 0.50 * s, t * spread - 0.010 * s, 0.026 * s * s * sin(t * 2.2));
+    // 葉の切れ込み。縁日の小赤は三つ尾が多く、出目金は四つ尾。
+    // 切れ込みを浅くすると、扇ではなく袋のような塊になる
+    float lobes = mix(3.0, 4.0, uFancy);
+    float cut = 1.0 - mix(0.52, 0.42, uFancy) * pow(abs(sin(th * lobes * 0.5)), 0.85);
+    float R = (base0 + mix(0.185, 0.275, uFancy) * pow(s, 0.62)) * cut;
+    // 縦に長く、横はやや狭い。それでも真上から面として見えるだけの幅は要る
+    float wz = mix(0.66, 0.92, uFancy);
+    // 泳ぐと裾が波打つ
+    float wave = 0.026 * s * s * sin(th * 2.0 + uTime * uBeat * 0.6 + uPhase);
+    return vec3(-0.345 - mix(0.33, 0.52, uFancy) * s + wave,
+                cos(th) * R * 1.28,
+                sin(th) * R * wz);
   }
   if(part == 2){              // 背びれ
     // 胴の背の高さは prof*(1.16-0.13)。ここを 1.16 にしていたため、
     // 背びれが胴から浮いて別の板に見えていた
     float uu = mix(0.26, 0.68, u);
     float back = prof(uu) * 1.03;
-    return vec3(0.5 - uu, back + v * 0.105 * sin(3.14159 * u) * (0.45 + 0.55 * (1.0 - u)), 0.0);
+    // 背びれは真上から見ると細い尾根。わずかに横へ倒して面を見せる
+    float h = v * mix(0.115, 0.090, uFancy) * sin(3.14159 * u) * (0.45 + 0.55 * (1.0 - u));
+    return vec3(0.5 - uu, back + h, h * 0.22);
   }
   if(part == 5){              // 尻びれ
     float uu = mix(0.62, 0.84, u);
-    return vec3(0.5 - uu, -prof(uu) * 1.28 - v * 0.060 * sin(3.14159 * u), 0.0);
+    float h = v * 0.062 * sin(3.14159 * u);
+    return vec3(0.5 - uu, -prof(uu) * 1.28 - h, h * 0.30);
   }
   // 胸びれ。part 3 が右、4 が左
   // 胸びれ。胴の半径は y が r*1.16、z が r*0.74 なので、
   // その表面の上に根を置く
+  // 胸びれ。真上から見ると、胴の脇から後ろ斜めへ張り出す一対の面。
+  // 細い棒にすると見えないので、扇に開いて水平に寝かせる
   float side = part == 3 ? 1.0 : -1.0;
-  float r = prof(0.22);
-  vec3 root = vec3(0.5 - 0.22, -r * 0.42, side * r * 0.64);
-  vec3 dir  = vec3(-0.15, -0.050, side * 0.075);
-  vec3 wid  = vec3(0.020, 0.048, 0.0);
-  return root + dir * u + wid * (v - 0.5) * (0.22 + 0.78 * u);
+  float r = prof(mix(0.24, 0.30, uFancy));
+  vec3 root = vec3(0.5 - mix(0.24, 0.30, uFancy), -r * 0.30, side * r * 0.70);
+  // 漕ぐ。左右で逆位相
+  float row = sin(uTime * uBeat * 0.55 + uPhase + (side > 0.0 ? 0.0 : 3.14159)) * 0.22;
+  vec3 dir = vec3(-0.17, -0.030 + row * 0.10, side * (0.115 + row * 0.05));
+  vec3 wid = vec3(0.052, 0.012, side * 0.030);
+  return root + dir * u + wid * (v - 0.5) * (0.26 + 0.74 * sin(3.14159 * clamp(u * 0.8 + 0.2, 0.0, 1.0)));
 }
 
 /** 泳ぎのうねり。尾へ行くほど大きく、頭もわずかに振れる。 */
@@ -174,10 +210,12 @@ void main(){
       // 黒出目金。黒天鵞絨に、斜めから見ると青銅の照り
       base = vec3(0.030, 0.025, 0.034) + vec3(0.085, 0.045, 0.020) * pow(1.0 - ndv, 2.5);
     } else {
-      // 更紗出目金。白地に緋の斑。境目は実物どおり硬い
+      // 更紗出目金。白地に緋の斑。境目は実物どおり硬い。
+      // 白が勝ちすぎると、真上から見たとき白い影がよぎるようにしか
+      // 見えないので、緋のほうを多めに取る（実物も背中側は緋が多い）
       float n = fbm(vec2(u * 3.4 + uSeed * 13.0, v * 2.2 + uSeed * 7.0));
-      float blotch = smoothstep(0.49, 0.53, n + up * 0.10);
-      vec3 white = vec3(0.700, 0.665, 0.610);
+      float blotch = smoothstep(0.52, 0.44, n - up * 0.16);
+      vec3 white = vec3(0.560, 0.520, 0.470);
       vec3 red   = vec3(0.565, 0.105, 0.016);
       base = mix(white, red, blotch);
       // 斑のふちだけ色が濃くなる
@@ -212,12 +250,20 @@ void main(){
     // 付け根は胴と同じ色から始める。ここで色を落とすと、継ぎ目で値が飛んで
     // 「胴」と「別の黒い塊」が並んでいるように見える
     vec3 root = uKind == 1 ? vec3(0.030, 0.025, 0.034)
-              : uKind == 2 ? vec3(0.600, 0.300, 0.230)
+              : uKind == 2 ? vec3(0.520, 0.170, 0.095)
                            : vec3(0.600, 0.135, 0.016);
-    vec3 tip  = uKind == 1 ? vec3(0.095, 0.078, 0.105)
-              : uKind == 2 ? vec3(0.780, 0.480, 0.370)
-                           : vec3(0.820, 0.340, 0.135);
+    // 先を明るくしすぎると、真上を向いた尾の面だけが白茶けて、
+    // 胴とは別の白い扇が付いているように見える。胴の色から離さない
+    vec3 tip  = uKind == 1 ? vec3(0.062, 0.052, 0.070)
+              : uKind == 2 ? vec3(0.560, 0.290, 0.210)
+                           : vec3(0.690, 0.215, 0.062);
     float across = vPart == 1 ? v : (vPart == 2 || vPart == 5 ? u : v);
+    // 更紗は、ひれにも緋と白が斑に出る
+    if(uKind == 2){
+      float fn = fbm(vec2(along * 5.0 + uSeed * 17.0, across * 4.0));
+      root = mix(root, vec3(0.520, 0.480, 0.430), smoothstep(0.46, 0.56, fn));
+      tip = mix(tip, vec3(0.620, 0.580, 0.530), smoothstep(0.46, 0.56, fn));
+    }
     base = mix(root, tip, smoothstep(0.0, 0.85, along));
     float ray = 0.84 + 0.16 * cos(across * 6.2831853 * (vPart == 1 ? 9.0 : 6.0));
     base *= ray * (0.94 + 0.10 * fbm(vec2(along * 12.0, across * 4.0)));
@@ -242,8 +288,11 @@ void main(){
   // 向きによらず周りの明るさを拾う形へ寄せ、付け根だけ胴と同じにする
   if(vPart != 0){
     vec3 up = vec3(0.0, 1.0, 0.0);
-    vec3 scattered = (underSun(up) * caus * 0.55 + underAmbient(up)) * 0.80;
-    lit = mix(lit, scattered, 0.75 * smoothstep(0.0, 0.5, along) + 0.25);
+    // 散らした光に寄せすぎると、真上を向いた面だけが強く光って
+    // 色が抜け、胴とは別の白っぽい扇に見える。胴が受けている光を
+    // 下敷きにして、散乱ぶんを足す形にする
+    vec3 scattered = (underSun(up) * caus * 0.42 + underAmbient(up)) * 0.70;
+    lit = mix(lit, max(lit, scattered), 0.30 * smoothstep(0.0, 0.6, along) + 0.22);
   }
   float up = N.y * 0.5 + 0.5;                      // 背のほうが明るい
   vec3 col = base * lit * (0.80 + 0.30 * up);

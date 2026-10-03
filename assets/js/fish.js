@@ -4,8 +4,8 @@
 // 整列させるより、それぞれが勝手に漂って壁で向きを変えるほうが
 // 実際の金魚に近い動きになる。
 
-import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD } from './world.js?v=202610022334';
-import { clamp, lerp, wrapAngle } from './mat.js?v=202610022334';
+import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD } from './world.js?v=202610030002';
+import { clamp, lerp, wrapAngle } from './mat.js?v=202610030002';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -59,11 +59,12 @@ class Fish {
   /** 1 匹ぶんの更新。poi は { x, z, y, submerged } だけ見る。 */
   update(dt, poi, ripple) {
     if (this.held) {
-      this.flop += dt * 18;
-      // 掬われた金魚は暴れる。ポイの上で滑りもする
-      this.yaw += Math.sin(this.flop) * dt * 2.4;
-      this.beat = 22;
-      this.bend = Math.sin(this.flop * 1.7) * 0.12;
+      this.flop += dt * 19;
+      // 掬われた金魚は暴れる。ポイの上で滑りもする。
+      // 水の外では体を強く折って跳ねるので、振りは水中よりずっと大きい
+      this.yaw += Math.sin(this.flop) * dt * 5.5;
+      this.beat = 24;
+      this.bend = Math.sin(this.flop * 1.7) * 0.24;
       return;
     }
 
@@ -173,7 +174,9 @@ class Fish {
 export class School {
   constructor(count) {
     this.list = [];
-    this.count = Math.min(count, MAX_FISH);
+    // 匹数は影の枠（MAX_FISH）とは別物。影は床で 1 画素ごとに舐めるので
+    // 数を絞るが、泳いでいる魚はいくら居ても床のシェーダには効かない
+    this.count = count;
     for (let i = 0; i < this.count; i++) this.list.push(new Fish());
     // 亀は別枠。たまにしか居ないので、居ないときは gone にしておく
     for (let i = 0; i < TURTLE.max; i++) {
@@ -202,20 +205,40 @@ export class School {
    * 太陽の向きへずらすのは、真下に置くと見下ろす角度のぶん本体から
    * 離れて並び、金魚が二匹いるように見えるため。
    */
+  /**
+   * 底に落とす影。
+   *
+   * 底のシェーダはこの配列を 1 画素ごとに舐めるので、匹数を増やすと
+   * そのまま重くなる。枠は MAX_FISH で止めて、溢れたら「いちばん薄い影」と
+   * 入れ替える。浅い所にいる魚ほど影が濃いので、見えているものから残る。
+   */
   shadowData(sunHoriz = [0, 0], refrTan = 0) {
     const d = this.shadow;
     let n = 0;
+    let weakest = 0, weakAlpha = Infinity;
     for (const f of this.list) {
       if (f.gone || f.p[1] > 0) continue;
       const below = Math.max(-f.p[1], 0.001);
+      const alpha = 0.22 * Math.exp(-below * 2.4);
+      let slot;
+      if (n < MAX_FISH) {
+        slot = n++;
+      } else {
+        if (alpha <= weakAlpha) continue;
+        slot = weakest;
+      }
       // 水底までの残りの深さだけ、光の進む向きへ流れる
       const drop = (TANK.depth - below) * refrTan;
-      const o = n * 4;
+      const o = slot * 4;
       d[o] = f.p[0] - sunHoriz[0] * drop;
       d[o + 1] = f.p[2] - sunHoriz[1] * drop;
       d[o + 2] = f.len * (0.48 + below * 0.9);
-      d[o + 3] = 0.22 * Math.exp(-below * 2.4);
-      n++;
+      d[o + 3] = alpha;
+      // いちばん薄いものを探し直す
+      weakAlpha = Infinity;
+      for (let i = 0; i < n; i++) {
+        if (d[i * 4 + 3] < weakAlpha) { weakAlpha = d[i * 4 + 3]; weakest = i; }
+      }
     }
     this.shadowCount = n;
     return d;
