@@ -27,7 +27,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@400;700&family=Shippori+Mincho+B1:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="assets/css/app.css?v=202610031123">
+<link rel="stylesheet" href="assets/css/app.css?v=202610031133">
 </head>
 <body>
 
@@ -35,106 +35,112 @@
 
 <div id="fallback" hidden>
   <div>
-    <h2>WebGL2 が使えません</h2>
-    <p class="lede" id="fallbackWhy">別のブラウザでお試しください。</p>
+    <h2 data-t="noWebgl">WebGL2 が使えません</h2>
+    <p class="lede" id="fallbackWhy" data-t="noWebglWhy">別のブラウザでお試しください。</p>
   </div>
+</div>
+
+<!-- 画面右上の札。いまの場所・天気・気温・時刻を出して、
+     この絵が現実とつながっていることが分かるようにする -->
+<div id="nowbar" hidden>
+  <div id="nowPlace"></div>
+  <div id="nowSky"></div>
+  <div id="nowTime"></div>
 </div>
 
 <div id="botbar">
   <div id="tools">
-    <button id="btnSound" aria-pressed="true" aria-label="音の入切" title="音の入切"><span id="soundMark">♪</span></button>
-    <button id="btnPanel" aria-expanded="false" aria-controls="panel">設定</button>
+    <button id="btnSound" aria-pressed="true" data-t-aria="soundToggle"><span id="soundMark">♪</span></button>
+    <button id="btnPanel" aria-expanded="false" aria-controls="panel" data-t="settings">設定</button>
   </div>
 </div>
 
 <div id="panel" hidden>
-  <h3>光</h3>
+  <h3 data-t="hLight">光</h3>
   <div class="row">
-    <label class="rl" for="hour"><span>時刻</span><span id="hourOut">--:--</span></label>
+    <label class="rl" for="hour"><span data-t="time">時刻</span><span id="hourOut">--:--</span></label>
     <input type="range" id="hour" min="0" max="24" step="0.25" value="14.5">
   </div>
   <div class="row">
-    <div class="rl"><span>天気</span><span id="wxNote">現在地</span></div>
+    <div class="rl"><span data-t="weather">天気</span><span id="wxNote" data-t="here">現在地</span></div>
     <div class="seg" id="segWx">
-      <button type="button" data-w="0" aria-pressed="true">晴れ</button><button type="button" data-w="1">くもり</button><button type="button" data-w="2">雨</button>
+      <button type="button" data-w="0" aria-pressed="true" data-t="wxClear">晴れ</button><button type="button" data-w="1" data-t="wxCloudy">くもり</button><button type="button" data-w="2" data-t="wxRain">雨</button>
     </div>
   </div>
   <div class="row">
-    <button type="button" id="btnNow" class="wide">いまの時刻と天気に戻す</button>
+    <button type="button" id="btnNow" class="wide" data-t="backToNow">いまの時刻と天気に戻す</button>
   </div>
-  <h3>音</h3>
+  <h3 data-t="hSound">音</h3>
   <div class="row">
-    <div class="rl"><span>昼の蝉・風鈴・雨</span><span id="srcNote">録音</span></div>
+    <div class="rl"><span data-t="recLayers">昼の蝉・風鈴・雨</span><span id="srcNote" data-t="recorded">録音</span></div>
     <div class="seg" id="segSrc">
-      <button type="button" data-s="rec" aria-pressed="true">録音</button><button type="button" data-s="synth">合成</button>
+      <button type="button" data-s="rec" aria-pressed="true" data-t="recorded">録音</button><button type="button" data-s="synth" data-t="synth">合成</button>
     </div>
   </div>
   <div class="row tight">
-    <label class="rl" for="v_master"><span>全体</span><span id="o_master">100</span></label>
+    <label class="rl" for="v_master"><span data-t="vMaster">全体</span><span id="o_master">100</span></label>
     <input type="range" id="v_master" min="0" max="200" step="5" value="100">
   </div>
   <div class="row tight">
-    <label class="rl" for="v_pump"><span>ポンプ</span><span id="o_pump">100</span></label>
+    <label class="rl" for="v_pump"><span data-t="vPump">ポンプ</span><span id="o_pump">100</span></label>
     <input type="range" id="v_pump" min="0" max="200" step="5" value="100">
   </div>
   <div class="row tight">
-    <label class="rl" for="v_cicada"><span>あぶらぜみ</span><span id="o_cicada">100</span></label>
+    <label class="rl" for="v_cicada"><span data-t="vCicada">あぶらぜみ</span><span id="o_cicada">100</span></label>
     <input type="range" id="v_cicada" min="0" max="200" step="5" value="100">
   </div>
   <div class="row tight">
-    <label class="rl" for="v_minmin"><span>みんみんぜみ</span><span id="o_minmin">100</span></label>
+    <label class="rl" for="v_minmin"><span data-t="vMinmin">みんみんぜみ</span><span id="o_minmin">100</span></label>
     <input type="range" id="v_minmin" min="0" max="200" step="5" value="100">
   </div>
   <div class="row tight">
-    <label class="rl" for="v_dusk"><span>夕方のせみ</span><span id="o_dusk">100</span></label>
+    <label class="rl" for="v_dusk"><span data-t="vDusk">夕方のせみ</span><span id="o_dusk">100</span></label>
     <input type="range" id="v_dusk" min="0" max="200" step="5" value="100">
-
-    <label class="rl" for="v_furin"><span>風鈴</span><span id="o_furin">100</span></label>
+  </div>
+  <div class="row tight">
+    <label class="rl" for="v_furin"><span data-t="vFurin">風鈴</span><span id="o_furin">100</span></label>
     <input type="range" id="v_furin" min="0" max="200" step="5" value="100">
   </div>
   <div class="row tight">
-    <label class="rl" for="v_festival"><span>祭囃子</span><span id="o_festival">100</span></label>
+    <label class="rl" for="v_festival"><span data-t="vFestival">祭囃子</span><span id="o_festival">100</span></label>
     <input type="range" id="v_festival" min="0" max="200" step="5" value="100">
   </div>
   <div class="row tight">
-    <label class="rl" for="v_crowd"><span>ざわめき</span><span id="o_crowd">100</span></label>
+    <label class="rl" for="v_crowd"><span data-t="vCrowd">ざわめき</span><span id="o_crowd">100</span></label>
     <input type="range" id="v_crowd" min="0" max="200" step="5" value="100">
   </div>
   <div class="row tight">
-    <label class="rl" for="v_insect"><span>虫</span><span id="o_insect">100</span></label>
+    <label class="rl" for="v_insect"><span data-t="vInsect">虫</span><span id="o_insect">100</span></label>
     <input type="range" id="v_insect" min="0" max="200" step="5" value="100">
   </div>
   <div class="row tight">
-    <label class="rl" for="v_rain"><span>雨</span><span id="o_rain">100</span></label>
+    <label class="rl" for="v_rain"><span data-t="vRain">雨</span><span id="o_rain">100</span></label>
     <input type="range" id="v_rain" min="0" max="200" step="5" value="100">
   </div>
-  <h3>水面</h3>
+  <h3 data-t="hWater">水面</h3>
   <div class="row">
-    <label class="rl" for="amp"><span>波の高さ</span><span id="ampOut">0.10</span></label>
+    <label class="rl" for="amp"><span data-t="amp">波の高さ</span><span id="ampOut">0.10</span></label>
     <input type="range" id="amp" min="0" max="250" step="5" value="10">
   </div>
   <div class="row">
-    <label class="rl" for="wind"><span>風速</span><span id="windOut">0.34 m/s</span></label>
+    <label class="rl" for="wind"><span data-t="wind">風速</span><span id="windOut">0.34 m/s</span></label>
     <input type="range" id="wind" min="25" max="150" step="1" value="34">
   </div>
   <div class="row">
-    <div class="rl"><span>FFT 格子</span><span id="fftOut">256²</span></div>
+    <div class="rl"><span data-t="fft">FFT 格子</span><span id="fftOut">256²</span></div>
     <div class="seg" id="segFFT">
       <button type="button" data-n="64">64</button><button type="button" data-n="128">128</button><button type="button" data-n="256" aria-pressed="true">256</button>
     </div>
   </div>
-  <h3>表示</h3>
+  <h3 data-t="hView">表示</h3>
   <div class="row">
-    <div class="rl"><span>見下ろす角度</span><span id="pitchOut">標準</span></div>
+    <div class="rl"><span data-t="pitch">見下ろす角度</span><span id="pitchOut" data-t="pitchMid">標準</span></div>
     <div class="seg" id="segPitch">
-      <button type="button" data-p="55">浅め</button><button type="button" data-p="65" aria-pressed="true">標準</button><button type="button" data-p="87">真上</button>
+      <button type="button" data-p="55" data-t="pitchLow">浅め</button><button type="button" data-p="65" aria-pressed="true" data-t="pitchMid">標準</button><button type="button" data-p="87" data-t="pitchTop">真上</button>
     </div>
   </div>
-        </div>
   <div class="row">
-    <div class="rl"><span>描画速度</span><span id="fps">—</span></div>
-  </div>
-  <div class="row">
+    <div class="rl"><span data-t="fps">描画速度</span><span id="fps">—</span></div>
   </div>
 </div>
 
@@ -142,12 +148,12 @@
      先にこれを描いてから組み立てる。進み具合は刻めないので、脈動だけ出す -->
 <div id="loading">
   <div class="card">
-    <h1>金魚掬い</h1>
+    <h1 data-t="title">金魚掬い</h1>
     <div class="bar"><i></i></div>
   </div>
 </div>
 
 
-<script type="module" src="assets/js/main.js?v=202610031123"></script>
+<script type="module" src="assets/js/main.js?v=202610031133"></script>
 </body>
 </html>

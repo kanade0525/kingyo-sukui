@@ -1,4 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
+
+import { t } from './i18n.js?v=202610031133';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -19,10 +21,12 @@ export class UI {
       const open = this.el.panel.hidden;
       this.el.panel.hidden = !open;
       this.el.btnPanel.setAttribute('aria-expanded', String(open));
+      // 右上の札はパネルの上に重なる。開いているあいだは引っ込める
+      document.documentElement.classList.toggle('panel-open', open);
     });
 
-    this.#range('hour', 'hourOut', (v) => {
-      handlers.hour(v);
+    this.#range('hour', 'hourOut', (v, fromCode) => {
+      handlers.hour(v, fromCode);
       const h = Math.floor(v);
       return `${String(h).padStart(2, '0')}:${String(Math.round((v - h) * 60)).padStart(2, '0')}`;
     });
@@ -38,7 +42,7 @@ export class UI {
     });
     this.#seg('segWx', 'w', (v) => {
       handlers.weather(Number(v));
-      this.el.wxNote.textContent = '手動';
+      this.el.wxNote.textContent = t('manual');
       return null;
     });
     // 音の入切。画面に出しておく
@@ -50,7 +54,7 @@ export class UI {
     });
     this.#seg('segSrc', 's', (v) => {
       handlers.soundSource(v);
-      this.el.srcNote.textContent = v === 'rec' ? '録音' : '合成';
+      this.el.srcNote.textContent = t(v === 'rec' ? 'recorded' : 'synth');
     });
     // 音の調整つまみ。層ごとに動かせる
     for (const k of ['master','pump','cicada','minmin','dusk','furin',
@@ -65,15 +69,18 @@ export class UI {
     });
     this.#seg('segPitch', 'p', (v) => {
       handlers.pitch(Number(v));
-      $('pitchOut').textContent = { 55: '浅め', 65: '標準', 87: '真上' }[v] ?? v;
+      $('pitchOut').textContent =
+        t({ 55: 'pitchLow', 65: 'pitchMid', 87: 'pitchTop' }[v] ?? String(v));
     });
   }
 
   #range(id, outId, fn) {
     const el = $(id), out = $(outId);
-    const apply = () => { out.textContent = fn(Number(el.value)); };
+    // fromCode は「画面の外から動かした」印。人が掴んだのか、
+    // 時計に追従して動いたのかを、受け取る側で区別できるようにする
+    const apply = (e) => { out.textContent = fn(Number(el.value), e?.fromCode === true); };
     el.addEventListener('input', apply);
-    apply();
+    apply({ fromCode: true });
   }
 
   #seg(id, attr, fn) {
@@ -99,7 +106,9 @@ export class UI {
   setHour(h) {
     const el = $('hour');
     el.value = String(h);
-    el.dispatchEvent(new Event('input'));
+    const ev = new Event('input');
+    ev.fromCode = true;
+    el.dispatchEvent(ev);
   }
 
   /** 天気の選択を外から切り替える。note は出どころ（現在地／手動）。 */

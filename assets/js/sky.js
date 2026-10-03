@@ -194,6 +194,7 @@ export function localHour() {
  * 現在地の天気を引く。
  *
  * 位置はブラウザの許可を取ってから取る。断られれば晴れのまま。
+ * 返すのは { weather, tempC, lat, lon }。取れなければ null。
  * 外へ出ていくのは緯度経度を小数 2 桁（約 1km の粗さ）に丸めたものだけで、
  * 送り先は Open-Meteo（鍵の要らない公開 API）。遊ぶのに町より細かい
  * 精度は要らないので、丸めてから送る。
@@ -210,10 +211,14 @@ export function fetchWeather() {
         const lo = pos.coords.longitude.toFixed(2);
         // 太陽の高さにも使う。日本の端から端で 17 度違う
         setSite(Number(la), Number(lo));
-        const r = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=weather_code,cloud_cover`);
+        const r = await fetch('https://api.open-meteo.com/v1/forecast'
+          + `?latitude=${la}&longitude=${lo}`
+          + '&current=weather_code,cloud_cover,temperature_2m');
         const j = await r.json();
-        finish(wmoToWeather(j?.current?.weather_code, j?.current?.cloud_cover));
+        const w = wmoToWeather(j?.current?.weather_code, j?.current?.cloud_cover);
+        if (w === null) return finish(null);
+        finish({ weather: w, tempC: j?.current?.temperature_2m ?? null,
+                 lat: Number(la), lon: Number(lo) });
       } catch {
         finish(null);
       }

@@ -4,12 +4,17 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610031123';
-import { Game } from './game.js?v=202610031123';
-import { UI } from './ui.js?v=202610031123';
-import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610031123';
-import { Sound } from './sound.js?v=202610031123';
-import { POI } from './world.js?v=202610031123';
+import { Renderer } from './renderer.js?v=202610031133';
+import { Game } from './game.js?v=202610031133';
+import { UI } from './ui.js?v=202610031133';
+import { localHour, fetchWeather } from './sky.js?v=202610031133';
+import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610031133';
+import { Sound } from './sound.js?v=202610031133';
+import { POI } from './world.js?v=202610031133';
+import { nearestCity } from './place.js?v=202610031133';
+
+// 言葉をいちばん先に差し替える。覆いの題字も見えてしまうので
+applyI18n();
 
 const canvas = document.getElementById('scene');
 let renderer = null;
@@ -19,12 +24,22 @@ const sound = new Sound();
 game.sound = sound;
 
 const ui = new UI({
-  hour(v) { renderer?.setHour(v); },
-  weather(w) { renderer?.setWeather(w); game.rain = w === 2 ? 1 : 0; },
+  hour(v, fromCode) {
+    // 人が掴んだら、そこからは時計に追従しない
+    if (!fromCode) manualHour = true;
+    renderer?.setHour(v);
+    showNow();
+  },
+  weather(w) {
+    manualWeather = true;
+    renderer?.setWeather(w);
+    game.rain = w === 2 ? 1 : 0;
+    showNow();
+  },
   audio(on) { sound.setEnabled(on); if (on) sound.unlock(); },
   mix(k, v) { sound.setMix(k, v); },
   soundSource(m) { sound.setSource(m); },
-  now() { applyNow(true); },
+  now() { manualHour = false; manualWeather = false; applyNow(true); },
   amp(v) { renderer?.setAmp(v); },
   wind(v) { renderer?.setWind(v); },
   fft(n) { renderer?.setFftSize(n); },
@@ -59,17 +74,64 @@ function applyNow(ask) {
   const h = localHour();
   renderer.setHour(h);
   ui.setHour(h);
-  ui.setWeather(renderer.weather, '現在地を確認中…');
-  fetchWeather().then((w) => {
-    if (w === null) {
-      ui.setWeather(renderer.weather, '現在地が取れず晴れ');
+  ui.setWeather(renderer.weather, t('locating'));
+  showNow();
+  fetchWeather().then((r) => {
+    if (r === null) {
+      ui.setWeather(renderer.weather, t('noLocation'));
+      showNow();
       return;
     }
-    renderer.setWeather(w);
-    game.rain = w === 2 ? 1 : 0;
-    ui.setWeather(w, `現在地（${WEATHER_NAME[w]}）`);
+    here = { tempC: r.tempC, city: nearestCity(r.lat, r.lon) };
+    if (!manualWeather) {
+      renderer.setWeather(r.weather);
+      game.rain = r.weather === 2 ? 1 : 0;
+      ui.setWeather(r.weather, `${t('here')} · ${WEATHER_LABEL[r.weather]}`);
+    }
+    showNow();
   });
 }
+
+// ---- 画面右上の札 ----
+//
+// 季節でも場所でも日の暮れ方は変わる。その計算がいまどの条件で
+// 回っているのかを出しておかないと、絵が実際とつながっていることが
+// 伝わらない。人が時刻や天気を掴んだときは、そう分かるようにする。
+let manualHour = false;
+let manualWeather = false;
+let here = { tempC: null, city: null };
+
+function showNow() {
+  if (!renderer) return;
+  const bar = document.getElementById('nowbar');
+  const h = renderer.hour;
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  document.getElementById('nowPlace').textContent =
+    here.city ? t('nearby', { city: here.city }) : t('here');
+  const deg = here.tempC === null ? '' : ` · ${Math.round(here.tempC)}℃`;
+  document.getElementById('nowSky').textContent = WEATHER_LABEL[renderer.weather] + deg;
+  const el = document.getElementById('nowTime');
+  el.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  el.classList.toggle('manual', manualHour);
+  if (manualHour) {
+    const mark = document.createElement('span');
+    mark.className = 'mark';
+    mark.textContent = t('manual');
+    el.append(mark);
+  }
+  bar.hidden = false;
+}
+
+// 時計に追従する。人が時刻を掴んでいるあいだは動かさない
+setInterval(() => {
+  if (renderer && !manualHour) {
+    const h = localHour();
+    renderer.setHour(h);
+    ui.setHour(h);
+  }
+  showNow();
+}, 30000);
 // 1 フレーム待ってから組み立てる。rAF だけだと、同じフレームの中で
 // 走って覆いが画面に出ないことがある
 requestAnimationFrame(() => setTimeout(boot, 0));
