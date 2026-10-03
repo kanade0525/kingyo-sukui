@@ -1,6 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
 
-import { t } from './i18n.js?v=202610031233';
+import { t } from './i18n.js?v=202610031245';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -61,6 +61,21 @@ export class UI {
                      'festival','crowd','insect','rain']) {
       this.#range('v_' + k, 'o_' + k, (v) => { handlers.mix(k, v / 100); return String(Math.round(v)); });
     }
+
+    // いまの時刻と天気では鳴らない層に印を付ける。
+    //
+    // 雨のつまみは、晴れている間はいくら動かしても何も変わらない。
+    // それが画面から分からないと、動かしても効かないつまみに見える。
+    // 全体とポンプはいつでも鳴るので、印の対象から外す。
+    this.mutes = {};
+    for (const k of ['cicada','dusk','furin','festival','crowd','insect','rain']) {
+      const row = $('v_' + k).closest('.row');
+      const mark = document.createElement('i');
+      mark.className = 'mute';
+      mark.hidden = true;
+      row.querySelector('.rl').insertBefore(mark, row.querySelector('.rl').lastElementChild);
+      this.mutes[k] = { row, mark };
+    }
     $('btnNow').addEventListener('click', () => handlers.now());
 
     this.#seg('segFFT', 'n', (v) => {
@@ -117,6 +132,20 @@ export class UI {
       b.setAttribute('aria-pressed', String(Number(b.dataset.w) === w));
     }
     if (note) this.el.wxNote.textContent = note;
+  }
+
+  /**
+   * いま鳴っている層を画面に反映する。want は Sound.want。
+   * 0 に近い層は薄く落として「いまは鳴らない」と添える。
+   */
+  setLayerState(want) {
+    if (!this.mutes) return;
+    for (const [k, { row, mark }] of Object.entries(this.mutes)) {
+      const off = (want[k] ?? 0) < 0.02;
+      row.classList.toggle('off', off);
+      mark.hidden = !off;
+      if (off && !mark.textContent) mark.textContent = t('silentNow');
+    }
   }
 
   /** 最初の絵が出たら覆いを外す。 */

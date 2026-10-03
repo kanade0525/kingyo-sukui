@@ -40,6 +40,7 @@ const DICT = {
     recorded: '録音',
     synth: '合成',
 
+    silentNow: 'いまは鳴らない',
     vMaster: '全体',
     vPump: 'ポンプ',
     vCicada: 'あぶらぜみ',
@@ -90,6 +91,7 @@ const DICT = {
     recorded: 'Recorded',
     synth: 'Synthesized',
 
+    silentNow: 'silent now',
     vMaster: 'Overall',
     vPump: 'Air pump',
     vCicada: 'Cicada (day)',

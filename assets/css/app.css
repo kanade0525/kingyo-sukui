@@ -49,7 +49,9 @@ body.playing canvas#scene{cursor:none}
 /* 作り手への導線。絵の邪魔をしない大きさに留める */
 #by{
   font-family:var(--disp);font-size:10px;letter-spacing:.18em;
-  color:var(--ink-dim);text-decoration:none;opacity:.72;
+  color:var(--ink-dim);text-decoration:none;opacity:.78;
+  /* 夜は地面が暗いので、薄い縁取りが無いと読めない */
+  text-shadow:0 0 6px rgba(255,255,255,.55),0 1px 2px rgba(255,255,255,.75);
   padding:5px 2px;align-self:center;white-space:nowrap;
 }
 #by:hover,#by:focus-visible{color:var(--hi);opacity:1;text-decoration:underline}
@@ -157,3 +159,12 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 #nowTime.manual{color:var(--ink-dim)}
 #nowTime .mark{font-family:var(--body);font-size:10px;letter-spacing:.08em;
   margin-left:5px;vertical-align:2px}
+
+
+/* いまの時刻と天気では鳴らない層。
+   つまみは動かせるが、効かないことが分かるようにする */
+.row.off{opacity:.45}
+.rl .mute{
+  font-style:normal;font-size:10px;letter-spacing:.06em;
+  color:var(--ink-dim);margin-left:8px;
+}

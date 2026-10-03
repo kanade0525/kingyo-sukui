@@ -77,9 +77,12 @@ function solarPosition(hour) {
   return { elev, azimFromBack: north - Math.PI };
 }
 
-/** 店じまい。この時刻から提灯が落ち、1 時間ほどかけて真っ暗になる。 */
-const CLOSE_START = 22.2;
-const CLOSE_END = 23.4;
+/**
+ * 店じまい。この時刻から提灯が落ち、1 時間かけて真っ暗になる。
+ * 夏祭り・縁日は 21 時か 22 時終いが多数派なので、そこへ合わせる。
+ */
+const CLOSE_START = 21.0;
+const CLOSE_END = 22.0;
 
 export const WEATHER = { CLEAR: 0, CLOUDY: 1, RAIN: 2 };
 export const WEATHER_NAME = ['晴れ', 'くもり', '雨'];

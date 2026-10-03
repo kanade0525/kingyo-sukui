@@ -3,7 +3,7 @@
 // 太陽のきらめきは輝度 1 を大きく超える。そのまま出すとただの白い点に
 // なるので、明るい所を 1/4 解像度に落としてぼかし、足してからトーンマップする。
 
-import { HEAD, TONEMAP, NOISE } from './common.js?v=202610031233';
+import { HEAD, TONEMAP, NOISE } from './common.js?v=202610031245';
 
 /** NaN と Inf を落とす。1 画素でもぼかしに入ると、塊になって画面に残る。 */
 const SANE = `
@@ -64,7 +64,7 @@ out vec4 frag;
  *  実際のレンズがそうなっているので、ほんの少し入れると写真らしくなる。 */
 vec3 fetchCA(vec2 uv){
   vec2 d = uv - 0.5;
-  float k = 0.0011 * (1.0 - uPlain);
+  float k = 0.0008 * (1.0 - uPlain);
   vec3 c = vec3(
     texture(uSrc, 0.5 + d * (1.0 + k)).r,
     texture(uSrc, uv).g,
@@ -72,9 +72,11 @@ vec3 fetchCA(vec2 uv){
   vec3 flat_ = texture(uSrc, uv).rgb;
   // 明暗の差が大きい輪郭では、ずらした分がそのまま橙と青の縁になって
   // 絵に出てしまう。舟と地面の境がまさにそれだった。
-  // 段差の大きい所ではずらさない
+  // 段差の大きい所ではずらさない。
+  // 0.08〜0.30 では緩く、舟の輪郭に橙と青の縁が残っていた。
+  // 人の目は色の縁に敏感なので、写真らしさより先に気づかれる
   float edge = length(c - flat_) / max(length(flat_) + 0.04, 0.04);
-  return mix(c, flat_, smoothstep(0.08, 0.30, edge));
+  return mix(c, flat_, smoothstep(0.025, 0.11, edge));
 }
 
 /**

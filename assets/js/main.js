@@ -4,14 +4,14 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610031233';
-import { Game } from './game.js?v=202610031233';
-import { UI } from './ui.js?v=202610031233';
-import { localHour, fetchWeather } from './sky.js?v=202610031233';
-import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610031233';
-import { Sound } from './sound.js?v=202610031233';
-import { POI } from './world.js?v=202610031233';
-import { nearestCity } from './place.js?v=202610031233';
+import { Renderer } from './renderer.js?v=202610031245';
+import { Game } from './game.js?v=202610031245';
+import { UI } from './ui.js?v=202610031245';
+import { localHour, fetchWeather } from './sky.js?v=202610031245';
+import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610031245';
+import { Sound } from './sound.js?v=202610031245';
+import { POI } from './world.js?v=202610031245';
+import { nearestCity } from './place.js?v=202610031245';
 
 // 言葉をいちばん先に差し替える。覆いの題字も見えてしまうので
 applyI18n();
@@ -114,6 +114,10 @@ function showNow() {
   const el = document.getElementById('nowTime');
   el.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   el.classList.toggle('manual', manualHour);
+  // want は毎コマ更新されるが、つまみを動かした直後はまだ古い。
+  // ここで引き直してから反映する
+  sound.setScene(renderer.sun);
+  ui.setLayerState(sound.want);
   if (manualHour) {
     const mark = document.createElement('span');
     mark.className = 'mark';
@@ -205,6 +209,7 @@ let fpsAcc = 0, fpsN = 0, fpsShown = null;
 // 最初の 1 枚が出るまでは覆いを残す。シェーダの用意が済んでいても、
 // 1 フレーム目は水面の場がまだ立ち上がっていない
 let warmup = 3;
+let layerTick = 0;
 
 /**
  * 解像度の自動調整。
@@ -242,6 +247,10 @@ function frame(now) {
   // 水面をなでることだけができる
   game.closed = renderer.sun.closed > 0.6;
   sound.setScene(renderer.sun);
+  // 鳴っている層の表示を 1 秒に 4 回ほど更新する。
+  // コマ数で間引くと、描画の遅い機械でそのぶん遅れるので、時間で間引く
+  layerTick += dt;
+  if (layerTick >= 0.25) { layerTick = 0; ui.setLayerState(sound.want); }
   renderer.render({ time: game.time, school: game.school, poi: game.poi, bowl: game.bowl });
 
   if (warmup > 0 && --warmup === 0) ui.ready();

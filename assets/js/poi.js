@@ -4,8 +4,8 @@
 // 水中で速く動かしたときの方が一気に傷む。斜めに入れて静かに抜くのが
 // 上手い人のやり方なので、ゲームとしてもそこに報いる。
 
-import { TANK, POI } from './world.js?v=202610031233';
-import { clamp, lerp } from './mat.js?v=202610031233';
+import { TANK, POI } from './world.js?v=202610031245';
+import { clamp, lerp } from './mat.js?v=202610031245';
 
 export class Poi {
   constructor() {

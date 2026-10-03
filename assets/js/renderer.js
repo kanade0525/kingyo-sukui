@@ -9,19 +9,19 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610031233';
-import { VS_FULL } from '../shaders/common.js?v=202610031233';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610031233';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610031233';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610031233';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610031233';
-import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610031233';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610031233';
-import { Ocean } from './ocean.js?v=202610031233';
-import { Ripple } from './ripple.js?v=202610031233';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610031233';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610031233';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610031233';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610031245';
+import { VS_FULL } from '../shaders/common.js?v=202610031245';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610031245';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610031245';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610031245';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610031245';
+import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610031245';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610031245';
+import { Ocean } from './ocean.js?v=202610031245';
+import { Ripple } from './ripple.js?v=202610031245';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610031245';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610031245';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610031245';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -204,7 +204,7 @@ export class Renderer {
     // 縦画面は、舟の比（0.67）と画面の比（0.46）が違うので、
     // 横を合わせると上下に 3 割の余白が出る。長辺の端を少しだけ切って詰める。
     // 切りすぎると側面の縁が消えて、舟が何だか分からなくなる
-    const dist = Math.max(needW * (portrait ? 0.90 : 1.0), needH) * 1.005;
+    const dist = Math.max(needW * (portrait ? 0.87 : 1.0), needH) * 1.005;
 
     const base = [0, -0.01, 0];
     const eye = [
@@ -212,8 +212,13 @@ export class Renderer {
       base[1] + Math.sin(pitch) * dist,
       base[2] + Math.cos(yaw) * Math.cos(pitch) * dist,
     ];
-    // ほぼ真下を向くので、狙う点は舟の中心のすぐ奥
-    const target = [-Math.sin(yaw) * 0.02, 0.0, -Math.cos(yaw) * 0.02];
+    // 狙う点。
+    //
+    // 横画面では舟の中心のすぐ奥。縦画面で同じにすると、遠近で奥側が
+    // 縮むぶん絵が下へ寄り、上の余白 18%・下 6% と偏っていた。
+    // 手前側を狙って持ち上げる
+    const aim = portrait ? 0.062 : -0.02;
+    const target = [Math.sin(yaw) * aim, 0.0, Math.cos(yaw) * aim];
     this.cam = eye;
     perspective(this.proj, FOV_Y, aspect, 0.02, 12);
     lookAt(this.view, eye, target, [0, 1, 0]);
