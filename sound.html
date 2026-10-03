@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>金魚掬い — 音を聴く</title>
 <meta name="robots" content="noindex">
-<link rel="stylesheet" href="assets/css/app.css?v=202610031135">
+<link rel="stylesheet" href="assets/css/app.css?v=202610031142">
 <style>
   body{overflow:auto;background:var(--paper,#eceae4)}
   main{max-width:640px;margin:0 auto;padding:28px 20px 60px;font-size:13px;line-height:1.9}
@@ -29,7 +29,7 @@
 <main>
   <h1>音を聴く</h1>
   <p>層ごとに切り替えて聴けます。直したい所を教えてください。<br>
-     蝉・風鈴・雨は録音、ほかは合成です。</p>
+     蝉・風鈴・雨・虫・祭囃子は録音、ほかは合成です。</p>
   <button id="start">鳴らす</button>
 
   <h2>時刻で切り替える</h2>
@@ -47,8 +47,8 @@
 </main>
 
 <script type="module">
-import { Sound } from './assets/js/sound.js?v=202610031135';
-import { sunFor } from './assets/js/sky.js?v=202610031135';
+import { Sound } from './assets/js/sound.js?v=202610031142';
+import { sunFor } from './assets/js/sky.js?v=202610031142';
 
 const $ = (id) => document.getElementById(id);
 const snd = new Sound();
@@ -58,9 +58,9 @@ const LAYERS = [
   ['cicada', '昼の蝉', '日本の夏の録音。いちばん強いのは 5〜6kHz'],
   ['dusk', '夕方の蝉', '日が傾くあいだだけ。4.6kHz に芯があり、脈が速い'],
   ['furin', '風鈴', '録音。いちばん強いのは 3.8〜4.6kHz'],
-  ['festival', '祭囃子', '篠笛・締太鼓・鉦。遠くから聞こえる想定'],
+  ['festival', '祭囃子', '和楽器の録音。130BPM・48 小節でぴたりと繰り返す'],
   ['crowd', 'ざわめき', '話し声の帯を揺らした雑音'],
-  ['insect', '虫', 'スズムシ。4.5kHz 前後の短い帯域雑音'],
+  ['insect', '虫', '夜の虫の録音。4〜5kHz に偏る'],
   ['rain', '雨', '地面を打つ雨の録音。1.5〜2.2kHz が中心'],
 ];
 const HOURS = [[8, '朝'], [13, '昼'], [17.5, '夕方'], [19.2, '宵'], [21, '夜'], [23.6, '深夜']];

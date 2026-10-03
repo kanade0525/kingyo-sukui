@@ -32,6 +32,8 @@ const MAP = [
   ['semi-yugata.m4a', 's2.bin'],
   ['furin.m4a', 's3.bin'],
   ['ame.m4a', 's4.bin'],
+  ['mushi.m4a', 's5.bin'],
+  ['hayashi.m4a', 's6.bin'],
 ];
 
 const src = process.argv[2];

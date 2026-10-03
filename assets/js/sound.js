@@ -28,6 +28,10 @@ const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
  * （ニュージーランドのセミ、西洋の音階付き風鈴）は置き換えた。
  * 出どころは assets/sound/CREDITS.md。
  *
+ * 祭囃子だけは音楽なので扱いが違う。48 小節（88.6 秒）でぴたりと
+ * 繰り返す素材なので、そのまま輪にしてある。ほかの環境音のように
+ * 末尾を先頭へ重ねると、拍がずれて別物になる。
+ *
  * 中身は m4a（AAC）。ogg vorbis は iOS の Safari が読めず、
  * 読み込みに失敗して黙って合成へ落ちていた。
  * どの層も 2 秒の重ね合わせで輪にしてあるので、繋ぎ目で跳ねない。
@@ -38,10 +42,12 @@ const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
  * 暗号ではなく、覗いて持っていくのに一手間かかる、という程度のもの。
  */
 const CLIPS = {
-  cicada: 'assets/sound/s1.bin',
-  dusk:   'assets/sound/s2.bin',
-  furin:  'assets/sound/s3.bin',
-  rain:   'assets/sound/s4.bin',
+  cicada:   'assets/sound/s1.bin',
+  dusk:     'assets/sound/s2.bin',
+  furin:    'assets/sound/s3.bin',
+  rain:     'assets/sound/s4.bin',
+  insect:   'assets/sound/s5.bin',
+  festival: 'assets/sound/s6.bin',
 };
 
 /** scripts/pack-sound.mjs の KEY と同じ。片方だけ変えると音が出ない */
@@ -59,7 +65,8 @@ function unscramble(bytes) {
  * 値は合成側に掛ける補正。層の音量は録音に合わせて決め直したので、
  * 合成側はその比で戻さないと、切り替えた途端に音量が変わってしまう。
  */
-const SYNTH_TRIM = { cicada: 0.26 / 1.05, furin: 1.10 / 0.95, rain: 0.30 / 1.10 };
+const SYNTH_TRIM = { cicada: 0.26 / 1.05, furin: 1.10 / 0.95, rain: 0.30 / 1.10,
+                     insect: 0.38 / 2.00, festival: 0.34 / 0.78 };
 
 export class Sound {
   constructor() {
@@ -131,7 +138,12 @@ export class Sound {
       }
     }
     // 遠くから聞こえるものは、残響にも送る
-    for (const k of ['festival', 'crowd', 'furin']) this.layers[k].connect(this.verb);
+    // 遠くから聞こえるものは、残響にも送る。
+    // 祭囃子だけは録音にもともと空間が入っているので、送りを絞る
+    for (const k of ['crowd', 'furin']) this.layers[k].connect(this.verb);
+    const fsend = ctx.createGain();
+    fsend.gain.value = 0.35;
+    this.layers.festival.connect(fsend).connect(this.verb);
 
     this.#startCicada();
     this.#startMinmin();
@@ -236,9 +248,14 @@ export class Sound {
     // 最初に置いた値は全部で頂点 0.069（ほぼ聞こえない）だったので、
     // 合わせて 6 倍ほどまで上げてある
     // 録音のある層は、どれも -20 LUFS に揃えてあるので近い値になる。
-    // 合成だけの層は、以前に実測して決めた値をそのまま使う
+    // 合成だけの層は、以前に実測して決めた値をそのまま使う。
+    //
+    // 虫だけ 2.0 と大きいのは、鳴き声が 4〜5kHz に偏っているため。
+    // LUFS は人の耳に合わせてその辺りを重く数えるので、同じ -20 LUFS でも
+    // 実際に出てくる音は小さい。耳で判断できないので、画面の出力を
+    // 実測して合わせた（揃える前は深夜だけ 11dB 低かった）
     const vol = { pump: 0.085, cicada: 1.05, minmin: 0.80, dusk: 1.10, furin: 0.95,
-                  festival: 0.34, crowd: 0.26, insect: 0.38, rain: 1.10 };
+                  festival: 0.78, crowd: 0.26, insect: 2.00, rain: 1.10 };
     for (const k of Object.keys(this.layers)) {
       // 層が増えたときに want の鍵が欠けても落ちないようにする
       const w = this.want[k] ?? 0;
@@ -476,7 +493,7 @@ export class Sound {
       g.gain.linearRampToValueAtTime(3.8, st + 0.012);
       g.gain.setValueAtTime(3.8, st + 0.065);
       g.gain.exponentialRampToValueAtTime(0.004, st + 0.14);
-      src.connect(bp).connect(g).connect(this.layers.insect);
+      src.connect(bp).connect(g).connect(this.synthGate.insect ?? this.layers.insect);
       src.start(st);
       src.stop(st + 0.2);
     }
@@ -553,7 +570,7 @@ export class Sound {
     out.type = 'lowpass';
     out.frequency.value = 1500;
     out.Q.value = 0.6;
-    out.connect(this.layers.festival);
+    out.connect(this.synthGate.festival ?? this.layers.festival);
     this.fes = out;
 
     const BPM = 116;

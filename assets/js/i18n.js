@@ -35,7 +35,7 @@ const DICT = {
     manual: '手動',
     nearby: '{city}あたり',
 
-    recLayers: '昼の蝉・風鈴・雨',
+    recLayers: '音の出どころ',
     recorded: '録音',
     synth: '合成',
 
@@ -85,7 +85,7 @@ const DICT = {
     manual: 'set by hand',
     nearby: 'near {city}',
 
-    recLayers: 'Cicada, chime, rain',
+    recLayers: 'Sound source',
     recorded: 'Recorded',
     synth: 'Synthesized',
 
