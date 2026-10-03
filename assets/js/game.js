@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610031229';
-import { Poi } from './poi.js?v=202610031229';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610031229';
+import { School } from './fish.js?v=202610031233';
+import { Poi } from './poi.js?v=202610031233';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610031233';
 
 /** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
 const h11 = (x) => {
@@ -281,15 +281,18 @@ export class Game {
       const now = (this.time * k + r2) % 1;
       const crossed = now < was ? was < 0.86 : (was < 0.86 && now >= 0.86);
       if (!crossed) continue;
-      // 1 粒ずつは弱く。54 粒が毎秒 60 回も同じ所を叩くので、
-      // 1 回ぶんを強くすると、石の上に窪みが立ったまま残る
       // 出口は石の長さ（30mm）ぶんに散らす。1 点を叩き続けると、
-      // 波が干渉して花のような定在模様が立ったまま残る
+      // 波が干渉して花のような定在模様が立ったまま残る。
+      //
+      // 1 粒ぶんを 0.00022 にしていた。雨粒の 1/5、ポイの 1/20 で、
+      // 泡が弾けても水面に何も起きていないように見えていた。
+      // 0.00090 にすると、石の上から輪が広がるのが分かる。
+      // 22 秒まわして、定在模様が立たないことは確かめた
       this.ripple.drop(
         AIR.stone[0] + (r1 - 0.5) * 0.044,
         AIR.stone[2] + (r3 - 0.5) * 0.030,
         0.013 + r3 * 0.007,
-        0.00022,
+        0.00090,
       );
     }
   }

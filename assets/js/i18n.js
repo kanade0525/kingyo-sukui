@@ -13,6 +13,7 @@ const DICT = {
   ja: {
     title: '金魚掬い',
     settings: '設定',
+    byAria: '作った人のほかの作品を見る（別のページが開きます）',
     soundToggle: '音の入切',
     noWebgl: 'WebGL2 が使えません',
     noWebglWhy: '別のブラウザでお試しください。',
@@ -62,6 +63,7 @@ const DICT = {
   en: {
     title: 'Goldfish Scooping',
     settings: 'Settings',
+    byAria: 'See more work by the author (opens a new page)',
     soundToggle: 'Sound on/off',
     noWebgl: 'WebGL2 is not available',
     noWebglWhy: 'Please try a different browser.',

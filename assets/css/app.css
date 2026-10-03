@@ -46,6 +46,14 @@ body.playing canvas#scene{cursor:none}
   pointer-events:none;
 }
 #botbar > *{pointer-events:auto}
+/* 作り手への導線。絵の邪魔をしない大きさに留める */
+#by{
+  font-family:var(--disp);font-size:10px;letter-spacing:.18em;
+  color:var(--ink-dim);text-decoration:none;opacity:.72;
+  padding:5px 2px;align-self:center;white-space:nowrap;
+}
+#by:hover,#by:focus-visible{color:var(--hi);opacity:1;text-decoration:underline}
+
 #tools{margin-left:auto;display:flex;align-items:center;gap:10px;flex:0 0 auto}
 #fps{color:var(--ink);font-variant-numeric:tabular-nums}
 
