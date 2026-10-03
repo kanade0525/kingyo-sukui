@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>金魚掬い — 音を聴く</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="assets/css/app.css?v=202610030505">
+<style>
+  body{overflow:auto;background:var(--paper,#eceae4)}
+  main{max-width:640px;margin:0 auto;padding:28px 20px 60px;font-size:13px;line-height:1.9}
+  h1{font-family:var(--disp);font-size:22px;letter-spacing:.14em;margin:0 0 6px}
+  h2{font-family:var(--disp);font-size:14px;letter-spacing:.14em;margin:26px 0 8px;color:var(--hi)}
+  p{margin:0 0 14px;color:var(--ink-dim)}
+  .lay{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid rgba(0,0,0,.08)}
+  .lay b{flex:0 0 7.5em;font-weight:500;color:var(--ink)}
+  .lay span{flex:1;font-size:11px;color:var(--ink-dim)}
+  .lay button{flex:0 0 auto;padding:6px 16px;font-size:11px}
+  .lay button[aria-pressed=true]{background:var(--hi);color:#fff;border-color:var(--hi)}
+  .hour{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 18px}
+  .hour button{padding:7px 14px;font-size:11px}
+  .hour button[aria-pressed=true]{background:var(--hi);color:#fff;border-color:var(--hi)}
+  #state{font-variant-numeric:tabular-nums;font-size:11px;color:var(--ink-dim);white-space:pre-wrap}
+  #start{font-family:var(--disp);font-size:14px;letter-spacing:.16em;padding:11px 30px;
+         background:var(--hi);color:#fff;border-color:var(--hi);margin-bottom:8px}
+</style>
+</head>
+<body>
+<main>
+  <h1>音を聴く</h1>
+  <p>層ごとに切り替えて聴けます。直したい所を教えてください。<br>
+     音は合成です（音源ファイルは持っていません）。</p>
+  <button id="start">鳴らす</button>
+
+  <h2>時刻で切り替える</h2>
+  <p>本編と同じ切り替わり方です。時刻を選ぶと、鳴る層が入れ替わります。</p>
+  <div class="hour" id="hours"></div>
+  <div id="state">—</div>
+
+  <h2>層ごとに聴く</h2>
+  <p>ここを押すと、その層だけが鳴ります（時刻の設定は無視します）。</p>
+  <div id="layers"></div>
+
+  <h2>一度きりの音</h2>
+  <div class="lay"><b>着水</b><span>ポイが水に入る</span><button id="sIn">鳴らす</button></div>
+  <div class="lay"><b>離水</b><span>ポイを抜く。入るときより派手</span><button id="sOut">鳴らす</button></div>
+</main>
+
+<script type="module">
+import { Sound } from './assets/js/sound.js?v=202610030505';
+import { sunFor } from './assets/js/sky.js?v=202610030505';
+
+const $ = (id) => document.getElementById(id);
+const snd = new Sound();
+
+const LAYERS = [
+  ['pump', 'ポンプ', '気泡がはじける音。いつでも鳴る'],
+  ['cicada', '蝉', 'アブラゼミ。帯域雑音を 40Hz で振幅変調'],
+  ['furin', '風鈴', '叩いた硝子。倍音は 1 : 2.76 : 5.40'],
+  ['festival', '祭囃子', '篠笛・締太鼓・鉦。遠くから聞こえる想定'],
+  ['crowd', 'ざわめき', '話し声の帯を揺らした雑音'],
+  ['insect', '虫', 'スズムシ。4.5kHz 前後の短い帯域雑音'],
+];
+const HOURS = [[8, '朝'], [13, '昼'], [17.5, '夕方'], [19.2, '宵'], [21, '夜'], [23.6, '深夜']];
+
+let solo = null;
+let hour = 13;
+
+function refresh() {
+  if (solo) {
+    snd.want = Object.fromEntries(LAYERS.map(([k]) => [k, k === solo ? 1 : 0]));
+    snd.apply();
+    $('state').textContent = `${LAYERS.find((l) => l[0] === solo)[1]} だけ鳴らしています`;
+  } else {
+    const s = sunFor(hour, 0, 0);
+    snd.setScene(s);
+    $('state').textContent =
+      `${hour} 時 — 昼 ${s.daylight.toFixed(2)} / 提灯 ${s.lanternOn.toFixed(2)} / 店じまい ${s.closed.toFixed(2)}\n`
+      + LAYERS.map(([k, n]) => `${n} ${snd.want[k].toFixed(2)}`).join('　');
+  }
+  for (const [k] of LAYERS) $('L_' + k).setAttribute('aria-pressed', String(solo === k));
+  for (const [h] of HOURS) $('H_' + h).setAttribute('aria-pressed', String(!solo && hour === h));
+}
+
+$('layers').innerHTML = LAYERS.map(([k, n, d]) =>
+  `<div class="lay"><b>${n}</b><span>${d}</span><button id="L_${k}">これだけ</button></div>`).join('');
+$('hours').innerHTML = HOURS.map(([h, n]) =>
+  `<button id="H_${h}">${n}（${h}時）</button>`).join('');
+
+for (const [k] of LAYERS) {
+  $('L_' + k).addEventListener('click', () => { solo = solo === k ? null : k; refresh(); });
+}
+for (const [h] of HOURS) {
+  $('H_' + h).addEventListener('click', () => { solo = null; hour = h; refresh(); });
+}
+$('sIn').addEventListener('click', () => { snd.unlock(); snd.splash(1.0, false); });
+$('sOut').addEventListener('click', () => { snd.unlock(); snd.splash(1.1, true); });
+$('start').addEventListener('click', () => { snd.unlock(); refresh(); $('start').textContent = '鳴っています'; });
+
+refresh();
+</script>
+</body>
+</html>

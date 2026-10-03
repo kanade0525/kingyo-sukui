@@ -86,7 +86,6 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 }
 #loading.done{opacity:0;pointer-events:none}
 .card{width:min(560px,100%);text-align:center}
-.kicker{margin:0 0 14px;font-size:11px;letter-spacing:.45em;color:var(--hi)}
 .card h1{
   margin:0 0 28px;font-family:var(--disp);font-weight:700;
   font-size:clamp(40px,10vw,76px);letter-spacing:.22em;text-wrap:balance;

@@ -37,7 +37,7 @@ for await (const file of walk(join(ROOT, 'assets'))) {
 // HTML 側。モジュールと CSS の読み込みに同じ版を押す。
 // perf.html は renderer と game を直接読むので、そこも忘れずに
 let pages = 0;
-for (const name of ['index.html', 'perf.html']) {
+for (const name of ['index.html', 'perf.html', 'sound.html']) {
   const file = join(ROOT, name);
   const h = await readFile(file, 'utf8');
   const h2 = h

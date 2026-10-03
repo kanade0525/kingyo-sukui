@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 export class UI {
   constructor(handlers) {
     this.el = {
-      fps: $('fps'), hourOut: $('hourOut'), wxNote: $('wxNote'),
+      fps: $('fps'), hourOut: $('hourOut'), wxNote: $('wxNote'), audioNote: $('audioNote'),
       loading: $('loading'),
       panel: $('panel'), btnPanel: $('btnPanel'),
       fallback: $('fallback'), fallbackWhy: $('fallbackWhy'),
@@ -40,6 +40,10 @@ export class UI {
       handlers.weather(Number(v));
       this.el.wxNote.textContent = '手動';
       return null;
+    });
+    this.#seg('segAudio', 'a', (v) => {
+      handlers.audio(v === '1');
+      this.el.audioNote.textContent = v === '1' ? '鳴らす' : '消す';
     });
     $('btnNow').addEventListener('click', () => handlers.now());
 

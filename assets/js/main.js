@@ -4,19 +4,23 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610030454';
-import { Game } from './game.js?v=202610030454';
-import { UI } from './ui.js?v=202610030454';
-import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610030454';
+import { Renderer } from './renderer.js?v=202610030505';
+import { Game } from './game.js?v=202610030505';
+import { UI } from './ui.js?v=202610030505';
+import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610030505';
+import { Sound } from './sound.js?v=202610030505';
 
 const canvas = document.getElementById('scene');
 let renderer = null;
 
 const game = new Game();
+const sound = new Sound();
+game.sound = sound;
 
 const ui = new UI({
   hour(v) { renderer?.setHour(v); },
   weather(w) { renderer?.setWeather(w); game.rain = w === 2 ? 1 : 0; },
+  audio(on) { sound.setEnabled(on); if (on) sound.unlock(); },
   now() { applyNow(true); },
   amp(v) { renderer?.setAmp(v); },
   wind(v) { renderer?.setWind(v); },
@@ -78,6 +82,7 @@ function toNdc(e) {
 let pointerId = null;
 
 canvas.addEventListener('pointerdown', (e) => {
+  sound.unlock();
   if (pointerId !== null) return;
   pointerId = e.pointerId;
   canvas.setPointerCapture(e.pointerId);
@@ -108,6 +113,7 @@ window.addEventListener('resize', () => renderer?.resize());
 
 // キーボードでも遊べるように（スペースで沈める）
 window.addEventListener('keydown', (e) => {
+  sound.unlock();
   if (e.code === 'Space') { e.preventDefault(); game.press(true); }
 });
 window.addEventListener('keyup', (e) => {
@@ -130,6 +136,7 @@ function frame(now) {
   // 店じまいのあとは、貸してくれるポイがもう無い。
   // 水面をなでることだけができる
   game.closed = renderer.sun.closed > 0.6;
+  sound.setScene(renderer.sun);
   renderer.render({ time: game.time, school: game.school, poi: game.poi, bowl: game.bowl });
 
   if (warmup > 0 && --warmup === 0) ui.ready();

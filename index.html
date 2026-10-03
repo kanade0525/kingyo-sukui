@@ -27,7 +27,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@400;700&family=Shippori+Mincho+B1:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="assets/css/app.css?v=202610030454">
+<link rel="stylesheet" href="assets/css/app.css?v=202610030505">
 </head>
 <body>
 
@@ -36,7 +36,7 @@
 <div id="fallback" hidden>
   <div>
     <h2>WebGL2 が使えません</h2>
-    <p class="lede" id="fallbackWhy">この水面は WebGL2 の浮動小数点テクスチャを使って FFT を解いています。別のブラウザか、ハードウェアアクセラレーションを有効にしてお試しください。</p>
+    <p class="lede" id="fallbackWhy">別のブラウザでお試しください。</p>
   </div>
 </div>
 
@@ -96,6 +96,12 @@
     </div>
   </div>
   <div class="row">
+    <div class="rl"><span>音</span><span id="audioNote">鳴らす</span></div>
+    <div class="seg" id="segAudio">
+      <button type="button" data-a="1" aria-pressed="true">鳴らす</button><button type="button" data-a="0">消す</button>
+    </div>
+  </div>
+  <div class="row">
     <div class="rl"><span>描画速度</span><span id="fps">—</span></div>
   </div>
   <div class="row">
@@ -106,13 +112,12 @@
      先にこれを描いてから組み立てる。進み具合は刻めないので、脈動だけ出す -->
 <div id="loading">
   <div class="card">
-    <p class="kicker">夏 の 水 槽</p>
     <h1>金魚掬い</h1>
     <div class="bar"><i></i></div>
   </div>
 </div>
 
 
-<script type="module" src="assets/js/main.js?v=202610030454"></script>
+<script type="module" src="assets/js/main.js?v=202610030505"></script>
 </body>
 </html>

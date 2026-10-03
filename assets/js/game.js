@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610030454';
-import { Poi } from './poi.js?v=202610030454';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610030454';
+import { School } from './fish.js?v=202610030505';
+import { Poi } from './poi.js?v=202610030505';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610030505';
 
 /** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
 const h11 = (x) => {
@@ -25,8 +25,11 @@ const SHOW_TIME = 1.1;
 
 export class Game {
   constructor() {
+    this.sound = null;
     this.school = new School(52);
     this.poi = new Poi();
+    // 水に触れた瞬間に鳴らす。音は Game が持っている
+    this.poi.onSplash = (power, out) => this.sound?.splash(power, out);
     this.poi.visible = false;
     this.phase = PHASE.READY;
     this.showUntil = 0;
