@@ -4,14 +4,14 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610031311';
-import { Game } from './game.js?v=202610031311';
-import { UI } from './ui.js?v=202610031311';
-import { localHour, fetchWeather } from './sky.js?v=202610031311';
-import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610031311';
-import { Sound } from './sound.js?v=202610031311';
-import { POI } from './world.js?v=202610031311';
-import { nearestCity } from './place.js?v=202610031311';
+import { Renderer } from './renderer.js?v=202610031321';
+import { Game } from './game.js?v=202610031321';
+import { UI } from './ui.js?v=202610031321';
+import { localHour, fetchWeather, sunFor } from './sky.js?v=202610031321';
+import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610031321';
+import { Sound, layerWants } from './sound.js?v=202610031321';
+import { POI } from './world.js?v=202610031321';
+import { nearestCity } from './place.js?v=202610031321';
 
 // 言葉をいちばん先に差し替える。覆いの題字も見えてしまうので
 applyI18n();
@@ -40,6 +40,7 @@ const ui = new UI({
   mix(k, v) { sound.setMix(k, v); },
   soundSource(m) { sound.setSource(m); },
   now() { manualHour = false; manualWeather = false; applyNow(true); },
+  jumpTo(key) { jumpToLayer(key); },
   amp(v) { renderer?.setAmp(v); },
   wind(v) { renderer?.setWind(v); },
   fft(n) { renderer?.setFftSize(n); },
@@ -125,6 +126,49 @@ function showNow() {
     el.append(mark);
   }
   bar.hidden = false;
+}
+
+/**
+ * その音がいちばん鳴る条件へ飛ぶ。
+ *
+ * 夕方の蝉は日が低いあいだの 76 分しか鳴らない。鳴る時刻が
+ * 画面のどこにも出ていないと、探し当てるまで一度も聞けない。
+ */
+function jumpToLayer(key) {
+  if (!renderer) return;
+  if (key === 'rain') {
+    manualWeather = true;
+    renderer.setWeather(2);
+    game.rain = 1;
+    ui.setWeather(2, t('manual'));
+    showNow();
+    return;
+  }
+  // 天気はいまのまま 24 時間ぶん走査する。それで鳴らないなら、
+  // 雨が邪魔をしているので晴れにして引き直す
+  const scan = (w) => {
+    let best = { h: 0, v: -1 };
+    for (let h = 0; h < 24; h += 1 / 12) {
+      const v = layerWants(sunFor(h, 0, w))[key] ?? 0;
+      if (v > best.v) best = { h, v };
+    }
+    return best;
+  };
+  let best = scan(renderer.weather);
+  if (best.v < 0.05 && renderer.weather === 2) {
+    manualWeather = true;
+    renderer.setWeather(0);
+    game.rain = 0;
+    ui.setWeather(0, t('manual'));
+    best = scan(0);
+  }
+  if (best.v < 0.05) return;
+  manualHour = true;
+  // つまみの刻みに合わせる
+  const h = Math.round(best.h * 4) / 4;
+  renderer.setHour(h);
+  ui.setHour(h);
+  showNow();
 }
 
 // 時計に追従する。人が時刻を掴んでいるあいだは動かさない

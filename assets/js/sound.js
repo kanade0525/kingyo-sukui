@@ -68,6 +68,46 @@ function unscramble(bytes) {
 const SYNTH_TRIM = { cicada: 0.26 / 1.05, furin: 1.10 / 0.95, rain: 0.30 / 1.10,
                      insect: 0.38 / 2.00, festival: 0.34 / 0.312 };
 
+/**
+ * 光の条件から、層ごとの音量を決める。
+ *
+ * クラスの外に出してあるのは、画面側が「この音はいつ鳴るのか」を
+ * 一日ぶん走査して調べられるようにするため。設定の「いまは鳴らない」を
+ * 押すと、ここを 24 時間ぶん回して、いちばん鳴る時刻へ飛ぶ。
+ */
+export function layerWants({ daylight, lanternOn, closed, weather, elev = 0 }) {
+  const day = clamp01(daylight);
+  const lit = clamp01(lanternOn);
+  const shut = clamp01(closed);
+  const dry = weather === 2 ? 0 : 1;
+  // 夕方の蝉だけは、明るさではなく太陽の高さ（度）で決める。
+  //
+  // 明るさで決めると、日の入り前後の 25 分しか窓が開かず、
+  // 時刻を動かしてもまず当たらない。実際にこの蝉が鳴くのは
+  // 日が低いあいだで、高度 +13° から -9° までのおよそ 1 時間半。
+  // 朝の同じ高さでも鳴くので、左右対称でよい。
+  const sunDeg = (elev * 180) / Math.PI;
+  const dusk = dry * clamp01(1 - Math.pow(Math.abs(sunDeg - 2) / 11, 2));
+  return {
+    pump: 1,
+    // 雨。降っていれば、昼夜を問わず鳴る
+    rain: weather === 2 ? 1 : 0,
+    // 蝉は昼だけ。日が傾くと鳴き止む
+    // 蝉。雨の日は鳴かない
+    // 夕方の蝉が鳴き出すと、昼の蝉は引く。指示どおり日中限定にする
+    cicada: day * day * dry * (1 - 0.75 * dusk),
+    dusk,
+    // 風鈴も昼。夕方まで少し残る
+    furin: Math.pow(day, 0.6),
+    // 祭囃子と人声は、提灯が点いているあいだ。店じまいで引く
+    festival: lit * (1 - shut),
+    crowd: lit * (1 - shut) * 0.9,
+    // 虫は暗くなってから。祭りが終わると、これだけが残る
+    insect: (1 - day) * (0.45 + 0.55 * shut),
+  };
+}
+
+
 export class Sound {
   constructor() {
     this.ctx = null;
@@ -206,36 +246,8 @@ export class Sound {
    * 絵と同じ光の状態から、層ごとの音量を決める。
    * daylight 1 = 昼、lanternOn 1 = 提灯が点いている、closed 1 = 店じまい。
    */
-  setScene({ daylight, lanternOn, closed, weather, elev = 0 }) {
-    const day = clamp01(daylight);
-    const lit = clamp01(lanternOn);
-    const shut = clamp01(closed);
-    const dry = weather === 2 ? 0 : 1;
-    // 夕方の蝉だけは、明るさではなく太陽の高さ（度）で決める。
-    //
-    // 明るさで決めると、日の入り前後の 25 分しか窓が開かず、
-    // 時刻を動かしてもまず当たらない。実際にこの蝉が鳴くのは
-    // 日が低いあいだで、高度 +13° から -9° までのおよそ 1 時間半。
-    // 朝の同じ高さでも鳴くので、左右対称でよい。
-    const sunDeg = (elev * 180) / Math.PI;
-    const dusk = dry * clamp01(1 - Math.pow(Math.abs(sunDeg - 2) / 11, 2));
-    this.want = {
-      pump: 1,
-      // 雨。降っていれば、昼夜を問わず鳴る
-      rain: weather === 2 ? 1 : 0,
-      // 蝉は昼だけ。日が傾くと鳴き止む
-      // 蝉。雨の日は鳴かない
-      // 夕方の蝉が鳴き出すと、昼の蝉は引く。指示どおり日中限定にする
-      cicada: day * day * dry * (1 - 0.75 * dusk),
-      dusk,
-      // 風鈴も昼。夕方まで少し残る
-      furin: Math.pow(day, 0.6),
-      // 祭囃子と人声は、提灯が点いているあいだ。店じまいで引く
-      festival: lit * (1 - shut),
-      crowd: lit * (1 - shut) * 0.9,
-      // 虫は暗くなってから。祭りが終わると、これだけが残る
-      insect: (1 - day) * (0.45 + 0.55 * shut),
-    };
+  setScene(sun) {
+    this.want = layerWants(sun);
     this.apply();
   }
 

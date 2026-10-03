@@ -41,6 +41,8 @@ const DICT = {
     synth: '合成',
 
     silentNow: 'いまは鳴らない',
+    jumpTime: '鳴る時刻へ',
+    makeRain: '雨にする',
     vMaster: '全体',
     vPump: 'ポンプ',
     vCicada: 'あぶらぜみ',
@@ -92,6 +94,8 @@ const DICT = {
     synth: 'Synthesized',
 
     silentNow: 'silent now',
+    jumpTime: 'go to when it sounds',
+    makeRain: 'make it rain',
     vMaster: 'Overall',
     vPump: 'Air pump',
     vCicada: 'Cicada (day)',

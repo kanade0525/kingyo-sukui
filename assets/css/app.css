@@ -170,6 +170,11 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
    つまみは動かせるが、効かないことが分かるようにする */
 .row.off{opacity:.45}
 .rl .mute{
-  font-style:normal;font-size:10px;letter-spacing:.06em;
-  color:var(--ink-dim);margin-left:8px;
+  font:inherit;font-size:10px;letter-spacing:.06em;
+  color:var(--hi);background:none;border:0;box-shadow:none;
+  padding:2px 0;margin-left:8px;cursor:pointer;text-decoration:underline;
+  -webkit-backdrop-filter:none;backdrop-filter:none;border-radius:0;
 }
+.rl .mute:hover{color:var(--ink)}
+/* 押せる印は、薄くしすぎると読めない。行だけ落として印は残す */
+.row.off .rl .mute{opacity:1}

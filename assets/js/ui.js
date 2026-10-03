@@ -1,6 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
 
-import { t } from './i18n.js?v=202610031311';
+import { t } from './i18n.js?v=202610031321';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -70,9 +70,13 @@ export class UI {
     this.mutes = {};
     for (const k of ['cicada','dusk','furin','festival','crowd','insect','rain']) {
       const row = $('v_' + k).closest('.row');
-      const mark = document.createElement('i');
+      // 押すと、その音が鳴る条件へ飛ぶ。
+      // 「いつ鳴るのか」が分からないと、つまみを動かしても手応えが無い
+      const mark = document.createElement('button');
+      mark.type = 'button';
       mark.className = 'mute';
       mark.hidden = true;
+      mark.addEventListener('click', () => handlers.jumpTo(k));
       row.querySelector('.rl').insertBefore(mark, row.querySelector('.rl').lastElementChild);
       this.mutes[k] = { row, mark };
     }
@@ -144,7 +148,9 @@ export class UI {
       const off = (want[k] ?? 0) < 0.02;
       row.classList.toggle('off', off);
       mark.hidden = !off;
-      if (off && !mark.textContent) mark.textContent = t('silentNow');
+      if (off && !mark.textContent) {
+        mark.textContent = `${t('silentNow')} · ${t(k === 'rain' ? 'makeRain' : 'jumpTime')}`;
+      }
     }
   }
 
