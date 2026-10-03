@@ -4,8 +4,8 @@
 // 形は頂点シェーダで作る。泳ぎのうねりを毎フレーム CPU で計算して
 // 転送するのは無駄で、しかも法線を作り直す手間が増えるため。
 
-import { Mesh } from './glx.js?v=202610031321';
-import { TANK, POI, BOWL, AIR } from './world.js?v=202610031321';
+import { Mesh } from './glx.js?v=202610031335';
+import { TANK, POI, BOWL, AIR } from './world.js?v=202610031335';
 
 /** 位置・法線・領域の 3 属性を貯めて Mesh にする小さな入れ物。 */
 class Builder {
@@ -414,6 +414,36 @@ export function padMesh(gl) {
     }
   }
   return new Mesh(gl, [{ loc: 0, size: 3, data: new Float32Array(pos) }], new Uint32Array(idx));
+}
+
+/**
+ * ウキクサ 1 株。
+ *
+ * 葉状体 4 枚と根の束を 1 枚のメッシュにまとめる。株ごとに描き分けると
+ * 描画の回数が株数 × 葉数になるので、ここで 1 回にしておく。
+ * 属性は (中心からの距離, 角度, 表裏, 部位)。部位 0〜3 が葉状体、4 が根。
+ */
+export function weedMesh(gl) {
+  const RINGS = 5, SEG = 18;
+  const pos = [];
+  const idx = [];
+  for (let part = 0; part <= 4; part++) {
+    // 根は裏表を分ける意味がないので 1 枚だけ
+    for (const face of part === 4 ? [1] : [1, 0]) {
+      const base = pos.length / 4;
+      for (let i = 0; i <= RINGS; i++) {
+        for (let j = 0; j <= SEG; j++) pos.push(i / RINGS, j / SEG, face, part);
+      }
+      for (let i = 0; i < RINGS; i++) {
+        for (let j = 0; j < SEG; j++) {
+          const a = base + i * (SEG + 1) + j, c = a + SEG + 1;
+          if (face) idx.push(a, c, a + 1, a + 1, c, c + 1);
+          else idx.push(a, a + 1, c, a + 1, c + 1, c);
+        }
+      }
+    }
+  }
+  return new Mesh(gl, [{ loc: 0, size: 4, data: new Float32Array(pos) }], new Uint32Array(idx));
 }
 
 /**

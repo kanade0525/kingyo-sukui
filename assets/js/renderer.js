@@ -9,20 +9,20 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610031321';
-import { VS_FULL } from '../shaders/common.js?v=202610031321';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610031321';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610031321';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610031321';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610031321';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610031321';
-import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610031321';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610031321';
-import { Ocean } from './ocean.js?v=202610031321';
-import { Ripple } from './ripple.js?v=202610031321';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610031321';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610031321';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610031321';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610031335';
+import { VS_FULL } from '../shaders/common.js?v=202610031335';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610031335';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610031335';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610031335';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610031335';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610031335';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610031335';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610031335';
+import { Ocean } from './ocean.js?v=202610031335';
+import { Ripple } from './ripple.js?v=202610031335';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, AIR, LANTERN, RAIN } from './world.js?v=202610031335';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610031335';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610031335';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -89,6 +89,7 @@ export class Renderer {
     this.envDirty = true;
     this.pTurtle = new Program(gl, VS_TURTLE, FS_TURTLE, 'turtle');
     this.pPad = new Program(gl, VS_PAD, FS_PAD, 'pad');
+    this.pWeed = new Program(gl, VS_WEED, FS_WEED, 'weed');
     this.pBubble = new Program(gl, VS_BUBBLE, FS_BUBBLE, 'bubble');
     this.pSplash = new Program(gl, VS_SPLASH, FS_SPLASH, 'splash');
     this.pRain = new Program(gl, VS_RAIN, FS_RAIN, 'rain');
@@ -105,6 +106,7 @@ export class Renderer {
     this.mBowl = bowlMesh(gl);
     this.mTurtle = turtleMesh(gl);
     this.mPad = padMesh(gl);
+    this.mWeed = weedMesh(gl);
     this.mBubble = bubbleMesh(gl, AIR.bubbles);
     this.mSplash = splashMesh(gl, 36);
     this.mRain = splashMesh(gl, RAIN.count);
@@ -467,6 +469,70 @@ export class Renderer {
   }
 
   /** 浮き葉。葉ごとに大きさと向きを変えて、同じ円板を描き直す。 */
+  /**
+   * ウキクサ。群れの中に株をばらまく。
+   *
+   * 置き場所は起動時に一度だけ決める。毎コマ乱数を引くと、株が
+   * 画面の中で跳ね回ってしまう。漂いは時刻の正弦で与える。
+   */
+  #weedPlaces() {
+    if (this.weeds) return this.weeds;
+    const h = (n) => {
+      const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+      return x - Math.floor(x);
+    };
+    const out = [];
+    let k = 0;
+    for (const c of WEED.clumps) {
+      for (let i = 0; i < c.n; i++, k++) {
+        // 中心に寄せる。縁ほどまばらになるよう、半径は平方根で引く
+        const a = h(k * 1.7) * Math.PI * 2;
+        const r = Math.sqrt(h(k * 3.1 + 5)) * c.r;
+        out.push({
+          x: c.x + Math.cos(a) * r,
+          z: c.z + Math.sin(a) * r,
+          len: WEED.lenMin + (WEED.lenMax - WEED.lenMin) * h(k * 7.3 + 11),
+          yaw: h(k * 5.9 + 3) * Math.PI * 2,
+          seed: 0.11 + h(k * 2.3 + 17) * 0.88,
+          ph: k * 1.37,
+        });
+      }
+    }
+    this.weeds = out;
+    return out;
+  }
+
+  #drawWeed(time) {
+    const p = this.pWeed.use();
+    this.#lights(p); this.#water(p);
+    p.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time)
+     .setFloat('uWidth', WEED.width).setFloat('uRootLen', WEED.rootLen);
+    for (const w of this.#weedPlaces()) {
+      const dx = Math.sin(time * 0.13 + w.ph) * WEED.drift
+               + Math.sin(time * 0.051 + w.ph * 1.7) * WEED.drift * 1.5;
+      const dz = Math.cos(time * 0.101 + w.ph * 1.3) * WEED.drift
+               + Math.cos(time * 0.043 + w.ph) * WEED.drift * 1.3;
+      let px = w.x + dx, pz = w.z + dz;
+      // お椀を避ける。葉と同じで、見下ろす角度でお椀が動く
+      const bx = px - BOWL.pos[0], bz = pz - BOWL.pos[2];
+      const keep = BOWL.outerR + w.len;
+      const d = Math.hypot(bx, bz);
+      if (d < keep) {
+        const k = d > 1e-4 ? keep / d : 1;
+        px = BOWL.pos[0] + bx * k;
+        pz = BOWL.pos[2] + bz * k;
+      }
+      const m = w.len * 2.2;
+      px = Math.min(Math.max(px, -TANK.halfX + m), TANK.halfX - m);
+      pz = Math.min(Math.max(pz, -TANK.halfZ + m), TANK.halfZ - m);
+      p.set('uPos', [px, pz])
+       .setFloat('uLen', w.len)
+       .setFloat('uYaw', w.yaw + Math.sin(time * 0.06 + w.ph) * 0.3)
+       .setFloat('uSeed', w.seed);
+      this.mWeed.draw();
+    }
+  }
+
   #drawPads(time) {
     const p = this.pPad.use();
     this.#lights(p); this.#water(p);
@@ -694,6 +760,7 @@ export class Renderer {
     }
 
     this.#drawPads(time);
+    this.#drawWeed(time);
 
     // 泡。水面より手前に重ねる。小さいので屈折までは追わない
     {
