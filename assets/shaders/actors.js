@@ -7,7 +7,7 @@
 // ひれは不透明に描く。水中パスの α にはカメラからの距離を入れていて、
 // ブレンドすると距離が壊れ、水面の屈折が狂うため。薄さは色で表す。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610031422';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610031425';
 
 // ---------------------------------------------------------------- 金魚
 
