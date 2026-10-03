@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610031211';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610031229';
 
 
 
@@ -127,7 +127,7 @@ float contactAO(vec3 p){
 
 void main(){
   vec3 d = normalize(uFwd + uRight * vNdc.x * uTanHalf * uAspect + uUp * vNdc.y * uTanHalf);
-  vec3 col = skyWithSun(d);
+  vec3 col = skyWithSun(d, uCam);
 
   // 地面。夏の縁日の砂利まじりの土
   if(d.y < -0.001){
@@ -249,7 +249,7 @@ void main(){
       vec3 n = normalize(vec3(-hs * 0.11 * cover, 1.0, -hz * 0.11 * cover));
 
       float sh = groundShadow(p);
-      vec3 sky = skyColor(reflect(d, n));
+      vec3 sky = skyColor(reflect(d, n), p);
       base = base * (uSunColor * max(dot(n, uSunDir), 0.0) * sh
                    + skyAmbient(n) * contactAO(p) * ao
                    + (lanternLight(p, n) + lanternAmbient(p)) * contactAO(p) * ao)
@@ -397,9 +397,17 @@ void main(){
       vec3 sun = underSun(bn) * caus * wallShade(entry);
       vec3 amb = (underAmbient(bn) + underLantern(vW, bn)) * tarpAO;
       col = base * (sun + amb);
-      // 塩ビは濡れているので、織り目に沿って照りが伸びる
-      // ポリエチレンは半艶。織り目が無いので照りは等方で、やや広い
-      col += ggx(bn, V, underSunDir(), 0.30, vec3(0.042))
+      // ポリエチレンは半艶。織り目が無いので照りは等方で、やや広い。
+      //
+      // 反射率に 0.042 を入れていた。これは空気と樹脂の境界の値で、
+      // 舟の底は水の中なので間違い。水（n=1.33）と樹脂（n=1.5）なら
+      // F0 = ((1.5-1.33)/(1.5+1.33))² ≈ 0.0036 で、12 分の 1 しかない。
+      //
+      // 12 倍の照りが粗さ 0.30 の広いローブで底に乗っていたので、
+      // 太陽が低い時季には水面の右半分が白く靄がかり、波の網目も
+      // コースティクスも消えていた。夏の高い太陽ではローブが画面の
+      // 外へ逃げていたので、10 月に遊ぶまで出てこなかった。
+      col += ggx(bn, V, underSunDir(), 0.30, vec3(0.0036))
            * uSunColor * PI * 0.22 * caus;
 
       // 金魚の影。先に 1 枚へ焼いてあるので、ここは読むだけ
@@ -417,7 +425,7 @@ void main(){
     if(region == 6){
       // 器の水面。舟と同じ考えで、反射より「水の色と透けぐあい」で見せる
       float F = fresnelSchlick(max(dot(N, V), 0.0), 0.02);
-      vec3 refl = skyColor(reflect(-V, N));
+      vec3 refl = skyColor(reflect(-V, N), vW);
       // 水の身。浅いので薄く
       vec3 body = vec3(0.030, 0.115, 0.150) * (skyAmbient(N) * 1.2 + uSunColor * 0.30
                                                + lanternAmbient(vW) * 1.4);
@@ -533,7 +541,7 @@ void main(){
                 + lanternLight(vW, N) + lanternAmbient(vW) * woodAO)
         + ggx(N, V, uSunDir, 0.34, vec3(0.042)) * uSunColor * PI * 0.30
         + lanternSpec(vW, N, V, 0.34, vec3(0.042)) * 0.5
-        + clearcoat(N, V, uSunDir, wwet, uSunColor, skyColor(reflect(-V, N)));
+        + clearcoat(N, V, uSunDir, wwet, uSunColor, skyColor(reflect(-V, N), vW));
     col *= 0.62 + 0.38 * toGround;
   }
 
@@ -670,7 +678,7 @@ void main(){
   Rr.y = max(Rr.y, 0.0015);
   // 真上寄りの構図では、反射が拾うのは中天の青ばかりになる。
   // 日が傾くと空全体が暖色になるので、地平の色を混ぜて寄せる
-  vec3 refl = mix(skyColor(Rr), uSkyHorizon * 1.3, uWarmth * 0.6);
+  vec3 refl = mix(skyColor(Rr, vW), uSkyHorizon * 1.3, uWarmth * 0.6);
 
   float F = fresnelSchlick(ndv, 0.02);
   vec3 col = mix(refr, refl, F);

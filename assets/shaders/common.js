@@ -356,11 +356,24 @@ uniform float uTentY;      // 天幕の高さ [m]
 uniform vec4 uTentBox;     // 覆う範囲 xmin, xmax, zmin, zmax
 uniform vec3 uTentTint;    // 幌布を透かしてくる光の色
 
-/** 見上げた先が天幕なら rgb と w=1 を返す。空なら w=0。 */
+/**
+ * 見上げた先の天幕。rgb と、覆っている度合い w を返す。
+ *
+ * w を 0 か 1 かの二値で返していた。水面に映ると、屋根の端が
+ * 直線の境目になって現れ、その向こうの明るい空が帯になって
+ * 水面の模様を消していた。実際の幌布の端は、生地が透けて光が
+ * 回り込むので、こんなに硬い線にはならない。端を 0.35m ほどで
+ * なめらかに抜く。
+ */
 vec4 tentLook(vec3 d){
   if(d.y < 0.02) return vec4(0.0);
   vec2 h = d.xz * (uTentY / d.y);
-  if(h.x < uTentBox.x || h.x > uTentBox.y || h.y < uTentBox.z || h.y > uTentBox.w) return vec4(0.0);
+  float inx = min(smoothstep(0.0, 0.35, h.x - uTentBox.x),
+                  smoothstep(0.0, 0.35, uTentBox.y - h.x));
+  float inz = min(smoothstep(0.0, 0.35, h.y - uTentBox.z),
+                  smoothstep(0.0, 0.35, uTentBox.w - h.y));
+  float cover = inx * inz;
+  if(cover < 0.002) return vec4(0.0);
   // 縞。幌布の定尺で幅 45cm。白地に水色
   float st = step(0.5, fract(h.x / 0.45 + 0.25));
   vec3 c = uTentTint * mix(1.0, 0.42, st);
@@ -369,18 +382,26 @@ vec4 tentLook(vec3 d){
   c *= 1.0 - bar * 0.60;
   // 幌の継ぎ目のたるみ
   c *= 0.90 + 0.14 * sin(h.x * 7.0) * sin(h.y * 2.0);
-  // 端ほど外の光が回り込んで明るい
+  // 端ほど外の光が回り込んで明るい。
+  // 1.1 倍まで持ち上げていたが、これも水面に映ると白い帯になる
   float edge = min(min(h.x - uTentBox.x, uTentBox.y - h.x),
                    min(h.y - uTentBox.z, uTentBox.w - h.y));
-  c *= 1.0 + smoothstep(0.70, 0.0, edge) * 1.1;
-  return vec4(c, 1.0);
+  c *= 1.0 + smoothstep(0.55, 0.0, edge) * 0.55;
+  return vec4(c, cover);
 }
 
-vec3 skyColor(vec3 d){
+/**
+ * 空の色。from はその光線の出どころ。
+ *
+ * ここを原点で固定していた。提灯は 50cm しか離れていないので、
+ * 水面のどこから見上げるかで方向が大きく変わる。原点から見た形を
+ * 全画素へ配っていたせいで、水面に提灯の映り込みが出ず、二つ
+ * 吊るしてあることが画面から分からなかった。背景の空も同じで、
+ * カメラではなく原点から計算していた。
+ */
+vec3 skyColor(vec3 d, vec3 from){
   // 提灯は天幕より手前に吊るしてあるので、天幕より先に見える
-  vec3 orb = lanternOrbs(d, vec3(0.0));
-  vec4 tent = tentLook(d);
-  if(tent.w > 0.5) return tent.rgb + orb;
+  vec3 orb = lanternOrbs(d, from);
   float up = clamp(d.y, -1.0, 1.0);
   vec3 c = up > 0.0
     ? mix(uSkyHorizon, uSkyZenith, pow(up, 0.42))
@@ -388,15 +409,17 @@ vec3 skyColor(vec3 d){
   // 太陽のまわりの暈け（前方散乱）
   float mu = max(dot(d, uSunDir), 0.0);
   c += uSunColor * (0.050 * pow(mu, 9.0) + 0.008 * pow(mu, 2.0)) * uHaze;
-  return c + orb;
+  // 天幕は空の手前。提灯はさらに手前に吊るしてある
+  vec4 tent = tentLook(d);
+  return mix(c, tent.rgb, tent.w) + orb;
 }
 
 /** 太陽の本体まで描く版。背景のフルスクリーンパスだけで使う。 */
-vec3 skyWithSun(vec3 d){
-  vec3 c = skyColor(d);
-  if(tentLook(d).w > 0.5) return c;      // 天幕の向こうの太陽は見えない
+vec3 skyWithSun(vec3 d, vec3 from){
+  vec3 c = skyColor(d, from);
   float mu = max(dot(d, uSunDir), 0.0);
-  c += uSunColor * smoothstep(0.999985, 0.999993, mu) * 320.0;   // 角半径 0.26°
+  // 天幕の向こうの太陽は見えない
+  c += uSunColor * smoothstep(0.999985, 0.999993, mu) * 320.0 * (1.0 - tentLook(d).w);
   return c;
 }
 

@@ -66,7 +66,7 @@ function unscramble(bytes) {
  * 合成側はその比で戻さないと、切り替えた途端に音量が変わってしまう。
  */
 const SYNTH_TRIM = { cicada: 0.26 / 1.05, furin: 1.10 / 0.95, rain: 0.30 / 1.10,
-                     insect: 0.38 / 2.00, festival: 0.34 / 0.78 };
+                     insect: 0.38 / 2.00, festival: 0.34 / 0.312 };
 
 export class Sound {
   constructor() {
@@ -248,12 +248,15 @@ export class Sound {
     // 録音のある層は、どれも -20 LUFS に揃えてあるので近い値になる。
     // 合成だけの層は、以前に実測して決めた値をそのまま使う。
     //
+    // 祭囃子は 0.78 では大きすぎた。BGM なので、環境音より下へ置く。
+    // つまみの 100 が、前の 40 に当たる。
+    //
     // 虫だけ 2.0 と大きいのは、鳴き声が 4〜5kHz に偏っているため。
     // LUFS は人の耳に合わせてその辺りを重く数えるので、同じ -20 LUFS でも
     // 実際に出てくる音は小さい。耳で判断できないので、画面の出力を
     // 実測して合わせた（揃える前は深夜だけ 11dB 低かった）
     const vol = { pump: 0.085, cicada: 1.05, dusk: 1.10, furin: 0.95,
-                  festival: 0.78, crowd: 0.26, insect: 2.00, rain: 1.10 };
+                  festival: 0.312, crowd: 0.26, insect: 2.00, rain: 1.10 };
     for (const k of Object.keys(this.layers)) {
       // 層が増えたときに want の鍵が欠けても落ちないようにする
       const w = this.want[k] ?? 0;

@@ -115,8 +115,13 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR) {
   let closed = 0;
   if (hour >= CLOSE_START) closed = clamp01((hour - CLOSE_START) / (CLOSE_END - CLOSE_START));
   else if (hour < DAWN) closed = 1;
-  // 提灯。暗くなると灯り、しまうと落ちる
-  const lanternOn = clamp01(night * 1.3) * (1 - closed);
+  // 提灯。暗くなると灯り、しまうと落ちる。
+  //
+  // night * 1.3 だと、日の入り直後（night 0.5）で既に 65% 点いていた。
+  // そのせいで 17 時半と 21 時の画面の明るさがほぼ同じ（50 対 49）に
+  // なっていた。実際は、空がまだ明るいうちの提灯は効かない。
+  // 暗くなってから効きはじめるように、立ち上がりを遅らせる
+  const lanternOn = clamp01((night - 0.22) * 1.85) * (1 - closed);
 
   // 天気。曇りと雨は直射が雲で散る
   const direct = weather === WEATHER.CLEAR ? 1 : weather === WEATHER.CLOUDY ? 0.16 : 0.07;
@@ -148,6 +153,16 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR) {
   skyNight[0] += moon * 0.82; skyNight[1] += moon * 0.90; skyNight[2] += moon;
   zenith = mix3(zenith, skyNight, night);
   horizon = mix3(horizon, scale3(skyNight, 2.4), night);
+  // 薄明の空。
+  //
+  // 太陽が地平の下へ入っても、上空はまだ日に照らされていて、
+  // 月の無い夜より二桁明るい。これが無いと、日の入り直後が
+  // 夜と同じ暗さになる。高度 -2° を頂点に、+6° から -10° で消える。
+  const deg = elev / DEG;
+  const twi = clamp01(1 - Math.pow(Math.abs(deg + 2) / 8, 1.4));
+  horizon = [horizon[0] + 0.115 * twi, horizon[1] + 0.072 * twi, horizon[2] + 0.055 * twi];
+  zenith = [zenith[0] + 0.020 * twi, zenith[1] + 0.028 * twi, zenith[2] + 0.052 * twi];
+
   // 地平線より下。明るい地面からの跳ね返りなので、思ったより明るい
   const ground = scale3([0.300 * dim, 0.285 * dim, 0.255 * dim], 1 - night * 0.92);
 
