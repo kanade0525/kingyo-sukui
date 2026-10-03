@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030554';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030826';
 
 
 
@@ -413,30 +413,38 @@ void main(){
       frag = vec4(col, clamp(0.26 + 0.30 * r * r + F * 0.5, 0.0, 0.78));
       return;
     }
-    // 白磁の器。釉薬のむらと、細かい貫入、口元の呉須の線。
-    // 陶器は艶が命なので、粗さを小さく取って芯のあるハイライトを出す
+    // すくった金魚を入れるお椀。
+    //
+    // 白磁で作っていたが、縁日の屋台で陶器は使わない。重いし割れるし高い。
+    // 実物は**ポリスチレン低発泡**の使い捨てで、直径 160 × 高さ 68mm。
+    //
+    // 発泡した樹脂なので、陶器とは見え方がまるで違う。
+    //   ・艶が無い。光がほとんど拡散して返る（ハイライトの芯が立たない）
+    //   ・表面に発泡の細かい粒が見える
+    //   ・薄いので、縁では光がわずかに透ける
+    //   ・柔らかいので、擦り傷より「押された凹み」が付く
     vec2 bp = (vW.xz - uBowlPos.xz) * 30.0;
-    float glaze = fbm(bp * 1.4) * 0.6 + fbm(bp * 5.0) * 0.4;
-    vec3 cer = vec3(0.520, 0.528, 0.530) * (0.93 + 0.12 * glaze);
-    // 貫入。釉薬に入る細かいひび
-    float craze = 1.0 - smoothstep(0.0, 0.035, abs(fbm(bp * 3.2 + 2.0) - 0.5));
-    cer *= 1.0 - craze * 0.10;
-    // 口元の呉須の一本線
-    float lip = 1.0 - smoothstep(0.0, 0.0035, abs(vW.y - (uBowlRim - 0.009)));
-    cer = mix(cer, vec3(0.085, 0.135, 0.300), lip * 0.85);
-    // 使い込んだ器。貫入に茶渋が入り、糸底の近くは土埃で曇る
-    cer = grime(cer, craze, vec3(0.145, 0.105, 0.062), 0.65);
-    cer = mix(cer, vec3(0.195, 0.175, 0.145),
-              (1.0 - smoothstep(uBowlRim - 0.075, uBowlRim - 0.040, vW.y)) * 0.30 * uWear);
-    cer = mix(cer, cer * 0.70 + vec3(0.16), scratch(bp * 0.05, 1.1, 0.9) * 0.22);
+    // 発泡の粒。1 個 0.3mm ほど
+    float foam = fbm(bp * 26.0) * 0.6 + fbm(bp * 64.0) * 0.4;
+    // 成形のむら
+    float blend = fbm(bp * 2.2);
+    vec3 cer = vec3(0.620, 0.618, 0.595) * (0.94 + 0.11 * blend) * (0.93 + 0.14 * foam);
+    // 使い回したお椀。水垢と手の脂で曇り、縁は押されて凹む
+    cer = grime(cer, smoothstep(0.46, 0.78, fbm(bp * 1.6 + 5.0)), vec3(0.330, 0.310, 0.272), 0.55);
+    cer = mix(cer, cer * 0.78, smoothstep(0.62, 0.90, fbm(bp * 7.0 + 2.0)) * 0.35 * uWear);
     if(region == 5){
-      cer *= 0.80;
-      // 水に浸かっている所は水の色を帯びる。白磁のままだと水が入って見えない
-      if(vW.y < uBowlRim - 0.020) cer = mix(cer, vec3(0.075, 0.215, 0.265), 0.62);
+      cer *= 0.88;
+      // 水に浸かっている所は水の色を帯びる。白いままだと水が入って見えない
+      if(vW.y < uBowlRim - 0.014) cer = mix(cer, vec3(0.105, 0.230, 0.268), 0.55);
     }
     col = cer * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N)
-               + lanternLight(vW, N) + lanternAmbient(vW))
-        + ggx(N, V, uSunDir, 0.085, vec3(0.055)) * uSunColor * PI;
+               + lanternLight(vW, N) + lanternAmbient(vW));
+    // 発泡樹脂は艶が無い。鏡のような照りは出さず、広く弱い反射だけ
+    col += ggx(N, V, uSunDir, 0.62, vec3(0.030)) * uSunColor * PI * 0.45;
+    col += lanternSpec(vW, N, V, 0.62, vec3(0.030)) * 0.6;
+    // 薄い発泡樹脂は、縁でわずかに光を透かす
+    float bNdv = clamp(dot(N, V), 0.0, 1.0);
+    col += cer * pow(1.0 - bNdv, 3.0) * 0.22 * (uSunColor * 0.25 + skyAmbient(N));
   } else {
     // 縁と外側。内側と同じ一枚のトレー。
     //
