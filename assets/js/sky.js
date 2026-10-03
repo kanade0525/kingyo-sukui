@@ -152,7 +152,7 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR) {
   const skyNight = weather === WEATHER.CLEAR
     ? [0.0030, 0.0042, 0.0085]
     : [0.0105, 0.0085, 0.0075];
-  const moon = 0.030 * closed;
+  const moon = 0.072 * closed;
   skyNight[0] += moon * 0.82; skyNight[1] += moon * 0.90; skyNight[2] += moon;
   zenith = mix3(zenith, skyNight, night);
   horizon = mix3(horizon, scale3(skyNight, 2.4), night);

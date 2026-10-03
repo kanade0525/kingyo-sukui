@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610031304';
-import { Poi } from './poi.js?v=202610031304';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610031304';
+import { School } from './fish.js?v=202610031311';
+import { Poi } from './poi.js?v=202610031311';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610031311';
 
 /** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
 const h11 = (x) => {
@@ -114,7 +114,13 @@ export class Game {
       if (this.stroking && this.touch && this.ripple) {
         const [x, z] = this.touch;
         const d = this.lastTouch ? Math.hypot(x - this.lastTouch[0], z - this.lastTouch[1]) : 0;
-        this.ripple.drop(x, z, 0.030, -0.0004 - Math.min(d, 0.05) * 0.030);
+        // 指が水を押しのける量。
+        //
+        // 0.0004 にしていた。ポイが着水するときの 1/10 で、
+        // なでても水面に何も起きていないように見えていた。
+        // 指は紙より小さいが、水を押しのける深さはむしろ深い。
+        // ポイと同じくらいまで上げる
+        this.ripple.drop(x, z, 0.034, -0.0048 - Math.min(d, 0.05) * 0.20);
         this.lastTouch = [x, z];
       } else {
         this.lastTouch = null;
