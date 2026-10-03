@@ -101,6 +101,18 @@ export class Program {
     gl.uniform1i(l, u);
     return this;
   }
+
+  /** 立方体テクスチャ（環境マップ）を束ねる。 */
+  cube(name, texture) {
+    const gl = this.gl;
+    const l = this.#loc(name);
+    if (l === null) return this;
+    const u = this.unit++;
+    gl.activeTexture(gl.TEXTURE0 + u);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+    gl.uniform1i(l, u);
+    return this;
+  }
 }
 
 function compile(gl, type, src, label) {
@@ -242,4 +254,34 @@ export function gridMesh(gl, nx, nz, loc = 0) {
     }
   }
   return new Mesh(gl, [{ loc, size: 2, data: uv }], idx);
+}
+
+
+/**
+ * 環境マップ用の立方体テクスチャ。
+ *
+ * 段（ミップ）を自分で焼くので、texStorage2D で全段ぶん先に確保する。
+ * 段が粗さに対応する（0 段目が鏡、最後の段がほぼ一様）。
+ */
+export function makeCube(gl, size, mips) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, t);
+  gl.texStorage2D(gl.TEXTURE_CUBE_MAP, mips, gl.RGBA16F, size, size);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+  t._size = size; t._mips = mips;
+  return t;
+}
+
+/** 立方体テクスチャの 1 面 1 段に描き込む FBO を用意する。 */
+export function bindCubeFace(gl, fb, cube, face, level) {
+  const size = Math.max(1, cube._size >> level);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+                          gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, cube, level);
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+  gl.viewport(0, 0, size, size);
 }

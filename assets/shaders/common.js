@@ -7,6 +7,7 @@ export const HEAD = `#version 300 es
 precision highp float;
 precision highp int;
 precision highp sampler2D;
+precision highp samplerCube;
 `;
 
 /** 画面いっぱいの三角形。vUv は 0..1、vNdc は -1..1。 */
@@ -296,6 +297,8 @@ const float PI = 3.14159265;
 // 9 号長型ビニール提灯（直径 24cm × 高さ 53cm）を、屋台の梁に
 // 間隔をあけて並べて吊るす。日が落ちるとこれが主な光源になる。
 // 和紙（実際はビニル幌）を透かした橙で、水面には縦に伸びた筋として映る。
+uniform samplerCube uEnv;    // 焼いた遠景。段が粗さに対応する
+uniform float uEnvMips;
 uniform vec3 uLanternCol;    // 1 個ぶんの強さ × 色。消えているときは 0
 uniform vec4 uLanternP[2];   // 提灯の位置。画面の左右に 1 つずつ
 
@@ -462,6 +465,20 @@ float fresnelSchlick(float ndv, float f0){
  * 夜の水面が水に見えるのは、提灯の形が水面に伸びて映るから。
  * 拡散光だけ足しても、青いトレーに橙を掛けた鈍い緑にしかならない。
  */
+/**
+ * 焼いておいた遠景（空・天幕・地面）を、粗さに応じてぼかして引く。
+ *
+ * これまでは skyColor() を鏡として 1 点だけ拾っていた。粗い面でも
+ * ハイライトが点のままなので、樹脂もお椀も硬く見えていた。
+ * 段が粗さに対応していて、0 段目が鏡、最後の段がほぼ一様。
+ *
+ * 太陽と提灯は入っていない。どちらも別に解析で足している。
+ * 太陽は入れると二重になり、提灯は近すぎて焼いた 1 点からの眺めが使えない。
+ */
+vec3 envSpec(vec3 R, float rough){
+  return textureLod(uEnv, R, clamp(rough, 0.0, 1.0) * (uEnvMips - 1.0)).rgb;
+}
+
 vec3 lanternSpec(vec3 p, vec3 N, vec3 V, float rough, vec3 F0){
   if(uLanternCol.r < 0.0005) return vec3(0.0);
   vec3 sum = vec3(0.0);

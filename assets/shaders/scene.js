@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610031245';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610031258';
 
 
 
@@ -249,7 +249,9 @@ void main(){
       vec3 n = normalize(vec3(-hs * 0.11 * cover, 1.0, -hz * 0.11 * cover));
 
       float sh = groundShadow(p);
-      vec3 sky = skyColor(reflect(d, n), p);
+      // 濡れた膜が返す環境。焼いた遠景を使い、提灯は位置を合わせて別に足す
+      vec3 wetR = reflect(d, n);
+      vec3 sky = envSpec(wetR, 0.10) + lanternOrbs(wetR, p);
       base = base * (uSunColor * max(dot(n, uSunDir), 0.0) * sh
                    + skyAmbient(n) * contactAO(p) * ao
                    + (lanternLight(p, n) + lanternAmbient(p)) * contactAO(p) * ao)
@@ -425,7 +427,8 @@ void main(){
     if(region == 6){
       // 器の水面。舟と同じ考えで、反射より「水の色と透けぐあい」で見せる
       float F = fresnelSchlick(max(dot(N, V), 0.0), 0.02);
-      vec3 refl = skyColor(reflect(-V, N), vW);
+      vec3 bR = reflect(-V, N);
+      vec3 refl = envSpec(bR, 0.05) + lanternOrbs(bR, vW);
       // 水の身。浅いので薄く
       vec3 body = vec3(0.030, 0.115, 0.150) * (skyAmbient(N) * 1.2 + uSunColor * 0.30
                                                + lanternAmbient(vW) * 1.4);
@@ -541,7 +544,8 @@ void main(){
                 + lanternLight(vW, N) + lanternAmbient(vW) * woodAO)
         + ggx(N, V, uSunDir, 0.34, vec3(0.042)) * uSunColor * PI * 0.30
         + lanternSpec(vW, N, V, 0.34, vec3(0.042)) * 0.5
-        + clearcoat(N, V, uSunDir, wwet, uSunColor, skyColor(reflect(-V, N), vW));
+        + clearcoat(N, V, uSunDir, wwet, uSunColor,
+                    envSpec(reflect(-V, N), 0.14) + lanternOrbs(reflect(-V, N), vW));
     col *= 0.62 + 0.38 * toGround;
   }
 
@@ -673,41 +677,40 @@ void main(){
               * mix(vec3(1.0), vec3(1.9, 1.15, 0.70), uWarmth);
   vec3 refr = hit.rgb * trans + inscat + specks(vW, Rd);
 
+  // ---- 面の粗さ ----
+  //
+  // 画素の中で波の傾きがどれだけばらついているかで、ざらつきを広げる。
+  // 固定の粗さだと、遠い所や縮小時にハイライトが点滅する。
+  // 画素内のばらつきは α² の空間で足す（Kaplanyan / Tokuyoshi）。
+  //
+  // 下限は「格子で表せていないさざ波の傾き分散」。FFT が持っているのは
+  // 数 cm 以上の帯だけなので、mm 級のさざ波は粗さとして戻すのが正しい。
+  // ただし外洋の実測値（α ≈ 0.107）はたらいの水には広すぎる。ローブの幅が
+  // 「鏡面条件に必要な傾き」と同じくらいになると、帯ではなく面全体の靄になる。
+  // 格子で 8mm まで解けているので戻すぶんは少なくし、きらめきを粒に割る。
+  //
+  // 反射の引き方にも使うので、きらめきより先に出しておく
+  vec2 dsx0 = dFdx(slope), dsy0 = dFdy(slope);
+  float a2 = 0.0000062 + (dot(dsx0, dsx0) + dot(dsy0, dsy0)) * 0.45;
+  float rough = sqrt(sqrt(a2));
+
   // ---- 反射 ----
   vec3 Rr = reflect(-V, N);
   Rr.y = max(Rr.y, 0.0015);
+  // 焼いた遠景を、面の粗さに応じてぼかして引く。
+  // 1 点から拾う鏡だと、波で傾いた所がそのぶん別の方向を拾うので、
+  // 天幕の縞が画素ごとに飛んでざらつく。
+  // 提灯は焼いていないので、位置を合わせてここで足す
+  vec3 refl = envSpec(Rr, rough) + lanternOrbs(Rr, vW);
   // 真上寄りの構図では、反射が拾うのは中天の青ばかりになる。
   // 日が傾くと空全体が暖色になるので、地平の色を混ぜて寄せる
-  vec3 refl = mix(skyColor(Rr, vW), uSkyHorizon * 1.3, uWarmth * 0.6);
+  refl = mix(refl, uSkyHorizon * 1.3, uWarmth * 0.6);
 
   float F = fresnelSchlick(ndv, 0.02);
   vec3 col = mix(refr, refl, F);
 
   // ---- 太陽のきらめき ----
-  // 画素の中で波の傾きがどれだけばらついているかで、ざらつきを広げる。
-  // 固定の粗さだと、遠い所や縮小時にハイライトが点滅する
-  // 粗さの下限は「格子で表せていないさざ波の傾き分散」。
-  // FFT が持っているのは数 cm 以上の帯だけなので、mm 級のさざ波は
-  // 粗さとして戻すのが正しい（Cox-Munk の凪で σ ≈ 0.05、α = √2σ ≈ 0.07）。
-  // 太陽の円盤ぶん（α ≥ 0.0047）はこれに埋もれる。
-  // 画素内のばらつきは α² の空間で足す
-  // ローブの幅が「鏡面条件に必要な傾き」と同じくらい広いと、帯ではなく
-  // 面全体の靄になる。格子で 8mm まで解けているので、粗さに戻すぶんは少なく
-  // してローブを細くし、きらめきを粒に割る。
-  // 画素内のばらつきは α² の空間で足す（Kaplanyan / Tokuyoshi）
-  vec2 dsx = dFdx(slope), dsy = dFdy(slope);
-  // 粗さの下限は「格子で表せていないさざ波の傾き分散」。
-  //
-  // ここを 0.00013（α ≈ 0.107）に置いていた。外洋の凪の実測値だが、
-  // たらいの水にそのまま当てると広すぎる。平らな水面に映る太陽は
-  // 本来ほとんど点なのに、幅 6° のローブが 80cm の舟をまたいで、
-  // 水面の一帯がぼんやり明るくなっていた。
-  // 波を止めて撮り比べると、この項だけで右半分の靄が消える。
-  // ただし絞りすぎると今度は尖りすぎて、頭打ちに貼り付いた白い筋が
-  // ガラスの引っかき傷のように出る。たらいのさざ波に見合う
-  // α ≈ 0.05 のあたりで、粒に割れつつ潰れない
-  float a2 = 0.0000062 + (dot(dsx, dsx) + dot(dsy, dsy)) * 0.45;
-  float rough = sqrt(sqrt(a2));
+  // 粗さは反射の手前で出してある。
   // ggx() の D は 1/π を持つので、ランバート側と揃えるため π を掛け戻す
   //
   // 頭打ちは低く取る。ここを 0.30 にしていたら、きらめくはずの範囲が

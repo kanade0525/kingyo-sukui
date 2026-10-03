@@ -9,19 +9,20 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610031245';
-import { VS_FULL } from '../shaders/common.js?v=202610031245';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610031245';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610031245';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610031245';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610031245';
-import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610031245';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610031245';
-import { Ocean } from './ocean.js?v=202610031245';
-import { Ripple } from './ripple.js?v=202610031245';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610031245';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610031245';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610031245';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610031258';
+import { VS_FULL } from '../shaders/common.js?v=202610031258';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610031258';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610031258';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610031258';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610031258';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610031258';
+import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610031258';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610031258';
+import { Ocean } from './ocean.js?v=202610031258';
+import { Ripple } from './ripple.js?v=202610031258';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610031258';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610031258';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610031258';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -43,6 +44,15 @@ const TANK_OUTER_R = TANK.cornerR + TANK.draftX * TANK.rimTop + TANK.rimW;
 // 実際の屋台は、舟も店主も客の立つ所も屋根の下に入る。3.6×5.4m の
 // 大きさに取り直し、舟の手前まで庇を出す。
 const TENT = { y: 2.2, box: [-2.7, 2.7, -4.2, 1.05] };
+
+/**
+ * 環境マップの大きさと段数。
+ *
+ * 入れるのは空・天幕・地面だけで、どれも大きくなだらかな面なので、
+ * 1 面 64 画素で足りる。段は 6 枚で、粗さ 0・0.2・0.4・0.6・0.8・1.0。
+ */
+const ENV_SIZE = 64;
+const ENV_MIPS = 6;
 
 const DEG = Math.PI / 180;
 const FOV_Y = 46 * DEG;
@@ -72,6 +82,11 @@ export class Renderer {
     this.pWater = new Program(gl, VS_WATER, FS_WATER, 'water');
     this.pFish = new Program(gl, VS_FISH, FS_FISH, 'fish');
     this.pPoi = new Program(gl, VS_POI, FS_POI, 'poi');
+    this.pEnvBake = new Program(gl, VS_FULL, FS_ENVBAKE, 'envBake');
+    this.pEnvFilter = new Program(gl, VS_FULL, FS_ENVFILTER, 'envFilter');
+    this.envCube = makeCube(gl, ENV_SIZE, ENV_MIPS);
+    this.envFb = gl.createFramebuffer();
+    this.envDirty = true;
     this.pTurtle = new Program(gl, VS_TURTLE, FS_TURTLE, 'turtle');
     this.pPad = new Program(gl, VS_PAD, FS_PAD, 'pad');
     this.pBubble = new Program(gl, VS_BUBBLE, FS_BUBBLE, 'bubble');
@@ -290,6 +305,7 @@ export class Renderer {
     this.sunYaw = yawDeg;
     const s = sunFor(hour, yawDeg, this.weather);
     this.sun = s;
+    this.envDirty = true;      // 光が変わったので遠景を焼き直す
     // 水中での屈折角。コースティクスの横ずれに使う
     const sinA = Math.max(Math.cos(s.elev), 0);        // 天頂からの角の sin
     const sinT = Math.min(sinA / 1.333, 0.9995);
@@ -300,6 +316,9 @@ export class Renderer {
 
   #lights(p) {
     const s = this.sun;
+    // 焼いた遠景。bake のシェーダでは使っていないので、そちらでは
+    // uniform ごと落ちて何も束ねられない（自分を読みながら書く事故を防ぐ）
+    p.cube('uEnv', this.envCube).setFloat('uEnvMips', ENV_MIPS);
     p.set('uSunDir', s.dir)
       .set('uSunColor', s.sunColor)
       .set('uSkyZenith', s.zenith)
@@ -357,6 +376,54 @@ export class Renderer {
      .setFloat('uTankR', TANK.cornerR)
      .set('uTankDraft', [TANK.draftX, TANK.draftZ]);
     return p;
+  }
+
+  /**
+   * 遠景を立方体テクスチャへ焼く。
+   *
+   * 光の条件が変わったときだけ。時刻のつまみを動かしているあいだは
+   * 毎コマ呼ばれるが、1 面 64 画素 × 6 面 + 段 5 枚なので、
+   * 全部合わせても画面 1 枚の 1/50 ほどしか塗らない。
+   */
+  #bakeEnv() {
+    const gl = this.gl;
+    this.envDirty = false;
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+
+    // 0 段目。遠景そのもの
+    const p = this.pEnvBake.use();
+    this.#lights(p);
+    for (let f = 0; f < 6; f++) {
+      bindCubeFace(gl, this.envFb, this.envCube, f, 0);
+      p.setInt('uFace', f).set('uRes', [ENV_SIZE, ENV_SIZE]);
+      this.full.draw();
+    }
+
+    // 1 段目から。前の段を GGX でぼかす。
+    //
+    // 同じテクスチャを読みながら書くので、読める段を BASE/MAX で
+    // 1 枚に絞る。絞らないと未定義の動作になる
+    for (let m = 1; m < ENV_MIPS; m++) {
+      const size = ENV_SIZE >> m;
+      gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.envCube);
+      gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_BASE_LEVEL, m - 1);
+      gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAX_LEVEL, m - 1);
+      const q = this.pEnvFilter.use();
+      q.cube('uSrc', this.envCube)
+       .setFloat('uRough', m / (ENV_MIPS - 1))
+       .setFloat('uSrcLod', 0)
+       .set('uRes', [size, size]);
+      for (let f = 0; f < 6; f++) {
+        bindCubeFace(gl, this.envFb, this.envCube, f, m);
+        q.setInt('uFace', f);
+        this.full.draw();
+      }
+    }
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.envCube);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_BASE_LEVEL, 0);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAX_LEVEL, ENV_MIPS - 1);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   #drawPoi(poi, underwater) {
@@ -470,6 +537,9 @@ export class Renderer {
   render(state) {
     const gl = this.gl;
     const { time, school, poi } = state;
+
+    // 光が変わっていたら、まず遠景を焼く
+    if (this.envDirty) this.#bakeEnv();
 
     // お椀は水面に浮かべてあるので、波に合わせて上下に揺れる。
     // 水面の高さを GPU から読み戻すのは高くつくので、
