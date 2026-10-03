@@ -78,10 +78,10 @@ export class Sound {
     this.on = true;
     this.master = null;
     this.layers = null;
-    this.want = { pump: 1, cicada: 0, minmin: 0, dusk: 0, furin: 0,
+    this.want = { pump: 1, cicada: 0, dusk: 0, furin: 0,
                   festival: 0, crowd: 0, insect: 0, rain: 0 };
     // 画面から動かせる係数。1 が既定
-    this.mix = { master: 1, pump: 1, cicada: 1, minmin: 1, dusk: 1, furin: 1,
+    this.mix = { master: 1, pump: 1, cicada: 1, dusk: 1, furin: 1,
                  festival: 1, crowd: 1, insect: 1, rain: 1 };
   }
 
@@ -124,7 +124,7 @@ export class Sound {
     this.layers = {};
     // 合成側の元栓。録音に切り替えたときに閉じる
     this.synthGate = {};
-    for (const k of ['pump', 'cicada', 'minmin', 'dusk', 'furin',
+    for (const k of ['pump', 'cicada', 'dusk', 'furin',
                      'festival', 'crowd', 'insect', 'rain']) {
       const g = ctx.createGain();
       g.gain.value = 0;
@@ -146,7 +146,6 @@ export class Sound {
     this.layers.festival.connect(fsend).connect(this.verb);
 
     this.#startCicada();
-    this.#startMinmin();
     this.#startRain();
     this.#loadClips();
     this.#startCrowd();
@@ -228,7 +227,6 @@ export class Sound {
       // 蝉。雨の日は鳴かない
       // 夕方の蝉が鳴き出すと、昼の蝉は引く。指示どおり日中限定にする
       cicada: day * day * dry * (1 - 0.75 * dusk),
-      minmin: day * day * dry * (1 - 0.75 * dusk),
       dusk,
       // 風鈴も昼。夕方まで少し残る
       furin: Math.pow(day, 0.6),
@@ -254,7 +252,7 @@ export class Sound {
     // LUFS は人の耳に合わせてその辺りを重く数えるので、同じ -20 LUFS でも
     // 実際に出てくる音は小さい。耳で判断できないので、画面の出力を
     // 実測して合わせた（揃える前は深夜だけ 11dB 低かった）
-    const vol = { pump: 0.085, cicada: 1.05, minmin: 0.80, dusk: 1.10, furin: 0.95,
+    const vol = { pump: 0.085, cicada: 1.05, dusk: 1.10, furin: 0.95,
                   festival: 0.78, crowd: 0.26, insect: 2.00, rain: 1.10 };
     for (const k of Object.keys(this.layers)) {
       // 層が増えたときに want の鍵が欠けても落ちないようにする
@@ -387,67 +385,6 @@ export class Sound {
     src.start(); lfo.start();
   }
 
-  /**
-   * ミンミンゼミ。
-   *
-   * アブラゼミの乾いた地鳴りと違って、はっきり音程がある。
-   * 「ミーン」で立ち上がり、「ミンミンミン」を 4〜5Hz で繰り返し、
-   * 「ミー」と下がって終わる。この三段が無いと、ただの唸りになる。
-   * 基本波は 2.7kHz あたりで、倍音がよく出る。
-   */
-  #startMinmin() {
-    const ctx = this.ctx;
-    const out = ctx.createGain();
-    out.gain.value = 0;
-    out.connect(this.layers.minmin);
-    this.minminGate = out;
-
-    // 倍音を重ねた音源
-    const carrier = ctx.createOscillator();
-    carrier.type = 'sawtooth';
-    carrier.frequency.value = 2700;
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 3400;
-    bp.Q.value = 1.6;
-    // 「ミンミン」の刻み
-    const pulse = ctx.createGain();
-    pulse.gain.value = 0.5;
-    const lfo = ctx.createOscillator();
-    lfo.type = 'triangle';
-    lfo.frequency.value = 4.6;
-    const lg = ctx.createGain();
-    lg.gain.value = 0.46;
-    lfo.connect(lg).connect(pulse.gain);
-    carrier.connect(bp).connect(pulse).connect(out);
-    carrier.start(); lfo.start();
-    this.minminPitch = carrier.frequency;
-
-    // ひと鳴きの形。立ち上がり → 刻み → 尻下がり → 休み
-    const phrase = () => {
-      if (!this.ctx) return;
-      let wait = 2.4 + Math.random() * 3.0;
-      if (this.on && this.want.minmin > 0.02) {
-        const t = ctx.currentTime + 0.05;
-        const body = 2.6 + Math.random() * 2.2;
-        const f0 = 2500 + Math.random() * 420;
-        this.minminPitch.cancelScheduledValues(t);
-        this.minminPitch.setValueAtTime(f0 * 0.86, t);
-        this.minminPitch.linearRampToValueAtTime(f0, t + 0.55);          // ミーン
-        this.minminPitch.setValueAtTime(f0, t + 0.55 + body);
-        this.minminPitch.linearRampToValueAtTime(f0 * 0.72, t + 1.05 + body);  // ミー
-        const g = out.gain;
-        g.cancelScheduledValues(t);
-        g.setValueAtTime(0, t);
-        g.linearRampToValueAtTime(0.34, t + 0.55);
-        g.setValueAtTime(0.34, t + 0.55 + body);
-        g.linearRampToValueAtTime(0, t + 1.15 + body);
-        wait = 1.3 + body + 1.6 + Math.random() * 2.6;
-      }
-      setTimeout(phrase, wait * 1000);
-    };
-    setTimeout(phrase, 500 + Math.random() * 1500);
-  }
 
   /** 風鈴。叩いた硝子は、倍音が整数比にならない。 */
   #furin() {

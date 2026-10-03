@@ -9,19 +9,19 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610031142';
-import { VS_FULL } from '../shaders/common.js?v=202610031142';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610031142';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610031142';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610031142';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610031142';
-import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610031142';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610031142';
-import { Ocean } from './ocean.js?v=202610031142';
-import { Ripple } from './ripple.js?v=202610031142';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610031142';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610031142';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610031142';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610031206';
+import { VS_FULL } from '../shaders/common.js?v=202610031206';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610031206';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610031206';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610031206';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610031206';
+import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610031206';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610031206';
+import { Ocean } from './ocean.js?v=202610031206';
+import { Ripple } from './ripple.js?v=202610031206';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610031206';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610031206';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610031206';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -400,7 +400,27 @@ export class Renderer {
                + Math.sin(time * 0.047 + ph * 1.7) * PAD.drift * 1.6;
       const dz = Math.cos(time * 0.093 + ph * 1.3) * PAD.drift
                + Math.cos(time * 0.039 + ph) * PAD.drift * 1.4;
-      p.set('uPadPos', [c.x + dx, c.z + dz])
+
+      // お椀を避ける。
+      //
+      // 葉の置き場所は、お椀と重ならないように選んである。ただし
+      // お椀は見下ろす角度で舟の中へ寄るので（真上にすると手前への
+      // ずらしがほとんど効かなくなる）、表の値だけでは足りない。
+      // 真上から見ると、葉が 6〜8cm お椀に食い込んでいた。
+      // 置き場所を直してもまた角度で動くので、ここで押しのける。
+      let px = c.x + dx, pz = c.z + dz;
+      const bx = px - BOWL.pos[0], bz = pz - BOWL.pos[2];
+      const keep = BOWL.outerR + c.r * 0.86;   // 葉は縁が波打つので少し食い込ませる
+      const d = Math.hypot(bx, bz);
+      if (d < keep) {
+        const k = d > 1e-4 ? keep / d : 1;
+        px = BOWL.pos[0] + bx * k;
+        pz = BOWL.pos[2] + bz * k;
+        // 押し出した先が舟の外に出ないように戻す
+        px = Math.min(Math.max(px, -TANK.halfX + c.r), TANK.halfX - c.r);
+        pz = Math.min(Math.max(pz, -TANK.halfZ + c.r), TANK.halfZ - c.r);
+      }
+      p.set('uPadPos', [px, pz])
        .setFloat('uPadR', c.r)
        .setFloat('uYaw', c.yaw + Math.sin(time * 0.055 + ph) * 0.22)
        .setFloat('uSeed', 0.137 + i * 0.311);

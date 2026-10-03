@@ -1,6 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
 
-import { t } from './i18n.js?v=202610031142';
+import { t } from './i18n.js?v=202610031206';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -57,7 +57,7 @@ export class UI {
       this.el.srcNote.textContent = t(v === 'rec' ? 'recorded' : 'synth');
     });
     // 音の調整つまみ。層ごとに動かせる
-    for (const k of ['master','pump','cicada','minmin','dusk','furin',
+    for (const k of ['master','pump','cicada','dusk','furin',
                      'festival','crowd','insect','rain']) {
       this.#range('v_' + k, 'o_' + k, (v) => { handlers.mix(k, v / 100); return String(Math.round(v)); });
     }
