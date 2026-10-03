@@ -7,7 +7,7 @@
 // ひれは不透明に描く。水中パスの α にはカメラからの距離を入れていて、
 // ブレンドすると距離が壊れ、水面の屈折が狂うため。薄さは色で表す。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610031206';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610031211';
 
 // ---------------------------------------------------------------- 金魚
 
@@ -103,18 +103,30 @@ vec3 shapeOf(float u, float v, int part){
     //
     // 真上から尾が尾に見えるのは、上下の葉の先が左右へ反っているから。
     // 縁日の小赤は二叉のフナ尾、出目金は四つ尾で、どちらも先が開く。
-    // 全長は体長の 2〜2.5 倍なので、尾は胴と同じくらい長い。
+    //
+    // 寸法。「全長は体長の 2〜2.5 倍」と書いて尾を胴と同じ長さにして
+    // いたが、これは誤り。和金の尾は体長のおよそ 1/3 で、全長は体長の
+    // 1.35 倍ほどしかない。胴を細く直したら、小さな体に大きな扇が
+    // 付いた形になって目立つようになった。
+    // 尾の広がりも体高の 2.0 倍あった。和金は体高と同じくらい。
     float s = u, t = v * 2.0 - 1.0;                  // t: -1 下葉 .. +1 上葉
     float base0 = prof(0.88) * 1.05;                 // 尾柄の太さ
-    float len = mix(0.68, 0.80, uFancy);
-    float spread = base0 + mix(0.345, 0.440, uFancy) * pow(s, 0.60);
+    float len = mix(0.42, 0.72, uFancy);
+    float spread = base0 + mix(0.190, 0.400, uFancy) * pow(s, 0.60);
     // 後ろの縁の切れ込み。中央がえぐれて二叉になる
     float fork = 1.0 - mix(0.46, 0.26, uFancy)
                * exp(-pow(t / 0.32, 2.0)) * smoothstep(0.15, 1.0, s);
     // 葉の先が外へ反る。これが無いと、真上から見たとき尾が線になる
     float curl = mix(0.64, 0.84, uFancy) * s * s * smoothstep(0.20, 1.0, abs(t));
-    // 泳ぐと裾が波打つ
-    float wave = 0.030 * s * s * sin(t * 2.4 + uTime * uBeat * 0.6 + uPhase);
+    // 泳ぐと裾が波打つ。
+    //
+    // t に 2.4 を掛けていたので、尾の上下方向にも波が 0.76 周ぶん入り、
+    // 上葉と下葉が逆へ動いていた。おまけに uBeat に 0.6 を掛けていたので、
+    // 胴とは違う周期でゆっくりずれ続ける。どちらも膜の動きではない。
+    //
+    // 実際の尾は、胴と同じ周期で振られ、膜が水に押されて少し遅れる。
+    // 波は 0.3 周ぶんに収め、周期は胴に合わせて、遅れだけを位相で入れる。
+    float wave = 0.017 * s * s * sin(t * 0.9 + uTime * uBeat + uPhase - 1.15);
     return vec3(-0.345 - len * s * fork,
                 t * spread,
                 spread * curl * sign(t) + wave);
@@ -148,10 +160,23 @@ vec3 shapeOf(float u, float v, int part){
   return root + dir * u + wid * (v - 0.5) * (0.26 + 0.74 * sin(3.14159 * clamp(u * 0.8 + 0.2, 0.0, 1.0)));
 }
 
-/** 泳ぎのうねり。尾へ行くほど大きく、頭もわずかに振れる。 */
+/**
+ * 泳ぎのうねり。尾へ行くほど大きく、頭もわずかに振れる。
+ *
+ * 波数を 7.5 にしていた。胴（長さ 1.0）だけで 1.2 周、尾びれ（0.68）の
+ * 中だけでも 0.8 周ぶん入る計算で、薄い一枚の尾が自分の中で S 字に
+ * くねっていた。魚の尾は膜なので、そういう動き方はしない。
+ *
+ * 金魚は亜アジ型で、胴に入る波は 1 周に満たない。3.7 にすると
+ * 胴で 0.59 周。尾柄より後ろは、膜が付け根に引かれて遅れるだけなので、
+ * 位相の進みを 1/3 に落とす（尾の中では 0.13 周）。
+ */
+const float TAILX = -0.345;      // 尾柄の位置
+
 vec3 swim(vec3 p){
   float s = clamp((0.5 - p.x) / 1.3, 0.0, 1.0);
-  p.z += 0.055 * s * s * sin(p.x * 7.5 - uTime * uBeat + uPhase);
+  float xe = p.x > TAILX ? p.x : TAILX + (p.x - TAILX) * 0.33;
+  p.z += 0.055 * s * s * sin(xe * 3.7 - uTime * uBeat + uPhase);
   p.z += 0.007 * sin(-uTime * uBeat + uPhase);
   p.z += uBend * s * s;                       // 旋回で内側へ曲がる
   return p;
