@@ -11,7 +11,7 @@
 // 水深は 14.5cm しかないので、15cm を超える茎は途中で倒れて水面の下を這う。
 // 真上から見る絵でこれは大事で、まっすぐ立てると茎が点にしか見えない。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610031335';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610031338';
 
 // ---------------------------------------------------------------- 浮き葉
 
@@ -452,28 +452,34 @@ uniform float uTime;
 uniform float uCount;
 uniform vec4 uFall;      // x = 高さ, y = 速さ, z = 傾き(tan), w = 風の向き
 uniform float uStreak;
+/**
+ * 1 粒ぶんの状態。x,z = 着水する場所、y = 落ちる進み具合(0..1)、w = 太さの種。
+ *
+ * もとは番号だけから乱数で出していた。同じ番号がいつも同じ所へ落ちるので、
+ * 26 か所に穴が開いているようにしか見えなかった。かといって周回ごとに
+ * 乱数を引くと、波紋を落とす JS 側と場所を揃えられない。乱数は
+ * 32bit 浮動小数と倍精度で答えが変わるので、同じ式を書いても一致しない。
+ * 落ちる場所は JS で決めて、ここへ渡す。
+ */
+uniform vec4 uDrop[32];
 out vec2 vP;
 out float vFade;
 
-float h11(float x){ return fract(sin(x * 127.1) * 43758.5453); }
-
 void main(){
+  int di = int(aUvi.z + 0.5);
+  vec4 dp = uDrop[di];
   float i = aUvi.z;
-  float r1 = h11(i * 1.7), r2 = h11(i * 3.1 + 5.0), r3 = h11(i * 7.3 + 11.0);
+  float r2 = dp.w;
 
   // 落ちる向き。鉛直ではなく、風で斜めに降る。
   // 真上から見る絵では、鉛直の筋は点に潰れて見えない
   vec2 wind = vec2(cos(uFall.w), sin(uFall.w)) * uFall.z;
   vec3 fd = normalize(vec3(wind.x, -1.0, wind.y));   // 傾き 0 なら真下
 
-  float speed = uFall.y * (0.85 + r2 * 0.30);
-  float period = uFall.x / speed;
-  float t = fract(uTime / period + r1 * 3.7 + r3);
+  float t = dp.y;
 
-  // 着水する位置を先に決めて、そこから逆に遡る。
-  // こうしておくと、波紋を落とす側（game.js）と場所が揃う
-  vec2 land = (vec2(r1, r3) * 2.0 - 1.0) * uArea;
-  vec3 at = vec3(land.x, 0.0, land.y) - fd * (uFall.x * t);
+  // 着水する位置から逆に遡る。こうしておくと、波紋を落とす側と場所が揃う
+  vec3 at = vec3(dp.x, 0.0, dp.z) - fd * (uFall.x * t);
 
   float rad = 0.0008 + r2 * 0.0006;
   vP = aUvi.xy;

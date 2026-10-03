@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610031335';
-import { Poi } from './poi.js?v=202610031335';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610031335';
+import { School } from './fish.js?v=202610031338';
+import { Poi } from './poi.js?v=202610031338';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610031338';
 
 /** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
 const h11 = (x) => {
@@ -37,6 +37,16 @@ export class Game {
     // 店じまい。ポイを貸してもらえないので、水面をなでることしかできない
     this.closed = false;
     this.touch = null;
+
+    // 雨粒。降っていなくても配列は作っておく。
+    // 進み具合をばらしておかないと、降り始めに全部が同時に着水する
+    this.rainDrops = [];
+    for (let i = 0; i < RAIN.count; i++) {
+      const d = { t: Math.random(), x: 0, z: 0, w: 0, period: 1 };
+      this.#reseedDrop(d);
+      d.t = Math.random();
+      this.rainDrops.push(d);
+    }
     this.renewAt = undefined;
     this.holding = false;
     this.time = 0;          // シェーダへ渡す経過時間。止めない
@@ -254,27 +264,35 @@ export class Game {
    * 別々に乱数で出すと、落ちている所と輪の立つ所が合わず、
    * 「雨が降っている」ではなく「水面がざわついている」にしか見えない。
    */
+  /** 雨粒 1 粒の落ちる場所・速さ・太さを引き直す。 */
+  #reseedDrop(d) {
+    d.x = (Math.random() * 2 - 1) * TANK.halfX * 1.02;
+    d.z = (Math.random() * 2 - 1) * TANK.halfZ * 1.02;
+    d.w = Math.random();
+    d.period = RAIN.fall / (RAIN.speed * (0.85 + d.w * 0.30));
+  }
+
   #surfaceHits(dt) {
     if (!this.ripple || dt <= 0) return;
     const prev = this.time - dt;
 
     if (this.rain > 0) {
-      for (let i = 0; i < RAIN.count; i++) {
-        const r1 = h11(i * 1.7), r2 = h11(i * 3.1 + 5.0), r3 = h11(i * 7.3 + 11.0);
-        const speed = RAIN.speed * (0.85 + r2 * 0.30);
-        const period = RAIN.fall / speed;
-        const off = r1 * 3.7 + r3;
-        // 位相が 1 周した＝その粒が水面に着いた
-        if (Math.floor(this.time / period + off) === Math.floor(prev / period + off)) continue;
+      // 雨粒。1 粒ずつ場所を引き直す。
+      //
+      // もとは番号から乱数で出していたので、同じ 26 か所に落ち続けていた。
+      // 穴が開いているようにしか見えない。ここで状態を持ち、着水したら
+      // 波紋を落として次の場所を引く。描画側へは、この配列をそのまま渡す。
+      // 乱数をシェーダと JS で別々に引くと、32bit 浮動小数と倍精度で
+      // 答えが変わって場所がずれるので、引くのは片側だけにする
+      for (const d of this.rainDrops) {
+        d.t += dt / d.period;
+        if (d.t < 1) continue;
+        d.t -= Math.floor(d.t);
         // 波紋は格子（4mm 刻み）より十分大きく取る。小さいと波が
         // 格子の縦横にしか進めず、輪ではなく菱形に広がる
-        this.ripple.drop(
-          (r1 * 2 - 1) * TANK.halfX * 1.02,
-          (r3 * 2 - 1) * TANK.halfZ * 1.02,
-          0.013 + r2 * 0.007,
-          0.0011,
-        );
+        this.ripple.drop(d.x, d.z, 0.013 + d.w * 0.007, 0.0011);
         this.sound?.raindrop();
+        this.#reseedDrop(d);
       }
     }
 
