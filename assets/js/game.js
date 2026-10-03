@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610030031';
-import { Poi } from './poi.js?v=202610030031';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR } from './world.js?v=202610030031';
+import { School } from './fish.js?v=202610030059';
+import { Poi } from './poi.js?v=202610030059';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR } from './world.js?v=202610030059';
 
 export const PHASE = { READY: 'ready', PLAY: 'play', OVER: 'over' };
 
@@ -24,6 +24,7 @@ export class Game {
     this.poi.visible = false;
     this.phase = PHASE.READY;
     this.showUntil = 0;
+    this.rain = 0;      // 0 = 降っていない, 1 = 本降り
     this.time = 0;          // シェーダへ渡す経過時間。止めない
     this.reset();
   }
@@ -78,6 +79,22 @@ export class Game {
     const poi = this.poi;
 
     this.#updateBowl(dt);
+
+    // 雨。水面に当たった粒が、絶え間なく小さな輪を作る。
+    // 雨の日の水面が雨に見えるのは、ほとんどこの輪のおかげ
+    if (this.rain > 0 && this.ripple) {
+      this.rainAt = (this.rainAt ?? 0) - dt;
+      let guard = 0;
+      while (this.rainAt < 0 && guard++ < 12) {
+        this.rainAt += 0.010 / this.rain;
+        this.ripple.drop(
+          (Math.random() * 2 - 1) * TANK.halfX,
+          (Math.random() * 2 - 1) * TANK.halfZ,
+          0.005 + Math.random() * 0.005,
+          0.0013,
+        );
+      }
+    }
 
     // エアストーンの泡が水面ではじける。
     // 1 粒ずつ追わず、出る量に見合う間隔で小さな波紋を立てる。

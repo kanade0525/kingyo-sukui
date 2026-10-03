@@ -1,14 +1,15 @@
-// 時刻から、太陽と空を決める。
+// 時刻と天気から、光を決める。
 //
-// 光源を提灯の群れから太陽ひとつに変えた。方向の揃った強い光が無いと、
-// 水底のコースティクスも水面のきらめきも芯が出ない。
+// 昼は太陽ひとつ。日が傾くと屋台の提灯に灯が入り、夜はそちらが主役になる。
+// 宵宮は 22 時過ぎにしまうので、そこから提灯が落ちて、舟だけが暗く残る。
 //
-// 時刻を引数に取る形にしてあるのは、後で夕方や実時刻へ差し替えるため。
 // 値はどれも線形空間。最後のトーンマップで丸める前提で、太陽は 1 を超える。
 
 const DEG = Math.PI / 180;
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
-const mix3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const mix = (a, b, t) => a + (b - a) * t;
+const mix3 = (a, b, t) => [mix(a[0], b[0], t), mix(a[1], b[1], t), mix(a[2], b[2], t)];
+const scale3 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
 
 /** 日の出と日の入り。夏の縁日なので長め。 */
 const SUNRISE = 5.0;
@@ -25,28 +26,52 @@ const ORIENT = 14;
 /** 南中高度。日本の夏の昼ごろ。 */
 const NOON_ELEV = 70 * DEG;
 
+/** 店じまい。この時刻から提灯が落ち、1 時間ほどかけて真っ暗になる。 */
+const CLOSE_START = 22.2;
+const CLOSE_END = 23.4;
+
+export const WEATHER = { CLEAR: 0, CLOUDY: 1, RAIN: 2 };
+export const WEATHER_NAME = ['晴れ', 'くもり', '雨'];
+
 /**
- * 時刻（0〜24 の実数）から光の条件を作る。
+ * 時刻（0〜24 の実数）と天気から光の条件を作る。
  *
  * 太陽の色は「大気を通る距離」の一本の量 ext で決めている。
  * 高いほど白く明るく、低いほど赤く弱い。物理的な散乱計算ではないが、
  * 昼と夕方で水の見え方がどう変わるかを見るには十分な形。
+ *
+ * 曇りと雨では、直射が雲で散って方向を失う。コースティクスも水面の
+ * きらめきも「方向の揃った強い光」が要るので、ここが落ちると同時に消える。
+ * これは手加減ではなく、曇りの日に水底の網目が出ないのと同じこと。
  */
-export function sunFor(hour, yawDeg = 0) {
-  const t = clamp01((hour - SUNRISE) / (SUNSET - SUNRISE));
+export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR) {
+  const t = (hour - SUNRISE) / (SUNSET - SUNRISE);
+  // 日の出前・日の入り後は負になる。そのまま使って地平線の下へ沈める
   const elev = Math.sin(Math.PI * t) * NOON_ELEV;
-  // 東から西へ。ORIENT は屋台の向き。
-  // これを 0 にすると、ほぼ真上から覗く構図では太陽の照り返しが
-  // そのまま水面の真ん中に座り、白い靄で底が見えなくなる
-  const azim = (-75 + 150 * t + ORIENT + yawDeg) * DEG;
+  // 東から西へ。ORIENT は屋台の向き
+  const azim = (-75 + 150 * clamp01(t) + ORIENT + yawDeg) * DEG;
 
-  const h = Math.max(Math.sin(elev), 0.015);
-  const ext = Math.pow(h, 0.42);               // 大気の厚みによる減衰
+  const sunUp = Math.sin(elev);
+  // 薄明。太陽が地平の 7° 下あたりまでは、まだ空が明るい
+  const daylight = clamp01((sunUp + 0.12) / 0.12);
+  const ext = Math.pow(Math.max(sunUp, 0.015), 0.42) * daylight;
+  const night = 1 - daylight;
+
+  // 店じまい。夜中から明け方までは「終わったあと」
+  let closed = 0;
+  if (hour >= CLOSE_START) closed = clamp01((hour - CLOSE_START) / (CLOSE_END - CLOSE_START));
+  else if (hour < SUNRISE - 0.8) closed = 1;
+  // 提灯。暗くなると灯り、しまうと落ちる
+  const lanternOn = clamp01(night * 1.3) * (1 - closed);
+
+  // 天気。曇りと雨は直射が雲で散る
+  const direct = weather === WEATHER.CLEAR ? 1 : weather === WEATHER.CLOUDY ? 0.16 : 0.07;
+  const dull = weather === WEATHER.CLEAR ? 1 : weather === WEATHER.CLOUDY ? 0.62 : 0.44;
 
   // 太陽。低いほど赤く、弱くなる。
   // 値は「アルベド 0.3 の面が真上から照らされて 0.7 くらいになる」目安で、
   // 空との比が 6:1 ほど。晴れた日の実際の比（5〜10:1）に近い
-  const strength = 2.45 * ext;
+  const strength = 2.45 * ext * direct;
   const sunColor = [
     1.00 * strength,
     (0.50 + 0.47 * ext) * strength,
@@ -54,31 +79,98 @@ export function sunFor(hour, yawDeg = 0) {
   ];
 
   // 空。夕方は地平が橙に寄り、天頂は藍のまま残る
-  const dim = 0.22 + 0.78 * ext;
-  const zenith = [0.105 * dim, 0.205 * dim, 0.470 * (0.30 + 0.70 * ext)];
-  const horizon = mix3([0.66, 0.34, 0.17], [0.560, 0.635, 0.745], ext);
+  const dim = (0.22 + 0.78 * ext) * dull;
+  let zenith = [0.105 * dim, 0.205 * dim, 0.470 * (0.30 + 0.70 * ext) * dull];
+  let horizon = scale3(mix3([0.66, 0.34, 0.17], [0.560, 0.635, 0.745], ext),
+                       dull * (0.10 + 0.90 * daylight) + 0.02);
+  // 夜空。晴れた夜は藍、曇りや雨の夜は街明かりを雲が返すのでかえって明るい
+  const skyNight = weather === WEATHER.CLEAR
+    ? [0.0030, 0.0042, 0.0085]
+    : [0.0105, 0.0085, 0.0075];
+  zenith = mix3(zenith, skyNight, night);
+  horizon = mix3(horizon, scale3(skyNight, 2.4), night);
   // 地平線より下。明るい地面からの跳ね返りなので、思ったより明るい
-  const ground = [0.300 * dim, 0.285 * dim, 0.255 * dim];
+  const ground = scale3([0.300 * dim, 0.285 * dim, 0.255 * dim], 1 - night * 0.92);
 
   return {
     hour,
+    weather,
     elev,
     azim,
-    dir: [Math.sin(azim) * Math.cos(elev), Math.sin(elev), -Math.cos(azim) * Math.cos(elev)],
+    // 地平線より下へは向けない。各材質が max(dot(N, dir), 0) で受けるので、
+    // 強さ 0 の太陽がどこを向いていても絵は変わらない
+    dir: [Math.sin(azim) * Math.cos(elev), Math.max(sunUp, 0.02), -Math.cos(azim) * Math.cos(elev)],
     sunColor,
     zenith,
     horizon,
     ground,
-    // 太陽が低いほど霞む
-    haze: 0.55 + 1.4 * (1 - ext),
+    // 提灯。和紙を透かした橙。1 個ぶんの強さ（距離の二乗で割る前）
+    lantern: scale3([1.00, 0.46, 0.165], 0.060 * lanternOn),
+    lanternOn,
+    closed,
+    daylight,
+    direct,
+    // 太陽が低いほど霞む。雨は一面に霞む
+    haze: (0.55 + 1.4 * (1 - ext)) * (weather === WEATHER.RAIN ? 1.5 : 1),
     // 低い太陽ほど、画面全体が暖色に転ぶ。
-    // 線形だと夕方が「暗くした昼」にしかならないので、立ち上がりを早める
-    warmth: Math.pow(1 - ext, 0.65),
-    // 画面に出す明るさ。夕方は少し持ち上げないと沈む
-    exposure: 0.62 + 0.45 * (1 - ext),
+    // 線形だと夕方が「暗くした昼」にしかならないので、立ち上がりを早める。
+    // 夜は提灯の橙がそれを引き受けるので、ここは戻す
+    warmth: Math.pow(1 - ext, 0.65) * (1 - night * 0.45),
+    // 画面に出す明るさ。暗い時間は目が慣れるぶん持ち上げる。
+    // ただし店じまいのあとは持ち上げない。見えないことがそのまま演出になる
+    // 画面に出す明るさ。
+    // 暗い時間や曇り・雨は、目が慣れるぶん持ち上げる。昼の雨を
+    // 光量どおりに落とすと、ただの夕方になってしまう。
+    // ただし店じまいのあとは持ち上げない。見えないことがそのまま演出になる
+    exposure: (0.62 + 0.45 * (1 - ext) + night * 0.72 * (1 - closed))
+            * (1 + (1 - dull) * 1.15 * daylight) * (1 - closed * 0.60),
   };
 }
 
-// 午後も遅い時間。影が伸びて、光が暖色に転ぶ。
-// 真昼の真上からの光は、きれいではあるが平板になる。
-export const DEFAULT_HOUR = 14.6;
+/** いまの端末の時刻。0〜24 の実数。 */
+export function localHour() {
+  const d = new Date();
+  return d.getHours() + d.getMinutes() / 60;
+}
+
+/**
+ * 現在地の天気を引く。
+ *
+ * 位置はブラウザの許可を取ってから取る。断られれば晴れのまま。
+ * 外へ出ていくのは緯度経度を小数 2 桁（約 1km の粗さ）に丸めたものだけで、
+ * 送り先は Open-Meteo（鍵の要らない公開 API）。遊ぶのに町より細かい
+ * 精度は要らないので、丸めてから送る。
+ */
+export function fetchWeather() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    setTimeout(() => finish(null), 9000);
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const la = pos.coords.latitude.toFixed(2);
+        const lo = pos.coords.longitude.toFixed(2);
+        const r = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=weather_code,cloud_cover`);
+        const j = await r.json();
+        finish(wmoToWeather(j?.current?.weather_code, j?.current?.cloud_cover));
+      } catch {
+        finish(null);
+      }
+    }, () => finish(null), { timeout: 8000, maximumAge: 1800000 });
+  });
+}
+
+/** WMO の天気コードを、この絵で描き分けられる 3 つに畳む。 */
+export function wmoToWeather(code, cloud) {
+  if (code === undefined || code === null) return null;
+  if (code >= 51) return WEATHER.RAIN;        // 霧雨・雨・雪・にわか雨・雷雨
+  if (code >= 45) return WEATHER.CLOUDY;      // 霧
+  if (code === 3) return WEATHER.CLOUDY;      // 曇り
+  if (code >= 1) return (cloud ?? 0) > 60 ? WEATHER.CLOUDY : WEATHER.CLEAR;
+  return WEATHER.CLEAR;
+}
+
+// 端末の時計に合わせる。合わなければ午後も遅い時間に落とす。
+export const DEFAULT_HOUR = localHour();

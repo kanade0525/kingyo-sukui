@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030031';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030059';
 
 
 
@@ -157,7 +157,8 @@ void main(){
       float sh = groundShadow(p);
       vec3 sky = skyColor(reflect(d, n));
       base = base * (uSunColor * max(dot(n, uSunDir), 0.0) * sh
-                   + skyAmbient(n) * contactAO(p) * ao)
+                   + skyAmbient(n) * contactAO(p) * ao
+                   + (lanternLight(p, n) + lanternAmbient(p)) * contactAO(p) * ao)
            + ggx(n, -d, uSunDir, rough, vec3(0.035)) * uSunColor * PI * sh * 0.5
            + clearcoat(n, -d, uSunDir, wet, uSunColor * sh, sky) * 0.55;
       float fog = exp(-t * 0.085);
@@ -271,7 +272,7 @@ void main(){
       vec3 caus = mix(vec3(1.0), caustics(vW.xz, below), edgeMask(entry) * face);
 
       vec3 sun = underSun(bn) * caus * wallShade(entry);
-      vec3 amb = underAmbient(bn) * tarpAO;
+      vec3 amb = (underAmbient(bn) + underLantern(vW, bn)) * tarpAO;
       col = base * (sun + amb);
       // 塩ビは濡れているので、織り目に沿って照りが伸びる
       // ポリエチレンは半艶。織り目が無いので照りは等方で、やや広い
@@ -286,7 +287,8 @@ void main(){
       }
     } else {
       // 水の上に出ている内壁。濡れて黒く光る
-      col = base * 0.55 * (uSunColor * max(dot(bn, uSunDir), 0.0) * 0.5 + skyAmbient(bn));
+      col = base * 0.55 * (uSunColor * max(dot(bn, uSunDir), 0.0) * 0.5 + skyAmbient(bn)
+                         + lanternLight(vW, bn) + lanternAmbient(vW));
       col += ggx(N, V, uSunDir, 0.18, vec3(0.04)) * uSunColor * 0.6 * PI;
     }
   } else if(region >= 4){
@@ -296,7 +298,8 @@ void main(){
       float F = fresnelSchlick(max(dot(N, V), 0.0), 0.02);
       vec3 refl = skyColor(reflect(-V, N));
       // 水の身。浅いので薄く
-      vec3 body = vec3(0.030, 0.115, 0.150) * (skyAmbient(N) * 1.2 + uSunColor * 0.30);
+      vec3 body = vec3(0.030, 0.115, 0.150) * (skyAmbient(N) * 1.2 + uSunColor * 0.30
+                                               + lanternAmbient(vW) * 1.4);
       col = body + refl * F + ggx(N, V, uSunDir, 0.085, vec3(0.02)) * uSunColor * 0.8 * PI;
       // 縁に寄るほど厚く見える
       float r = length(vW.xz - uBowlPos.xz) / 0.085;
@@ -319,7 +322,8 @@ void main(){
       // 水に浸かっている所は水の色を帯びる。白磁のままだと水が入って見えない
       if(vW.y < uBowlRim - 0.020) cer = mix(cer, vec3(0.075, 0.215, 0.265), 0.62);
     }
-    col = cer * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N))
+    col = cer * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N)
+               + lanternLight(vW, N) + lanternAmbient(vW))
         + ggx(N, V, uSunDir, 0.085, vec3(0.055)) * uSunColor * PI;
   } else {
     // 縁と外側。内側と同じ一枚のトレー。
@@ -374,7 +378,8 @@ void main(){
     float wwet = splash * (0.45 + 0.55 * (1.0 - toGround));
 
     col = wood * (uSunColor * max(dot(N, uSunDir), 0.0)
-                + skyAmbient(N) * (0.35 + 0.65 * toGround) * woodAO)
+                + skyAmbient(N) * (0.35 + 0.65 * toGround) * woodAO
+                + lanternLight(vW, N) + lanternAmbient(vW) * woodAO)
         + ggx(N, V, uSunDir, 0.34, vec3(0.042)) * uSunColor * PI * 0.30
         + clearcoat(N, V, uSunDir, wwet, uSunColor, skyColor(reflect(-V, N)));
     col *= 0.62 + 0.38 * toGround;
@@ -543,7 +548,11 @@ void main(){
   col += min(ggx(N, V, uSunDir, rough, vec3(0.02)) * uSunColor * PI, vec3(0.085));
 
   // 水際の明るい線
-  col += vec3(0.06, 0.10, 0.13) * pow(1.0 - vEdge, 2.2) * 0.5;
+  // 水際の明るい線。壁ぎわで水が薄くなって、底の色が透けるぶん。
+  // ここを定数で足していたら、夜になって周りが真っ暗になったときだけ
+  // 残り、舟のまわりが白く光る輪になっていた。周りの明るさに比例させる
+  col += vec3(0.06, 0.10, 0.13) * pow(1.0 - vEdge, 2.2) * 0.5
+       * (skyAmbient(vec3(0.0, 1.0, 0.0)) + lanternAmbient(vW)) * 3.0;
 
   frag = vec4(col, 1.0);
 }`;

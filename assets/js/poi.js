@@ -4,8 +4,8 @@
 // 水中で速く動かしたときの方が一気に傷む。斜めに入れて静かに抜くのが
 // 上手い人のやり方なので、ゲームとしてもそこに報いる。
 
-import { TANK, POI } from './world.js?v=202610030031';
-import { clamp, lerp } from './mat.js?v=202610030031';
+import { TANK, POI } from './world.js?v=202610030059';
+import { clamp, lerp } from './mat.js?v=202610030059';
 
 export class Poi {
   constructor() {
@@ -28,6 +28,10 @@ export class Poi {
     this.speed = 0;
     this.pressed = false;
     this.broke = false;
+    this.splash = 0;
+    this.splashAt = [0, 0];
+    this.splashIn = true;
+    this.splashV = 1;
     // 掬えた金魚を見せている間、ポイを上で固定する
     this.locked = false;
     if (full) {
@@ -73,9 +77,17 @@ export class Poi {
     this.tilt = lerp(this.tilt, wantTilt, dt * 8);
 
     // 水の出入りで波が立つ
+    // 水の出入り。着水と離水は、紙の面積ぶんの水を一気に押しのけるので
+    // はっきり波が立つ。ここを弱くすると、ポイが水に触れた手応えが消える
+    this.splash = Math.max(0, (this.splash || 0) - dt * 2.6);
     if (ripple) {
       if (this.submerged !== wasUnder) {
-        ripple.drop(this.x, this.z, POI.radius * 1.8, this.submerged ? -0.0018 : 0.0024);
+        ripple.drop(this.x, this.z, POI.radius * 1.9, this.submerged ? -0.0062 : 0.0075);
+        // 飛沫の合図。入るときのほうが派手に散る
+        this.splash = 1.0;
+        this.splashAt = [this.x, this.z];
+        this.splashIn = this.submerged;
+        this.splashV = Math.min(1, Math.abs(this.vy) / 0.35 + 0.35);
       } else if (this.submerged && moved > 1e-4) {
         ripple.drop(this.x, this.z, POI.radius * 1.4, -moved * 0.055);
       }

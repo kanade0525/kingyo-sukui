@@ -39,8 +39,11 @@ body.playing canvas#scene{cursor:none}
   position:fixed;left:0;right:0;bottom:0;z-index:2;
   padding:24px 16px calc(12px + env(safe-area-inset-bottom,0px));
   display:flex;align-items:flex-end;gap:12px;
-  background:linear-gradient(0deg,rgba(255,255,255,.72),rgba(255,255,255,0));
+  /* 文字を読ませるための白い霧を敷いていたが、文言を外したので要らない。
+     夜の画面では、これが下端に白い帯として残って目立つ */
+  pointer-events:none;
 }
+#botbar > *{pointer-events:auto}
 #tools{margin-left:auto;display:flex;align-items:center;gap:10px;flex:0 0 auto}
 #fps{color:var(--ink);font-variant-numeric:tabular-nums}
 
@@ -101,3 +104,21 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 
 
 @media (prefers-reduced-motion:reduce){*{transition-duration:.001ms!important}}
+
+.wide{width:100%;font-size:11px;padding:8px 0}
+
+/* ---------- 店じまい ---------- */
+#closed{
+  position:fixed;inset:0;z-index:3;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:16px;
+  pointer-events:none;opacity:0;transition:opacity 1.6s ease;text-align:center;
+}
+#closed p{
+  margin:0;font-family:var(--disp);font-weight:500;
+  font-size:clamp(26px,6vw,42px);letter-spacing:.42em;text-indent:.42em;
+  color:rgba(255,246,232,.80);text-shadow:0 0 30px rgba(0,0,0,.65);
+}
+#closed span{
+  font-size:11px;letter-spacing:.34em;text-indent:.34em;
+  color:rgba(255,246,232,.42);
+}

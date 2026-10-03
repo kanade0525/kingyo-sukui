@@ -4,8 +4,8 @@
 // 形は頂点シェーダで作る。泳ぎのうねりを毎フレーム CPU で計算して
 // 転送するのは無駄で、しかも法線を作り直す手間が増えるため。
 
-import { Mesh } from './glx.js?v=202610030031';
-import { TANK, POI, BOWL, AIR } from './world.js?v=202610030031';
+import { Mesh } from './glx.js?v=202610030059';
+import { TANK, POI, BOWL, AIR } from './world.js?v=202610030059';
 
 /** 位置・法線・領域の 3 属性を貯めて Mesh にする小さな入れ物。 */
 class Builder {
@@ -415,6 +415,11 @@ export function bubbleMesh(gl, count) {
     idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
   }
   return new Mesh(gl, [{ loc: 0, size: 3, data: new Float32Array(pos) }], new Uint32Array(idx));
+}
+
+/** 飛沫の粒。泡と同じで、位置は頂点シェーダが出す。 */
+export function splashMesh(gl, count) {
+  return bubbleMesh(gl, count);
 }
 
 /**

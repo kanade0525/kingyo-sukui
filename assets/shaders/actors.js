@@ -7,7 +7,7 @@
 // ひれは不透明に描く。水中パスの α にはカメラからの距離を入れていて、
 // ブレンドすると距離が壊れ、水面の屈折が狂うため。薄さは色で表す。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030031';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030059';
 
 // ---------------------------------------------------------------- 金魚
 
@@ -283,7 +283,7 @@ void main(){
     caus = mix(vec3(1.0), caustics(vW.xz, below), edgeMask(entry));
   }
 
-  vec3 lit = underSun(N) * caus + underAmbient(N);
+  vec3 lit = underSun(N) * caus + underAmbient(N) + underLantern(vW, N);
 
   // ひれは薄い膜で、光を透かして散らす。向きで受け止める量が決まる
   // 不透明な面として扱うと、垂直に立った尾びれに真上からの光が
@@ -405,7 +405,9 @@ void main(){
     // 反射率 0.75 の紙なので、両方を足しても 1 を大きく超えないようにする
     vec3 lit = uSunColor * max(dot(N, uSunDir), 0.0) * 0.45
              + uSunColor * max(dot(-N, uSunDir), 0.0) * 0.30
-             + skyAmbient(N) * 0.6;
+             + skyAmbient(N) * 0.6
+             + (lanternLight(vW, N) + lanternLight(vW, -N) * 0.6) * 0.75
+             + lanternAmbient(vW) * 0.8;
     col *= lit;
     col += ggx(N, V, uSunDir, 0.30, vec3(0.03)) * uSunColor * uWet * PI;
     alpha = mix(0.72, 0.42, uWet) * (0.55 + 0.45 * lip);
@@ -439,7 +441,8 @@ void main(){
     float wear = smoothstep(0.62, 0.88, fbm(vUv * 13.0 + 4.0));
     col = mix(col, col * 0.55 + vec3(0.26, 0.17, 0.16), wear * 0.30);
 
-    col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N));
+    col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N)
+               + lanternLight(vW, N) + lanternAmbient(vW));
     // つるりとした樹脂。芯のある白いハイライトが 1 点だけ乗る。
     // 反射色は白のまま。赤を混ぜると金属に見える
     col += ggx(N, V, uSunDir, 0.085, vec3(0.045)) * uSunColor * PI * 1.15;
@@ -449,9 +452,14 @@ void main(){
   }
 
   // 水中パスでは α にカメラからの距離を入れる（水面の屈折がこれを読む）。
-  // 混ぜられないので、薄い所はディザで抜く
+  //
+  // 混ぜられないので、以前は薄い所を画素ごとの乱数で抜いていた。
+  // それが紙と枠の上に点々のノイズとして出ていた。縁の滑らか化を
+  // 入れると多重標本がその点を拾って、点線状の筋にまで育っていた。
+  //
+  // 水に沈んだ和紙は水を吸って、ほとんど向こうが見えない。
+  // 抜かずに塗ってしまってよい。
   if(uUnderwater == 1){
-    if(alpha < 0.985 && fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) > alpha) discard;
     frag = vec4(col, vDist);
     return;
   }

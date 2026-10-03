@@ -3,7 +3,7 @@
 // 太陽のきらめきは輝度 1 を大きく超える。そのまま出すとただの白い点に
 // なるので、明るい所を 1/4 解像度に落としてぼかし、足してからトーンマップする。
 
-import { HEAD, TONEMAP, NOISE } from './common.js?v=202610030031';
+import { HEAD, TONEMAP, NOISE } from './common.js?v=202610030059';
 
 /** NaN と Inf を落とす。1 画素でもぼかしに入ると、塊になって画面に残る。 */
 const SANE = `
@@ -116,4 +116,69 @@ void main(){
     c += (hash12(gl_FragCoord.xy + uTime) - 0.5) * 0.020 * (0.35 + 0.65 * (1.0 - l));
   }
   frag = vec4(c, 1.0);
+}`;
+
+/**
+ * FXAA。輪郭のぎざぎざを、出来上がった絵の上でならす。
+ *
+ * MSAA をやめてこちらにした。MSAA は多重サンプルのレンダーバッファを
+ * 普通のテクスチャへ blit する必要があり、タイル式の GPU（Apple Silicon など）
+ * ではその blit が化けて、縁に点線状のノイズが乗る。実際にそうなった。
+ * FXAA は出来上がった 1 枚を読み直すだけなので、その経路が無い。
+ *
+ * 解像度を落として使う前提なので、効き目は強め（しきい値は緩め）に取る。
+ */
+export const FS_FXAA = `${HEAD}
+in vec2 vUv;
+uniform sampler2D uSrc;
+uniform vec2 uTexel;
+out vec4 frag;
+
+float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+void main(){
+  vec3 cM = texture(uSrc, vUv).rgb;
+  float lM = luma(cM);
+  float lN = luma(texture(uSrc, vUv + vec2(0.0, -uTexel.y)).rgb);
+  float lS = luma(texture(uSrc, vUv + vec2(0.0,  uTexel.y)).rgb);
+  float lW = luma(texture(uSrc, vUv + vec2(-uTexel.x, 0.0)).rgb);
+  float lE = luma(texture(uSrc, vUv + vec2( uTexel.x, 0.0)).rgb);
+
+  float lo = min(lM, min(min(lN, lS), min(lW, lE)));
+  float hi = max(lM, max(max(lN, lS), max(lW, lE)));
+  float range = hi - lo;
+  // 平らな所は触らない
+  if(range < max(0.028, hi * 0.115)){ frag = vec4(cM, 1.0); return; }
+
+  float lNW = luma(texture(uSrc, vUv + vec2(-uTexel.x, -uTexel.y)).rgb);
+  float lNE = luma(texture(uSrc, vUv + vec2( uTexel.x, -uTexel.y)).rgb);
+  float lSW = luma(texture(uSrc, vUv + vec2(-uTexel.x,  uTexel.y)).rgb);
+  float lSE = luma(texture(uSrc, vUv + vec2( uTexel.x,  uTexel.y)).rgb);
+
+  // 輪郭が縦か横かを決める
+  float edgeH = abs(lNW + lNE - 2.0 * lN) * 2.0 + abs(lW + lE - 2.0 * lM) * 4.0
+              + abs(lSW + lSE - 2.0 * lS) * 2.0;
+  float edgeV = abs(lNW + lSW - 2.0 * lW) * 2.0 + abs(lN + lS - 2.0 * lM) * 4.0
+              + abs(lNE + lSE - 2.0 * lE) * 2.0;
+  bool horz = edgeH >= edgeV;
+
+  // 輪郭をまたぐ向きへ、勾配の急なほうへ半画素ずらして読む
+  float l1 = horz ? lN : lW;
+  float l2 = horz ? lS : lE;
+  float g1 = abs(l1 - lM), g2 = abs(l2 - lM);
+  float step_ = horz ? uTexel.y : uTexel.x;
+  if(g1 < g2) step_ = -step_;
+
+  vec2 off = horz ? vec2(0.0, step_) : vec2(step_, 0.0);
+  vec3 a = texture(uSrc, vUv + off * 0.5).rgb;
+  vec3 b = texture(uSrc, vUv + off * 1.5).rgb;
+  // 両脇も混ぜて、階段の段差をならす
+  vec2 perp = horz ? vec2(uTexel.x, 0.0) : vec2(0.0, uTexel.y);
+  vec3 c1 = texture(uSrc, vUv + off * 0.5 - perp).rgb;
+  vec3 c2 = texture(uSrc, vUv + off * 0.5 + perp).rgb;
+
+  vec3 blend = (a * 0.40 + b * 0.18 + c1 * 0.14 + c2 * 0.14 + cM * 0.14);
+  // 勾配がきついほど強くならす
+  float amt = clamp(range / max(hi, 1e-3) * 2.2, 0.0, 1.0);
+  frag = vec4(mix(cM, blend, amt), 1.0);
 }`;

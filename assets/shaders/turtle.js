@@ -6,7 +6,7 @@
 // 真上から見たときの手がかりは、甲羅の鱗板の割れ方と、四肢の漕ぐ動き、
 // それに目の後ろの赤い斑。この三つが揃うと一目でミドリガメになる。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030031';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030059';
 
 export const VS_TURTLE = `${HEAD}
 layout(location=0) in vec2 aUv;
@@ -218,7 +218,7 @@ void main(){
     caus = mix(vec3(1.0), caustics(vW.xz, below), edgeMask(entry));
   }
 
-  vec3 lit = underSun(N) * caus + underAmbient(N);
+  vec3 lit = underSun(N) * caus + underAmbient(N) + underLantern(vW, N);
   float up = N.y * 0.5 + 0.5;
   vec3 col = base * lit * (0.80 + 0.30 * up);
   // 濡れた甲羅はよく照る

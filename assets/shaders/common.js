@@ -227,6 +227,61 @@ uniform float uHaze;
 
 const float PI = 3.14159265;
 
+// 屋台の連提灯。
+//
+// 9 号長型ビニール提灯（直径 24cm × 高さ 53cm）を、屋台の梁に
+// 間隔をあけて並べて吊るす。日が落ちるとこれが主な光源になる。
+// 和紙（実際はビニル幌）を透かした橙で、水面には縦に伸びた筋として映る。
+uniform vec3 uLanternCol;    // 1 個ぶんの強さ × 色。消えているときは 0
+uniform vec4 uLanternGeo;    // x = 吊る高さ, y = 奥行き位置, z = 間隔, w = 個数
+
+/** i 番目の提灯の位置。列の中心が舟の中心の真上に来るように並べる。 */
+vec3 lanternPos(int i){
+  float x = (float(i) - (uLanternGeo.w - 1.0) * 0.5) * uLanternGeo.z;
+  return vec3(x, uLanternGeo.x, uLanternGeo.y);
+}
+
+/** 連提灯から受ける明るさ。距離の二乗で落ちる点光源の和。 */
+vec3 lanternLight(vec3 p, vec3 N){
+  if(uLanternCol.r < 0.0005) return vec3(0.0);
+  vec3 sum = vec3(0.0);
+  for(int i = 0; i < 7; i++){
+    if(float(i) >= uLanternGeo.w) break;
+    vec3 L = lanternPos(i) - p;
+    float d2 = max(dot(L, L), 0.02);
+    sum += max(dot(N, L * inversesqrt(d2)), 0.0) / d2;
+  }
+  return uLanternCol * sum;
+}
+
+/** 提灯から回り込む分。向きを持たない、ぼんやりした底上げ。 */
+vec3 lanternAmbient(vec3 p){
+  if(uLanternCol.r < 0.0005) return vec3(0.0);
+  float s = 0.0;
+  for(int i = 0; i < 7; i++){
+    if(float(i) >= uLanternGeo.w) break;
+    vec3 L = lanternPos(i) - p;
+    s += 1.0 / max(dot(L, L), 0.02);
+  }
+  return uLanternCol * s * 0.22;
+}
+
+/** 見上げた先に提灯があれば、その玉を返す。 */
+vec3 lanternOrbs(vec3 d, vec3 from){
+  if(uLanternCol.r < 0.0005 || d.y < 0.02) return vec3(0.0);
+  vec3 sum = vec3(0.0);
+  for(int i = 0; i < 7; i++){
+    if(float(i) >= uLanternGeo.w) break;
+    vec3 L = lanternPos(i) - from;
+    float t = dot(L, d);
+    if(t < 0.0) continue;
+    // 提灯までの最短距離。直径 24cm の玉として当たり判定する
+    float m = length(L - d * t);
+    sum += uLanternCol * smoothstep(0.13, 0.04, m) * 62.0;
+  }
+  return sum;
+}
+
 // 屋台の天幕。
 //
 // 縁日の金魚すくいは、必ずテントで日陰を作って出す。天幕は白、
@@ -265,8 +320,10 @@ vec4 tentLook(vec3 d){
 }
 
 vec3 skyColor(vec3 d){
+  // 提灯は天幕より手前に吊るしてあるので、天幕より先に見える
+  vec3 orb = lanternOrbs(d, vec3(0.0));
   vec4 tent = tentLook(d);
-  if(tent.w > 0.5) return tent.rgb;
+  if(tent.w > 0.5) return tent.rgb + orb;
   float up = clamp(d.y, -1.0, 1.0);
   vec3 c = up > 0.0
     ? mix(uSkyHorizon, uSkyZenith, pow(up, 0.42))
@@ -274,7 +331,7 @@ vec3 skyColor(vec3 d){
   // 太陽のまわりの暈け（前方散乱）
   float mu = max(dot(d, uSunDir), 0.0);
   c += uSunColor * (0.050 * pow(mu, 9.0) + 0.008 * pow(mu, 2.0)) * uHaze;
-  return c;
+  return c + orb;
 }
 
 /** 太陽の本体まで描く版。背景のフルスクリーンパスだけで使う。 */
@@ -340,6 +397,10 @@ vec3 underSun(vec3 N){
 }
 vec3 underAmbient(vec3 N){
   return skyAmbient(N) * 0.7;
+}
+/** 水の中から見た提灯。水面で屈折して立って降ってくるぶん、少し弱める。 */
+vec3 underLantern(vec3 p, vec3 N){
+  return lanternLight(p, N) * 0.78 + lanternAmbient(p) * 0.55;
 }`;
 
 /** 水面の読み出しと、壁ぎわの減衰。水底のコースティクスでも使う。 */

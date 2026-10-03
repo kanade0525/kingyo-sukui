@@ -4,8 +4,8 @@
 // 整列させるより、それぞれが勝手に漂って壁で向きを変えるほうが
 // 実際の金魚に近い動きになる。
 
-import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD } from './world.js?v=202610030031';
-import { clamp, lerp, wrapAngle } from './mat.js?v=202610030031';
+import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD } from './world.js?v=202610030059';
+import { clamp, lerp, wrapAngle } from './mat.js?v=202610030059';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -219,7 +219,8 @@ export class School {
     for (const f of this.list) {
       if (f.gone || f.p[1] > 0) continue;
       const below = Math.max(-f.p[1], 0.001);
-      const alpha = 0.22 * Math.exp(-below * 2.4);
+      // 深いほど薄く、ぼける。水面が揺れているので輪郭も残らない
+      const alpha = 0.17 * Math.exp(-below * 3.2);
       let slot;
       if (n < MAX_FISH) {
         slot = n++;
@@ -232,7 +233,7 @@ export class School {
       const o = slot * 4;
       d[o] = f.p[0] - sunHoriz[0] * drop;
       d[o + 1] = f.p[2] - sunHoriz[1] * drop;
-      d[o + 2] = f.len * (0.48 + below * 0.9);
+      d[o + 2] = f.len * (0.52 + below * 3.4);   // 深いほど大きく広がる
       d[o + 3] = alpha;
       // いちばん薄いものを探し直す
       weakAlpha = Infinity;

@@ -9,19 +9,19 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610030031';
-import { VS_FULL } from '../shaders/common.js?v=202610030031';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610030031';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610030031';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610030031';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE } from '../shaders/post.js?v=202610030031';
-import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR } from '../shaders/props.js?v=202610030031';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh } from './meshes.js?v=202610030031';
-import { Ocean } from './ocean.js?v=202610030031';
-import { Ripple } from './ripple.js?v=202610030031';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR } from './world.js?v=202610030031';
-import { sunFor, DEFAULT_HOUR } from './sky.js?v=202610030031';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610030031';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610030059';
+import { VS_FULL } from '../shaders/common.js?v=202610030059';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610030059';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610030059';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610030059';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610030059';
+import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH } from '../shaders/props.js?v=202610030059';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610030059';
+import { Ocean } from './ocean.js?v=202610030059';
+import { Ripple } from './ripple.js?v=202610030059';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN } from './world.js?v=202610030059';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610030059';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610030059';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -68,10 +68,12 @@ export class Renderer {
     this.pTurtle = new Program(gl, VS_TURTLE, FS_TURTLE, 'turtle');
     this.pPad = new Program(gl, VS_PAD, FS_PAD, 'pad');
     this.pBubble = new Program(gl, VS_BUBBLE, FS_BUBBLE, 'bubble');
+    this.pSplash = new Program(gl, VS_SPLASH, FS_SPLASH, 'splash');
     this.pGear = new Program(gl, VS_GEAR, FS_GEAR, 'gear');
     this.pBright = new Program(gl, VS_FULL, FS_BRIGHT, 'bright');
     this.pBlur = new Program(gl, VS_FULL, FS_BLUR, 'blur');
     this.pComp = new Program(gl, VS_FULL, FS_COMPOSITE, 'composite');
+    this.pFxaa = new Program(gl, VS_FULL, FS_FXAA, 'fxaa');
 
     this.mTank = tankMesh(gl);
     this.mFish = fishMesh(gl);
@@ -80,14 +82,17 @@ export class Renderer {
     this.mTurtle = turtleMesh(gl);
     this.mPad = padMesh(gl);
     this.mBubble = bubbleMesh(gl, AIR.bubbles);
+    this.mSplash = splashMesh(gl, 36);
     this.mGear = gearMesh(gl, -TANK.depth);
     this.stonePos = [AIR.stone[0], -TANK.depth + 0.014, AIR.stone[2]];
     this.mWater = gridMesh(gl, 220, 150);
 
+    this.weather = WEATHER.CLEAR;
     this.setHour(DEFAULT_HOUR);
 
-    // 既定では切る。上の #makeMsaa のコメントを参照
-    this.wantMsaa = false;
+    // 縁の滑らか化。既定で入れる。FXAA なので経路が軽く、
+    // 解像度を落として使うときほど効く
+    this.wantAA = true;
     this.pitchDeg = 65;
 
     // 切り分け用。?plain で後処理を全部外し、?nodof で被写界深度だけ外す。
@@ -104,7 +109,7 @@ export class Renderer {
     this.basis = { right: [1, 0, 0], up: [0, 1, 0], fwd: [0, 0, -1] };
 
     this.w = 0; this.h = 0;
-    this.dprScale = 1;
+    this.dprScale = 0.7;   // 既定は軽い。これ以上だと実機で引っかかる
     this.fbos = null;
   }
 
@@ -119,8 +124,7 @@ export class Renderer {
   }
 
   setMsaa(on) {
-    if (this.wantMsaa === on) return;
-    this.wantMsaa = on;
+    this.wantAA = on;
     this.resize(true);
   }
 
@@ -154,58 +158,10 @@ export class Renderer {
       blur: makeFbo(gl, [makeTex(gl, bw, bh, 'rgba16f', { filter: 'linear' })]),
       dofA: makeFbo(gl, [makeTex(gl, bw, bh, 'rgba16f', { filter: 'linear' })]),
       dofB: makeFbo(gl, [makeTex(gl, bw, bh, 'rgba16f', { filter: 'linear' })]),
+      // 仕上げた 1 枚。FXAA はこれを読み直してならす
+      ldr: makeFbo(gl, [makeTex(gl, w, h, 'rgba8', { filter: 'linear' })]),
     };
-    this.#makeMsaa(w, h);
     this.updateCamera();
-  }
-
-  /**
-   * 本パスだけ多重標本化する。
-   *
-   * FBO 越しに描いているので、キャンバスの MSAA は効かない。
-   * 金魚のひれや舟の角のような細い輪郭が 1 画素ずつギザつくと、
-   * どれだけ水を作り込んでも「CG の絵」に見える。
-   * 多重標本のレンダーバッファへ描いて、解決してからテクスチャへ blit する。
-   *
-   * ただし既定では切ってある。タイル単位で描く GPU（Apple Silicon など）で、
-   * RGBA16F の多重標本を blit で解決すると、タイルがそのまま黒く抜けることが
-   * あるため。設定から入れられるようにして、効く環境でだけ使う。
-   */
-  #makeMsaa(w, h) {
-    const gl = this.gl;
-    this.#dropMsaa();
-    if (!this.wantMsaa) { this.msaa = null; return; }
-    const max = gl.getParameter(gl.MAX_SAMPLES) || 0;
-    const samples = Math.min(4, max);
-    if (samples < 2) { this.msaa = null; return; }
-    try {
-      const col = gl.createRenderbuffer();
-      gl.bindRenderbuffer(gl.RENDERBUFFER, col);
-      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA16F, w, h);
-      const dep = gl.createRenderbuffer();
-      gl.bindRenderbuffer(gl.RENDERBUFFER, dep);
-      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, w, h);
-      const fb = gl.createFramebuffer();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, col);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, dep);
-      const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      if (!ok) throw new Error('多重標本の FBO が不完全');
-      this.msaa = { fb, col, dep, w, h, bufs: [gl.COLOR_ATTACHMENT0], tex: [], samples };
-    } catch (e) {
-      console.warn('MSAA を使えないので、そのまま描きます:', e.message);
-      this.msaa = null;
-    }
-  }
-
-  #dropMsaa() {
-    const gl = this.gl;
-    if (!this.msaa) return;
-    gl.deleteFramebuffer(this.msaa.fb);
-    gl.deleteRenderbuffer(this.msaa.col);
-    gl.deleteRenderbuffer(this.msaa.dep);
-    this.msaa = null;
   }
 
   /**
@@ -288,10 +244,15 @@ export class Renderer {
 
   /** 時刻から太陽と空を決める。後で夕方や実時刻へ差し替えられるよう、
    *  光の条件はすべてこの一箇所から配る。 */
+  setWeather(w) {
+    this.weather = w;
+    this.setHour(this.hour);
+  }
+
   setHour(hour, yawDeg = this.sunYaw || 0) {
     this.hour = hour;
     this.sunYaw = yawDeg;
-    const s = sunFor(hour, yawDeg);
+    const s = sunFor(hour, yawDeg, this.weather);
     this.sun = s;
     // 水中での屈折角。コースティクスの横ずれに使う
     const sinA = Math.max(Math.cos(s.elev), 0);        // 天頂からの角の sin
@@ -317,12 +278,15 @@ export class Renderer {
       .setFloat('uRefrTan', this.refrTan)
             // 水深 16cm の舟では、屈折のずれが小さすぎてコースティクスがほとんど
       // 出ない（clearwater は水深 1.6m）。見える強さまで誇張している
-      .setFloat('uCausGain', 6.0)
+      .setFloat('uCausGain', 6.0 * s.direct)
       // 屋台の天幕。舟より奥と真上を覆い、手前は開けておく。
       // 水面がこちらへ返す光は上と奥を向くので、そこを塞ぐと
       // 映り込みに構造が入り、灰色の靄が消える
       .setFloat('uTentY', TENT.y)
       .set('uTentBox', TENT.box)
+      // 連提灯
+      .set('uLanternCol', s.lantern)
+      .set('uLanternGeo', [LANTERN.y, LANTERN.z, LANTERN.spacing, LANTERN.count])
       // 幌布を透かしてくる光。白い布なので日向の空よりずっと暗く、
       // わずかに暖かい
       .set('uTentTint', [
@@ -476,8 +440,7 @@ export class Renderer {
     if (poi.visible && poi.y < 0.02) this.#drawPoi(poi, true);
 
     // ---- 本パス ----
-    const main = this.msaa || this.fbos.hdr;
-    bindFbo(gl, main);
+    bindFbo(gl, this.fbos.hdr);
     gl.depthMask(true);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -560,6 +523,22 @@ export class Renderer {
         .setFloat('uCount', AIR.bubbles)
         .setFloat('uTime', time);
       this.mBubble.draw();
+
+      // ポイの着水・離水の飛沫
+      if (poi.splash > 0.001) {
+        const sp = this.pSplash.use();
+        this.#lights(sp);
+        sp.mat4('uVP', this.vp).set('uCam', this.cam)
+          .set('uRight', this.basis.right)
+          .set('uUp', this.basis.up)
+          .set('uAt', poi.splashAt)
+          .setFloat('uAge', 1 - poi.splash)
+          .setFloat('uRadius', POI.radius)
+          .setFloat('uPower', poi.splashV)
+          .setFloat('uOut', poi.splashIn ? 0 : 1);
+        this.mSplash.draw();
+      }
+
       gl.enable(gl.DEPTH_TEST);
       gl.depthMask(true);
       gl.disable(gl.BLEND);
@@ -627,14 +606,6 @@ export class Renderer {
       gl.disable(gl.BLEND);
     }
 
-    // 多重標本を解決して、普通のテクスチャに戻す
-    if (this.msaa) {
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.msaa.fb);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.fbos.hdr.fb);
-      gl.blitFramebuffer(0, 0, this.w, this.h, 0, 0, this.w, this.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    }
-
     // ---- 仕上げ ----
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(false);
@@ -662,8 +633,9 @@ export class Renderer {
     this.pBlur.use().tex('uSrc', this.fbos.dofA.tex[0]).set('uDir', [0, 1 / bh]);
     this.full.draw();
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, this.w, this.h);
+    // 縁の滑らか化を入れるときは、いったんテクスチャへ描いてから読み直す
+    if (this.wantAA) bindFbo(gl, this.fbos.ldr);
+    else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, this.w, this.h); }
     this.pComp.use()
       .tex('uSrc', this.fbos.hdr.tex[0])
       .tex('uBloom', this.fbos.bright.tex[0])
@@ -676,5 +648,14 @@ export class Renderer {
       .setFloat('uExposure', this.sun.exposure)
       .setFloat('uTime', time);
     this.full.draw();
+
+    if (this.wantAA) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, this.w, this.h);
+      this.pFxaa.use()
+        .tex('uSrc', this.fbos.ldr.tex[0])
+        .set('uTexel', [1 / this.w, 1 / this.h]);
+      this.full.draw();
+    }
   }
 }

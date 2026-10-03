@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 export class UI {
   constructor(handlers) {
     this.el = {
-      fps: $('fps'),
+      fps: $('fps'), hourOut: $('hourOut'), wxNote: $('wxNote'), closed: $('closed'),
       loading: $('loading'),
       panel: $('panel'), btnPanel: $('btnPanel'),
       fallback: $('fallback'), fallbackWhy: $('fallbackWhy'),
@@ -36,6 +36,13 @@ export class UI {
       handlers.wind(w);
       return `${w.toFixed(2)} m/s`;
     });
+    this.#seg('segWx', 'w', (v) => {
+      handlers.weather(Number(v));
+      this.el.wxNote.textContent = '手動';
+      return null;
+    });
+    $('btnNow').addEventListener('click', () => handlers.now());
+
     this.#seg('segFFT', 'n', (v) => {
       handlers.fft(Number(v));
       $('fftOut').textContent = `${v}²`;
@@ -78,6 +85,29 @@ export class UI {
     this.el.loading.hidden = true;
     document.getElementById('botbar').hidden = true;
     if (message) this.el.fallbackWhy.textContent = message;
+  }
+
+  /** 店じまいの濃さ。0 でまだ開いている、1 で終わり。 */
+  setClosed(v) {
+    const o = v < 0.35 ? 0 : (v - 0.35) / 0.65;
+    if (this.lastClosed === o) return;
+    this.lastClosed = o;
+    this.el.closed.style.opacity = String(o);
+  }
+
+  /** 時刻のつまみを外から動かす。 */
+  setHour(h) {
+    const el = $('hour');
+    el.value = String(h);
+    el.dispatchEvent(new Event('input'));
+  }
+
+  /** 天気の選択を外から切り替える。note は出どころ（現在地／手動）。 */
+  setWeather(w, note) {
+    for (const b of $('segWx').querySelectorAll('button')) {
+      b.setAttribute('aria-pressed', String(Number(b.dataset.w) === w));
+    }
+    if (note) this.el.wxNote.textContent = note;
   }
 
   /** 最初の絵が出たら覆いを外す。 */

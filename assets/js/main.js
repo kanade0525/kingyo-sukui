@@ -4,9 +4,10 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610030031';
-import { Game } from './game.js?v=202610030031';
-import { UI } from './ui.js?v=202610030031';
+import { Renderer } from './renderer.js?v=202610030059';
+import { Game } from './game.js?v=202610030059';
+import { UI } from './ui.js?v=202610030059';
+import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610030059';
 
 const canvas = document.getElementById('scene');
 let renderer = null;
@@ -15,6 +16,8 @@ const game = new Game();
 
 const ui = new UI({
   hour(v) { renderer?.setHour(v); },
+  weather(w) { renderer?.setWeather(w); game.rain = w === 2 ? 1 : 0; },
+  now() { applyNow(true); },
   amp(v) { renderer?.setAmp(v); },
   wind(v) { renderer?.setWind(v); },
   fft(n) { renderer?.setFftSize(n); },
@@ -36,7 +39,31 @@ function boot() {
     throw err;
   }
   game.start();
+  applyNow(false);
   requestAnimationFrame(frame);
+}
+
+/**
+ * いまの時刻と天気に合わせる。
+ *
+ * 時刻は端末の時計なので、どこへも問い合わせない。
+ * 天気だけは位置が要るので、ブラウザに許可を聞いてから引く。
+ * 断られたら晴れのまま。ask が false のときは、起動直後の 1 回。
+ */
+function applyNow(ask) {
+  const h = localHour();
+  renderer.setHour(h);
+  ui.setHour(h);
+  ui.setWeather(renderer.weather, '現在地を確認中…');
+  fetchWeather().then((w) => {
+    if (w === null) {
+      ui.setWeather(renderer.weather, '現在地が取れず晴れ');
+      return;
+    }
+    renderer.setWeather(w);
+    game.rain = w === 2 ? 1 : 0;
+    ui.setWeather(w, `現在地（${WEATHER_NAME[w]}）`);
+  });
 }
 // 1 フレーム待ってから組み立てる。rAF だけだと、同じフレームの中で
 // 走って覆いが画面に出ないことがある
@@ -110,6 +137,7 @@ function frame(now) {
     fpsAcc = 0; fpsN = 0;
   }
   ui.tick(game, fpsShown);
+  ui.setClosed(renderer.sun.closed);
   game.events.length = 0;
 
   requestAnimationFrame(frame);

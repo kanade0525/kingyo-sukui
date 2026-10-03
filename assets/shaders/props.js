@@ -11,7 +11,7 @@
 // 水深は 14.5cm しかないので、15cm を超える茎は途中で倒れて水面の下を這う。
 // 真上から見る絵でこれは大事で、まっすぐ立てると茎が点にしか見えない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030031';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030059';
 
 // ---------------------------------------------------------------- 浮き葉
 
@@ -139,7 +139,8 @@ void main(){
     // 縁は赤みが差す
     base = mix(base, base * vec3(1.30, 0.94, 0.86), smoothstep(0.90, 1.0, rr) * 0.40);
 
-    col = base * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N) * 1.15);
+    col = base * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N) * 1.15
+                + lanternLight(vW, N) + lanternAmbient(vW));
     // 蝋の膜。水を弾くので、芯の硬い照りが乗る
     col += ggx(N, V, uSunDir, 0.085, vec3(0.055)) * uSunColor * PI * 1.1;
     // 葉の上に残った水玉
@@ -156,7 +157,7 @@ void main(){
     vec3 base = vec3(0.095, 0.042, 0.055);
     float vein = abs(fract(th / 6.2831853 * 17.0 + uSeed) - 0.5) * 2.0;
     base *= 1.0 + smoothstep(0.80, 1.0, vein) * 0.55;
-    col = base * (underAmbient(N) * 1.2 + underSun(N) * caus * 0.5);
+    col = base * (underAmbient(N) * 1.2 + underSun(N) * caus * 0.5 + underLantern(vW, N));
   }
 
   frag = vec4(col, vDist);
@@ -225,7 +226,7 @@ void main(){
   float ndv = sqrt(max(1.0 - r * r, 0.0));
 
   vec3 up = vec3(0.0, 1.0, 0.0);
-  vec3 lit = underAmbient(up) + underSun(up) * 0.5;
+  vec3 lit = underAmbient(up) + underSun(up) * 0.5 + lanternAmbient(vW) * 1.3;
   vec3 col = lit * (0.30 + 1.70 * rim);
   // 上側に小さな照り返しが一点入る
   float spot = smoothstep(0.34, 0.0, length(vP - vec2(-0.30, 0.34)));
@@ -312,13 +313,79 @@ void main(){
     float below = -vW.y;
     vec2 entry = vW.xz + uSunHoriz * below * uRefrTan;
     vec3 caus = mix(vec3(1.0), caustics(vW.xz, below), edgeMask(entry));
-    col = base * (underSun(N) * caus * wallShade(entry) + underAmbient(N));
+    col = base * (underSun(N) * caus * wallShade(entry) + underAmbient(N) + underLantern(vW, N));
     col += ggx(N, V, underSunDir(), rough, vec3(0.040)) * uSunColor * PI * 0.4 * caus;
   } else {
-    col = base * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N));
+    col = base * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N)
+                + lanternLight(vW, N) + lanternAmbient(vW));
     col += ggx(N, V, uSunDir, rough, vec3(region == 3 ? 0.35 : 0.045)) * uSunColor * PI * 0.8;
   }
 
   if(uUnderwater == 1){ frag = vec4(col, vDist); return; }
   frag = vec4(col, 1.0);
+}`;
+
+// ---------------------------------------------------------------- 飛沫
+
+/**
+ * ポイが水に入る／出るときの飛沫。
+ *
+ * 粒ごとの速度を CPU で持たず、通し番号と経過時間から放物線を引く。
+ * 紙の縁から放射状に飛び、重力で落ちて水面で消える。
+ *
+ * 入るときは外へ低く広がり、出るときは紙に乗った水が真上に持ち上がって
+ * 落ちる。実物を見ると、派手なのはむしろ抜くときのほう。
+ */
+export const VS_SPLASH = `${HEAD}
+layout(location=0) in vec3 aUvi;   // xy = 板の中 (-1..1), z = 粒の通し番号
+uniform mat4 uVP;
+uniform vec3 uCam;
+uniform vec3 uRight, uUp;
+uniform vec2 uAt;        // 飛沫の中心
+uniform float uAge;      // 0 = 出た瞬間, 1 = 消える
+uniform float uRadius;   // 紙の半径
+uniform float uPower;    // 勢い
+uniform float uOut;      // 1 = 抜くとき（上へ）, 0 = 入るとき（外へ）
+out vec2 vP;
+out float vFade;
+
+float h11(float x){ return fract(sin(x * 127.1) * 43758.5453); }
+
+void main(){
+  float i = aUvi.z;
+  float r1 = h11(i * 1.7), r2 = h11(i * 3.1 + 5.0), r3 = h11(i * 7.3 + 11.0);
+
+  // 紙の縁に沿って出る
+  float th = (i / 36.0 + r1 * 0.09) * 6.2831853;
+  vec2 dir = vec2(cos(th), sin(th));
+  // 入るときは外へ低く、抜くときは上へ高く
+  float vOut = mix(0.55 + r2 * 0.75, 0.22 + r2 * 0.35, uOut) * uPower;
+  float vUp  = mix(0.35 + r3 * 0.55, 0.95 + r3 * 0.90, uOut) * uPower;
+
+  float t = uAge * (0.42 + r1 * 0.22);        // 粒ごとに寿命が違う
+  vec2 xz = uAt + dir * uRadius * (0.80 + 0.35 * r3) + dir * vOut * t;
+  float y = vUp * t - 4.9 * t * t;            // 重力
+
+  float rad = (0.0010 + r2 * 0.0018) * (1.0 - 0.3 * uAge);
+  vP = aUvi.xy;
+  vec3 w = vec3(xz.x, y, xz.y) + (uRight * aUvi.x + uUp * aUvi.y) * rad;
+  // 水面を割ったら消える
+  vFade = smoothstep(0.0, 0.10, uAge) * smoothstep(1.0, 0.72, uAge) * step(-0.002, y);
+  gl_Position = uVP * vec4(w, 1.0);
+}`;
+
+export const FS_SPLASH = `${HEAD}
+${SKYLIB}
+in vec2 vP;
+in float vFade;
+out vec4 frag;
+
+void main(){
+  float r = length(vP);
+  if(r > 1.0 || vFade < 0.01) discard;
+  // 水の粒。縁が明るく、中は空を透かす
+  float rim = smoothstep(0.45, 1.0, r);
+  vec3 col = (uSkyZenith * 1.4 + uSunColor * 0.30) * (0.5 + 1.3 * rim);
+  float a = (0.42 + 0.48 * rim) * vFade;
+  frag = vec4(col * a, a);
 }`;
