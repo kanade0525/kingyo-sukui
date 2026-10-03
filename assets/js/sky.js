@@ -11,9 +11,19 @@ const mix = (a, b, t) => a + (b - a) * t;
 const mix3 = (a, b, t) => [mix(a[0], b[0], t), mix(a[1], b[1], t), mix(a[2], b[2], t)];
 const scale3 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
 
-/** 日の出と日の入り。夏の縁日なので長め。 */
-const SUNRISE = 5.0;
-const SUNSET = 18.8;
+/**
+ * 場所。既定は東京。
+ *
+ * 位置の許可が取れれば fetchWeather() がここを書き換える。
+ * 断られたら東京のまま。日本の中なら、太陽の高さの差は
+ * 緯度 1 度につき 1 度ほどなので、札幌と那覇で 17 度違う。
+ */
+let site = { lat: 35.68, lon: 139.77 };
+
+export function setSite(lat, lon) {
+  site = { lat, lon };
+}
+
 /**
  * 屋台の向き（度）。カメラの向きに対する太陽の方位差でハイライトの出方が決まる。
  *   0°  … 照り返しが水面の中央に座り、白い靄で底が見えなくなる
@@ -23,8 +33,49 @@ const SUNSET = 18.8;
  */
 const ORIENT = 14;
 
-/** 南中高度。日本の夏の昼ごろ。 */
-const NOON_ELEV = 70 * DEG;
+/** 店が閉まっている朝の時間帯。ここより前は「まだ始まっていない」 */
+const DAWN = 4.6;
+
+/**
+ * 太陽の位置を、日付と場所から求める。
+ *
+ * 前はこれを「日の出 5:00、日の入り 18:48、南中 70 度」の決め打ちで
+ * 書いていた。真夏の値なので、10 月に遊ぶと約 2 時間ずれる。
+ * 実際の東京の 10/3 は 18:00 で高度 -9°（もう暗い）だが、
+ * 決め打ちの模型では +12.7° で、まだ真昼のままだった。
+ *
+ * 太陽の赤緯と均時差から出す。どちらも通日だけで決まる近似式で、
+ * 誤差は高度にして 1 度に満たない。絵を描くには十分。
+ *
+ * 戻り値の方位は「画面の奥」を 0 とし、右回りを正にした角度。
+ */
+function solarPosition(hour) {
+  const now = new Date();
+  // 通日。1 月 1 日が 1
+  const day = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+
+  // 赤緯。地軸の傾き 23.44 度を、冬至からの角度で振る
+  const decl = -23.44 * DEG * Math.cos((2 * Math.PI * (day + 10)) / 365.25);
+
+  // 均時差（分）。地球の軌道が楕円で、軌道面と赤道面がずれているぶん、
+  // 時計の正午と太陽の南中は年に最大 16 分ずれる
+  const b = (2 * Math.PI * (day - 81)) / 364;
+  const eot = 9.87 * Math.sin(2 * b) - 7.53 * Math.cos(b) - 1.5 * Math.sin(b);
+
+  // 標準時の基準となる経線。端末の時差から出すので、海外でも合う
+  const meridian = (-new Date().getTimezoneOffset() / 60) * 15;
+  // 真太陽時。これの 12 時が南中
+  const solar = hour + (site.lon - meridian) / 15 + eot / 60;
+  const H = (solar - 12) * 15 * DEG;      // 時角
+
+  const lat = site.lat * DEG;
+  const sinElev = Math.sin(lat) * Math.sin(decl) + Math.cos(lat) * Math.cos(decl) * Math.cos(H);
+  const elev = Math.asin(Math.max(-1, Math.min(1, sinElev)));
+  // 方位。北から右回りに測った角度
+  const north = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(lat) - Math.tan(decl) * Math.cos(lat)) + Math.PI;
+  // 南中（北から 180 度）を画面の奥に置く
+  return { elev, azimFromBack: north - Math.PI };
+}
 
 /** 店じまい。この時刻から提灯が落ち、1 時間ほどかけて真っ暗になる。 */
 const CLOSE_START = 22.2;
@@ -45,27 +96,25 @@ export const WEATHER_NAME = ['晴れ', 'くもり', '雨'];
  * これは手加減ではなく、曇りの日に水底の網目が出ないのと同じこと。
  */
 export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR) {
-  const t = (hour - SUNRISE) / (SUNSET - SUNRISE);
+  const sp = solarPosition(hour);
   // 日の出前・日の入り後は負になる。そのまま使って地平線の下へ沈める
-  const elev = Math.sin(Math.PI * t) * NOON_ELEV;
-  // 東から西へ。ORIENT は屋台の向き
-  const azim = (-75 + 150 * clamp01(t) + ORIENT + yawDeg) * DEG;
+  const elev = sp.elev;
+  const azim = sp.azimFromBack + (ORIENT + yawDeg) * DEG;
 
   const sunUp = Math.sin(elev);
   // 薄明。
   //
-  // 幅を 0.12 で取っていたら、日の入りの 18:48 から 19:12 までの
-  // 24 分で昼から夜へ切り替わっていた。実際の薄明はもっと長く、
-  // 空が焼けているあいだに提灯へ灯が入る。そこがいちばんきれいな時間なので、
-  // 地平の下 14° あたりまで引き伸ばす（1 時間半ほど）
-  const daylight = clamp01((sunUp + 0.25) / 0.30);
+  // 太陽の高さで取る。+4° で昼、-10° で夜。市民薄明の終わり（-6°）で
+  // 0.28 ほど残るので、空が焼けているあいだに提灯へ灯が入る。
+  // そこがいちばんきれいな時間なので、暗転を急がない。
+  const daylight = clamp01((sunUp + 0.174) / 0.244);
   const ext = Math.pow(Math.max(sunUp, 0.015), 0.42) * daylight;
   const night = 1 - daylight;
 
   // 店じまい。夜中から明け方までは「終わったあと」
   let closed = 0;
   if (hour >= CLOSE_START) closed = clamp01((hour - CLOSE_START) / (CLOSE_END - CLOSE_START));
-  else if (hour < SUNRISE - 0.8) closed = 1;
+  else if (hour < DAWN) closed = 1;
   // 提灯。暗くなると灯り、しまうと落ちる
   const lanternOn = clamp01(night * 1.3) * (1 - closed);
 
@@ -159,6 +208,8 @@ export function fetchWeather() {
       try {
         const la = pos.coords.latitude.toFixed(2);
         const lo = pos.coords.longitude.toFixed(2);
+        // 太陽の高さにも使う。日本の端から端で 17 度違う
+        setSite(Number(la), Number(lo));
         const r = await fetch(
           `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=weather_code,cloud_cover`);
         const j = await r.json();
