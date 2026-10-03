@@ -4,11 +4,12 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610030834';
-import { Game } from './game.js?v=202610030834';
-import { UI } from './ui.js?v=202610030834';
-import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610030834';
-import { Sound } from './sound.js?v=202610030834';
+import { Renderer } from './renderer.js?v=202610030902';
+import { Game } from './game.js?v=202610030902';
+import { UI } from './ui.js?v=202610030902';
+import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610030902';
+import { Sound } from './sound.js?v=202610030902';
+import { POI } from './world.js?v=202610030902';
 
 const canvas = document.getElementById('scene');
 let renderer = null;
@@ -81,22 +82,38 @@ function toNdc(e) {
 
 let pointerId = null;
 
+/**
+ * 狙いを入れる。
+ *
+ * 指で触るときは、触った所を「柄を握っている指」として扱い、紙の輪は
+ * そこから画面の奥へ柄 1 本ぶん離れた所に出す。実物と同じ持ち方であると
+ * 同時に、掬おうとしている金魚が自分の指で隠れない。
+ * マウスは画面を遮らないので、輪をそのまま追わせる。
+ */
+function aimAt(e) {
+  if (!renderer) return;
+  const n = toNdc(e);
+  const hit = renderer.pickWater(n[0], n[1]);
+  if (!hit) return;
+  // 店じまいのあとは水を手でかき回すだけなので、指の所をそのまま使う
+  if (e.pointerType === 'touch' && !game.closed) {
+    const t = renderer.toward;
+    hit[0] -= t[0] * POI.grip;
+    hit[1] -= t[2] * POI.grip;
+  }
+  game.aim(hit);
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   sound.unlock();
   if (pointerId !== null) return;
   pointerId = e.pointerId;
   canvas.setPointerCapture(e.pointerId);
-  const n = toNdc(e);
-  if (!renderer) return;
-  game.aim(renderer.pickWater(n[0], n[1]));
+  aimAt(e);
   game.press(true);
 });
 
-canvas.addEventListener('pointermove', (e) => {
-  if (!renderer) return;
-  const n = toNdc(e);
-  game.aim(renderer.pickWater(n[0], n[1]));
-});
+canvas.addEventListener('pointermove', aimAt);
 
 const release = (e) => {
   if (pointerId !== e.pointerId) return;

@@ -7,7 +7,7 @@
 // ひれは不透明に描く。水中パスの α にはカメラからの距離を入れていて、
 // ブレンドすると距離が壊れ、水面の屈折が狂うため。薄さは色で表す。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030834';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030902';
 
 // ---------------------------------------------------------------- 金魚
 
@@ -371,6 +371,7 @@ uniform vec3 uTiltAxis;
 uniform float uTilt;
 uniform float uSag;        // 紙のたわみ
 uniform float uRadius;
+uniform float uYaw;        // カメラの向き。柄がいつも画面の手前を向くように回す
 out vec3 vW;
 out vec3 vN;
 out vec2 vUv;
@@ -382,6 +383,11 @@ vec3 rotAxis(vec3 p, vec3 a, float ang){
   return p * c + cross(a, p) * s + a * dot(a, p) * (1.0 - c);
 }
 
+vec3 rotY(vec3 p, float a){
+  float c = cos(a), s = sin(a);
+  return vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
+}
+
 void main(){
   vec3 p = aPos;
   vUv = aPos.xz / uRadius;
@@ -390,9 +396,9 @@ void main(){
     float r = clamp(length(vUv), 0.0, 1.0);
     p.y -= uSag * (1.0 - r * r);
   }
-  p = rotAxis(p, uTiltAxis, uTilt) + uPos;
+  p = rotAxis(rotY(p, uYaw), uTiltAxis, uTilt) + uPos;
   vW = p;
-  vN = rotAxis(aNrm, uTiltAxis, uTilt);
+  vN = rotAxis(rotY(aNrm, uYaw), uTiltAxis, uTilt);
   vRegion = aRegion;
   vDist = distance(p, uCam);
   gl_Position = uVP * vec4(p, 1.0);
