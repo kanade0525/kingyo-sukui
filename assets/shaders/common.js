@@ -130,10 +130,17 @@ float flagstone(vec2 p, out float joint, out float id, out float dish){
   return 0.80 + (sp - 0.5) * 0.52 * keep;
 }
 
+/**
+ * 砂利の粒。セルごとの距離場。
+ *
+ * 山なりの丸い盛り上がりにすると、砂利ではなく梱包用の緩衝材に見える。
+ * 実際の玉砂利は、踏まれて平たい面を上に向けて並び、粒と粒の間だけが
+ * すとんと落ちている。立ち上がりを急にして、頂上を平らにする。
+ */
 float gravel(vec2 p, float scale, out float cavity){
   float d = worley(p * scale);
-  cavity = smoothstep(0.52, 0.16, d);         // 粒の谷
-  return smoothstep(0.62, 0.10, d);
+  cavity = smoothstep(0.44, 0.14, d);         // 粒の間の落ち込み
+  return smoothstep(0.54, 0.34, d);           // 頂上は平ら、縁で急に落ちる
 }
 
 /** 角の擦れ。縁に近いほど 1。色が抜けた所を作るのに使う。 */

@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030002';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030031';
 
 
 
@@ -89,7 +89,7 @@ void main(){
       // 1 段の視差。高さぶんだけ見ている向きへずらす
       float cav0;
       float h0 = gravel(p.xz, 44.0, cav0);
-      vec2 pp = parallax(p.xz, h0, -d, vec3(0.0, 1.0, 0.0), 0.009);
+      vec2 pp = parallax(p.xz, h0, -d, vec3(0.0, 1.0, 0.0), 0.006);
 
       // 下地は神社の参道の石畳。その上に玉砂利が撒いてある。
       //
@@ -152,7 +152,7 @@ void main(){
       float e = 0.0045;
       float hs = gravel(pp + vec2(e, 0.0), 44.0, cav) - peb;
       float hz = gravel(pp + vec2(0.0, e), 44.0, cav) - peb;
-      vec3 n = normalize(vec3(-hs * 0.55 * cover, 1.0, -hz * 0.55 * cover));
+      vec3 n = normalize(vec3(-hs * 0.32 * cover, 1.0, -hz * 0.32 * cover));
 
       float sh = groundShadow(p);
       vec3 sky = skyColor(reflect(d, n));

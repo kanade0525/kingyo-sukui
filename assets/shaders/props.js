@@ -11,7 +11,7 @@
 // 水深は 14.5cm しかないので、15cm を超える茎は途中で倒れて水面の下を這う。
 // 真上から見る絵でこれは大事で、まっすぐ立てると茎が点にしか見えない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030002';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030031';
 
 // ---------------------------------------------------------------- 浮き葉
 
@@ -71,9 +71,17 @@ void main(){
   // ずらさないと、同じ深さで裏が表を塗り潰して葉が真っ黒になる
   float thick = face > 0.5 ? 0.0 : -0.0015;
 
-  vec3 w = vec3(q.x,
-                h0 + 0.0020 + lift + dip + thick - (sl.x * off.x + sl.y * off.y),
-                q.y);
+  // 葉は硬いので、高さは中心で決めた一枚の平面に乗る。
+  // ただしそれだけだと、波がその平面より高くなった所で葉が水に潜り、
+  // 水面のほうが手前に描かれる。水面は下の金魚を映しているので、
+  // 葉が透けて金魚が見える、という形で出る。
+  // その場の水面より下へは絶対に行かせない。
+  float hLocal = texture(uDisp, patchUv(q)).y + texture(uRipN, ripUv(q)).z;
+  float plane = h0 + lift + dip - (sl.x * off.x + sl.y * off.y);
+  // 浮いているので、水面からはわずかに顔を出している
+  float w_y = max(plane, hLocal) + 0.0035 + thick;
+
+  vec3 w = vec3(q.x, w_y, q.y);
 
   // 法線。水面の傾きと、縁の反り返りから
   float curl = smoothstep(0.62, 1.0, rr) * 0.30;
