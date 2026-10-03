@@ -24,15 +24,28 @@ const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 /**
  * 録音を使う層。
  *
- * ほとんどは合成だが、この 2 つだけ CC0 の録音がある。
- * ただし種類が違う（ニュージーランドのセミ、西洋の音階付き風鈴）ので、
- * 合成版も残して切り替えられるようにしてある。出どころは
- * assets/sound/CREDITS.md。
+ * 日本の夏に録られたものを使っている。種類の合わない CC0 の録音
+ * （ニュージーランドのセミ、西洋の音階付き風鈴）は置き換えた。
+ * 出どころは assets/sound/CREDITS.md。
+ *
+ * 形式は m4a（AAC）。ogg vorbis は iOS の Safari が読めず、
+ * 読み込みに失敗して黙って合成へ落ちていた。
+ * どの層も 2 秒の重ね合わせで輪にしてあるので、繋ぎ目で跳ねない。
  */
 const CLIPS = {
-  cicada: 'assets/sound/semi.ogg',
-  furin: 'assets/sound/furin.ogg',
+  cicada: 'assets/sound/semi-hiru.m4a',
+  dusk:   'assets/sound/semi-yugata.m4a',
+  furin:  'assets/sound/furin.m4a',
+  rain:   'assets/sound/ame.m4a',
 };
+
+/**
+ * 合成版も持っている層。ここに無い層は、切り替えに関わらず録音を鳴らす。
+ *
+ * 値は合成側に掛ける補正。層の音量は録音に合わせて決め直したので、
+ * 合成側はその比で戻さないと、切り替えた途端に音量が変わってしまう。
+ */
+const SYNTH_TRIM = { cicada: 0.26 / 1.05, furin: 1.10 / 0.95, rain: 0.30 / 1.10 };
 
 export class Sound {
   constructor() {
@@ -44,9 +57,11 @@ export class Sound {
     this.on = true;
     this.master = null;
     this.layers = null;
-    this.want = { pump: 1, cicada: 0, minmin: 0, furin: 0, festival: 0, crowd: 0, insect: 0, rain: 0 };
+    this.want = { pump: 1, cicada: 0, minmin: 0, dusk: 0, furin: 0,
+                  festival: 0, crowd: 0, insect: 0, rain: 0 };
     // 画面から動かせる係数。1 が既定
-    this.mix = { master: 1, pump: 1, cicada: 1, minmin: 1, furin: 1, festival: 1, crowd: 1, insect: 1, rain: 1 };
+    this.mix = { master: 1, pump: 1, cicada: 1, minmin: 1, dusk: 1, furin: 1,
+                 festival: 1, crowd: 1, insect: 1, rain: 1 };
   }
 
   /** 最初の操作で呼ぶ。自動再生は塞がれているので、ここまで遅らせる。 */
@@ -88,14 +103,15 @@ export class Sound {
     this.layers = {};
     // 合成側の元栓。録音に切り替えたときに閉じる
     this.synthGate = {};
-    for (const k of ['pump', 'cicada', 'minmin', 'furin', 'festival', 'crowd', 'insect', 'rain']) {
+    for (const k of ['pump', 'cicada', 'minmin', 'dusk', 'furin',
+                     'festival', 'crowd', 'insect', 'rain']) {
       const g = ctx.createGain();
       g.gain.value = 0;
       g.connect(this.master);
       this.layers[k] = g;
-      if (CLIPS[k]) {
+      if (SYNTH_TRIM[k]) {
         const sg = ctx.createGain();
-        sg.gain.value = 1;
+        sg.gain.value = SYNTH_TRIM[k];
         sg.connect(g);
         this.synthGate[k] = sg;
       }
@@ -164,18 +180,29 @@ export class Sound {
    * 絵と同じ光の状態から、層ごとの音量を決める。
    * daylight 1 = 昼、lanternOn 1 = 提灯が点いている、closed 1 = 店じまい。
    */
-  setScene({ daylight, lanternOn, closed, weather }) {
+  setScene({ daylight, lanternOn, closed, weather, elev = 0 }) {
     const day = clamp01(daylight);
     const lit = clamp01(lanternOn);
     const shut = clamp01(closed);
+    const dry = weather === 2 ? 0 : 1;
+    // 夕方の蝉だけは、明るさではなく太陽の高さ（度）で決める。
+    //
+    // 明るさで決めると、日の入り前後の 25 分しか窓が開かず、
+    // 時刻を動かしてもまず当たらない。実際にこの蝉が鳴くのは
+    // 日が低いあいだで、高度 +13° から -9° までのおよそ 1 時間半。
+    // 朝の同じ高さでも鳴くので、左右対称でよい。
+    const sunDeg = (elev * 180) / Math.PI;
+    const dusk = dry * clamp01(1 - Math.pow(Math.abs(sunDeg - 2) / 11, 2));
     this.want = {
       pump: 1,
       // 雨。降っていれば、昼夜を問わず鳴る
       rain: weather === 2 ? 1 : 0,
       // 蝉は昼だけ。日が傾くと鳴き止む
       // 蝉。雨の日は鳴かない
-      cicada: day * day * (weather === 2 ? 0 : 1),
-      minmin: day * day * (weather === 2 ? 0 : 1),
+      // 夕方の蝉が鳴き出すと、昼の蝉は引く。指示どおり日中限定にする
+      cicada: day * day * dry * (1 - 0.75 * dusk),
+      minmin: day * day * dry * (1 - 0.75 * dusk),
+      dusk,
       // 風鈴も昼。夕方まで少し残る
       furin: Math.pow(day, 0.6),
       // 祭囃子と人声は、提灯が点いているあいだ。店じまいで引く
@@ -193,19 +220,22 @@ export class Sound {
     // 層ごとの音量。実測して決めた。
     // 最初に置いた値は全部で頂点 0.069（ほぼ聞こえない）だったので、
     // 合わせて 6 倍ほどまで上げてある
-    const vol = { pump: 0.085, cicada: 0.26, minmin: 0.80, furin: 1.10,
-                  festival: 0.34, crowd: 0.26, insect: 0.38, rain: 0.30 };
+    // 録音のある層は、どれも -20 LUFS に揃えてあるので近い値になる。
+    // 合成だけの層は、以前に実測して決めた値をそのまま使う
+    const vol = { pump: 0.085, cicada: 1.05, minmin: 0.80, dusk: 1.10, furin: 0.95,
+                  festival: 0.34, crowd: 0.26, insect: 0.38, rain: 1.10 };
     for (const k of Object.keys(this.layers)) {
       // 層が増えたときに want の鍵が欠けても落ちないようにする
       const w = this.want[k] ?? 0;
       this.layers[k].gain.setTargetAtTime(w * vol[k] * (this.mix[k] ?? 1), t, 1.2);
     }
-    // 録音がある層は、合成と録音のどちらかだけを鳴らす
-    const useRec = this.source === 'rec';
+    // 録音がある層は、合成と録音のどちらかだけを鳴らす。
+    // 合成版を持たない層は、切り替えに関わらず録音を鳴らす
     for (const k of Object.keys(CLIPS)) {
+      const rec = this.source === 'rec' || !SYNTH_TRIM[k];
       const g = this.recNodes[k];
-      if (g) g.gain.setTargetAtTime(useRec ? 1 : 0, t, 0.5);
-      if (this.synthGate[k]) this.synthGate[k].gain.setTargetAtTime(useRec ? 0 : 1, t, 0.5);
+      if (g) g.gain.setTargetAtTime(rec ? 1 : 0, t, 0.5);
+      if (this.synthGate[k]) this.synthGate[k].gain.setTargetAtTime(rec ? 0 : SYNTH_TRIM[k], t, 0.5);
     }
   }
 
@@ -321,7 +351,7 @@ export class Sound {
     const lg = ctx.createGain();
     lg.gain.value = 0.22;
     lfo.connect(lg).connect(g.gain);
-    src.connect(lp).connect(hp).connect(g).connect(this.layers.rain);
+    src.connect(lp).connect(hp).connect(g).connect(this.synthGate.rain ?? this.layers.rain);
     src.start(); lfo.start();
   }
 

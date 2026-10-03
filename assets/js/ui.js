@@ -53,7 +53,8 @@ export class UI {
       this.el.srcNote.textContent = v === 'rec' ? '録音' : '合成';
     });
     // 音の調整つまみ。層ごとに動かせる
-    for (const k of ['master','pump','cicada','minmin','furin','festival','crowd','insect','rain']) {
+    for (const k of ['master','pump','cicada','minmin','dusk','furin',
+                     'festival','crowd','insect','rain']) {
       this.#range('v_' + k, 'o_' + k, (v) => { handlers.mix(k, v / 100); return String(Math.round(v)); });
     }
     $('btnNow').addEventListener('click', () => handlers.now());

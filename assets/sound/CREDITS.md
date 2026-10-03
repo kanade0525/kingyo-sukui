@@ -1,34 +1,62 @@
 # 音源の出どころ
 
-ほとんどの音はその場で合成しています（`assets/js/sound.js`）。
-実際の録音を使っているのは、下の 2 つだけです。
+ポンプ・祭囃子・ざわめき・虫・水音は、その場で合成しています
+（`assets/js/sound.js`）。実際の録音を使っているのは下の 4 つです。
 
-どちらも **CC0 / パブリックドメイン**。再配布が許されているので、
-この公開リポジトリに置けます。商用利用もクレジット表記も自由です。
+## 要確認（公開前に埋めること）
 
-| ファイル | 元 | ライセンス | 録音者 |
-| --- | --- | --- | --- |
-| `semi.ogg` | [Chorus Cicada singing](https://commons.wikimedia.org/wiki/File:Chorus_Cicada_singing.ogg) | CC0 | Siobhan Lea |
-| `furin.ogg` | [Windglockenspiel.Koshi](https://commons.wikimedia.org/wiki/File:Windglockenspiel.Koshi.ogg) | CC0 | Membeth |
+**この 4 本の出どころとライセンスが未記入です。** 公開リポジトリに
+置くと誰でも単体で取得できる状態になるため、「ファイルそのものの
+再配布」が許された素材でなければ置けません。商用無料・クレジット不要
+であっても、再配布禁止の素材は条件を満たしません（下記参照）。
 
-いずれも Wikimedia Commons から取得し、モノラル・32kHz・Vorbis へ
-落として一部を切り出しています（加工は切り出しと圧縮のみ）。
+- `semi-hiru.m4a` … 入手元 ______ / ライセンス ______
+- `semi-yugata.m4a` … 入手元 ______ / ライセンス ______
+- `furin.m4a` … 入手元 ______ / ライセンス ______
+- `ame.m4a` … 入手元 ______ / ライセンス ______
 
-## 種類が違うことについて
+## 加工の内容
 
-- `semi.ogg` は **Amphipsalta zelandica**（ニュージーランドのセミ）の合唱です。
-  日本のアブラゼミ・ミンミンゼミとは鳴き方が違います。
-- `furin.ogg` は **Koshi チャイム**（西洋の、音階の付いた風鈴）です。
-  江戸風鈴のような、音程を持たない硝子の一打とは別物です。
+元は 44.1〜48kHz・192kbps の mp3。次の処理だけをしています。
 
-CC0 で配布されている日本のセミ・風鈴の録音は見つかりませんでした。
-そのため合成版も残してあり、設定の「環境音」で切り替えられます。
+- 使う部分を切り出し（雨・蝉は 20 秒、風鈴は 30 秒）
+- 末尾 2 秒を先頭に重ねて輪にする。繋ぎ目の段差を測り、
+  曲中のいちばん大きな段差より小さいことを確認済み
+- 音量を -20 LUFS に揃える（層ごとの音量を同じ物差しで決めるため）
+- AAC 112kbps・44.1kHz・ステレオへ変換
+
+形式が m4a なのは、ogg vorbis を iOS の Safari が読めないためです。
+以前は ogg で置いていたので、iPhone では読み込みに失敗して
+黙って合成音に落ちていました。
+
+## 測った内容
+
+耳で判断できないので、測った値を残しておきます。
+
+- `semi-hiru.m4a` … いちばん強いのは 5.4〜6.2kHz、脈は毎秒 7.5 回
+- `semi-yugata.m4a` … いちばん強いのは 4.6kHz、脈はそれより速い
+- `ame.m4a` … 1.5〜2.2kHz を中心に広く、脈なし（降り続く雨）
+- `furin.m4a` … いちばん強いのは 3.8〜4.6kHz
+
+種類の名前は、音から断定できないので書いていません。
+
+## 置き換えた録音
+
+以前は Wikimedia Commons の CC0 録音を使っていましたが、
+どちらも種類が違ったので外しました。
+
+- `semi.ogg` … [Chorus Cicada singing](https://commons.wikimedia.org/wiki/File:Chorus_Cicada_singing.ogg)
+  （CC0 / Siobhan Lea）。ニュージーランドのセミの合唱
+- `furin.ogg` … [Windglockenspiel.Koshi](https://commons.wikimedia.org/wiki/File:Windglockenspiel.Koshi.ogg)
+  （CC0 / Membeth）。西洋の音階付き風鈴
+
+この 2 本はまだ残してありますが、どこからも読んでいません。
 
 ## 使えなかった素材サイト
 
 効果音ラボ・Pixabay はどちらも商用無料・クレジット不要ですが、
 **音声ファイルそのものの再配布を禁止**しています。
-公開リポジトリに置くと誰でも単体で取得できる状態になるため、使っていません。
+公開リポジトリに置くと単体で取得できる状態になるため、使えません。
 
 - 効果音ラボ … 「再配布禁止」「効果音ファイルへの直リンク禁止」
 - Pixabay … "You cannot sell or distribute Content ... on a Standalone basis"

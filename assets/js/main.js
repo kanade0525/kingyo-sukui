@@ -4,12 +4,12 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610030915';
-import { Game } from './game.js?v=202610030915';
-import { UI } from './ui.js?v=202610030915';
-import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610030915';
-import { Sound } from './sound.js?v=202610030915';
-import { POI } from './world.js?v=202610030915';
+import { Renderer } from './renderer.js?v=202610031045';
+import { Game } from './game.js?v=202610031045';
+import { UI } from './ui.js?v=202610031045';
+import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610031045';
+import { Sound } from './sound.js?v=202610031045';
+import { POI } from './world.js?v=202610031045';
 
 const canvas = document.getElementById('scene');
 let renderer = null;
