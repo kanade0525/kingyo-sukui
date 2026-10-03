@@ -11,7 +11,7 @@
 // 水深は 14.5cm しかないので、15cm を超える茎は途中で倒れて水面の下を這う。
 // 真上から見る絵でこれは大事で、まっすぐ立てると茎が点にしか見えない。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610031338';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610031422';
 
 // ---------------------------------------------------------------- 浮き葉
 
@@ -676,4 +676,135 @@ void main(){
 
   if(uUnderwater == 1){ frag = vec4(col, vDist); return; }
   frag = vec4(col, alpha);
+}`;
+
+
+/**
+ * 風で落ちた青楓（イロハモミジ）。
+ *
+ * ウキクサと同じく、水面の傾きを 1.0 で追う。一枚が 4cm あるので、
+ * 縁がめくれて裏が見えるぶん、ウキクサより動きの表情が出る。
+ *
+ * 実物。葉は 3.5〜6cm、5〜7 裂で切れ込みが深く、縁は細かい鋸歯。
+ * 葉柄は葉身と同じくらい長い。掌状脈が裂片の先へ 1 本ずつ走る。
+ */
+export const VS_LEAF = `${HEAD}
+${WATERLIB}
+layout(location=0) in vec3 aUvi;   // x = 中心からの距離, y = 角度, z = 表裏
+uniform mat4 uVP;
+uniform vec3 uCam;
+uniform vec2 uPos;
+uniform float uR;
+uniform float uYaw;
+uniform float uSeed;
+uniform float uTime;
+out vec3 vW;
+out vec3 vN;
+out vec2 vUv;
+out float vFace;
+out float vDist;
+
+const float TAU = 6.2831853;
+const float PI_ = 3.14159265;
+
+/** 葉の輪郭。5 裂、深い切れ込み、細かい鋸歯、後ろへ伸びる葉柄。 */
+float leafR(float th, out float onStalk){
+  // 葉柄を -y 側に置く。そこが裂片の谷に当たるよう位相をずらす
+  float a = th - 1.5707963;
+  float m = abs(cos(a * 2.5));                 // 5 山
+  float r = 0.30 + 0.70 * pow(m, 0.40);
+  // 鋸歯。縁が細かくぎざぎざ
+  r *= 1.0 + 0.040 * sin(a * 34.0 + uSeed * 7.0);
+  // 付け根側はくびれる
+  r *= 0.56 + 0.44 * smoothstep(-0.98, -0.30, cos(a));
+
+  // 葉柄。真後ろへ細く伸びる
+  float dth = abs(mod(th + 1.5707963 + PI_, TAU) - PI_);
+  onStalk = smoothstep(0.050, 0.0, dth);
+  return mix(r, 1.55, onStalk);
+}
+
+void main(){
+  float rr = aUvi.x, th = aUvi.y * TAU;
+  float face = aUvi.z;
+
+  // 水面の高さと傾きは葉の中心で 1 回
+  float h0 = texture(uDisp, patchUv(uPos)).y + texture(uRipN, ripUv(uPos)).z;
+  vec2 sl = slopeAt(uPos) * edgeMask(uPos);
+
+  float onStalk;
+  float shape = leafR(th, onStalk);
+  float a = th + uYaw;
+  float shrink = face > 0.5 ? 1.0 : 0.986;
+  vec2 off = vec2(cos(a), sin(a)) * uR * shape * rr * shrink;
+  vec2 q = uPos + off;
+
+  // 乾きはじめた葉は、裂片の先が持ち上がる。
+  // 水面に貼り付いた板のままだと、紙を切り抜いて置いたように見える
+  float curl = smoothstep(0.35, 1.0, rr) * uR * 0.30 * (1.0 - onStalk);
+  float y = h0 - dot(sl, off) + curl + (face > 0.5 ? 0.0010 : 0.0004);
+
+  // 法線にも反りを入れる。入れないと葉が丸ごとハイライトに入って飛ぶ
+  vec2 dirOut = length(off) > 1e-6 ? normalize(off) : vec2(1.0, 0.0);
+  float curlSlope = smoothstep(0.30, 1.0, rr) * 0.70 * (1.0 - onStalk);
+  vec2 g = sl + dirOut * curlSlope;
+
+  vW = vec3(q.x, y, q.y);
+  vN = normalize(vec3(-g.x, face > 0.5 ? 1.0 : -1.0, -g.y));
+  vUv = vec2(rr, aUvi.y);
+  vFace = face;
+  vDist = distance(vW, uCam);
+  gl_Position = uVP * vec4(vW, 1.0);
+}`;
+
+export const FS_LEAF = `${HEAD}
+${NOISE}
+${SKYLIB}
+${AMBIENT}
+in vec3 vW;
+in vec3 vN;
+in vec2 vUv;
+in float vFace;
+in float vDist;
+uniform vec3 uCam;
+uniform int uUnderwater;
+uniform float uSeed;
+out vec4 frag;
+
+void main(){
+  vec3 N = normalize(vN);
+  vec3 V = normalize(uCam - vW);
+  if(dot(N, V) < 0.0) N = -N;
+
+  float th = vUv.y * 6.2831853;
+  float a = th - 1.5707963;
+
+  // 掌状脈。裂片の先へ 1 本ずつ、中心から走る
+  float vein = smoothstep(0.80, 1.0, abs(cos(a * 2.5))) * smoothstep(0.06, 0.40, vUv.x);
+  // 支脈。主脈から斜めに出る細い筋
+  float sub = smoothstep(0.86, 1.0, abs(sin(a * 17.0))) * smoothstep(0.25, 0.9, vUv.x);
+
+  // 青楓。濡れているので乾いた葉より暗い。
+  // 睡蓮の浮き葉 (0.072, 0.142, 0.046) より黄に寄せ、わずかに明るく
+  vec3 top = vec3(0.078, 0.134, 0.040);
+  vec3 under = vec3(0.064, 0.098, 0.044);     // 裏は白っぽく、彩度が低い
+  vec3 col = mix(under, top, vFace);
+  col *= 0.88 + 0.26 * fbm(vUv * vec2(5.0, 2.5) + uSeed * 6.0);
+  // 脈は葉肉より淡い
+  col = mix(col, col * 1.22 + vec3(0.010, 0.012, 0.004), vein * 0.55 + sub * 0.20);
+  // 葉柄と脈の付け根は赤みを帯びる
+  float stalk = smoothstep(0.80, 1.0, vUv.x)
+              * smoothstep(0.06, 0.0, abs(mod(th + 1.5707963 + 3.14159, 6.2831853) - 3.14159));
+  col = mix(col, vec3(0.092, 0.038, 0.030), max(stalk, smoothstep(0.14, 0.0, vUv.x) * 0.5) * 0.7);
+
+  col *= uSunColor * max(dot(N, uSunDir), 0.0)
+       + uSunColor * max(dot(-N, uSunDir), 0.0) * 0.45     // 薄いので裏から透ける
+       + skyAmbient(N) * 1.05
+       + lanternLight(vW, N) + lanternAmbient(vW);
+  // 濡れた葉の照り。芯を細くして、反った縁に一筋だけ乗せる
+  col += min(ggx(N, V, uSunDir, 0.10, vec3(0.036)) * uSunColor * PI * 0.6, vec3(0.32)) * vFace;
+  col += min(lanternSpec(vW, N, V, 0.10, vec3(0.036)) * 0.7, vec3(0.24)) * vFace;
+
+  if(uUnderwater == 1){ frag = vec4(col, vDist); return; }
+  frag = vec4(col, 1.0);
 }`;

@@ -9,20 +9,20 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610031338';
-import { VS_FULL } from '../shaders/common.js?v=202610031338';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610031338';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610031338';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610031338';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610031338';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610031338';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610031338';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610031338';
-import { Ocean } from './ocean.js?v=202610031338';
-import { Ripple } from './ripple.js?v=202610031338';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, AIR, LANTERN, RAIN } from './world.js?v=202610031338';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610031338';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610031338';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610031422';
+import { VS_FULL } from '../shaders/common.js?v=202610031422';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610031422';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610031422';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610031422';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610031422';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610031422';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610031422';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610031422';
+import { Ocean } from './ocean.js?v=202610031422';
+import { Ripple } from './ripple.js?v=202610031422';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, AIR, LANTERN, RAIN } from './world.js?v=202610031422';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610031422';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610031422';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -90,6 +90,7 @@ export class Renderer {
     this.pTurtle = new Program(gl, VS_TURTLE, FS_TURTLE, 'turtle');
     this.pPad = new Program(gl, VS_PAD, FS_PAD, 'pad');
     this.pWeed = new Program(gl, VS_WEED, FS_WEED, 'weed');
+    this.pLeaf = new Program(gl, VS_LEAF, FS_LEAF, 'leaf');
     this.pBubble = new Program(gl, VS_BUBBLE, FS_BUBBLE, 'bubble');
     this.pSplash = new Program(gl, VS_SPLASH, FS_SPLASH, 'splash');
     this.pRain = new Program(gl, VS_RAIN, FS_RAIN, 'rain');
@@ -502,6 +503,39 @@ export class Renderer {
     return out;
   }
 
+  /** 風で落ちた青楓。円板のメッシュを、頂点シェーダで葉の形に切り抜く。 */
+  #drawLeaf(time) {
+    const p = this.pLeaf.use();
+    this.#lights(p); this.#water(p);
+    p.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
+    LEAF.spots.forEach((c, i) => {
+      const ph = i * 1.9 + 0.7;
+      const dx = Math.sin(time * 0.097 + ph) * LEAF.drift
+               + Math.sin(time * 0.041 + ph * 1.6) * LEAF.drift * 1.5;
+      const dz = Math.cos(time * 0.083 + ph * 1.2) * LEAF.drift
+               + Math.cos(time * 0.035 + ph) * LEAF.drift * 1.3;
+      let px = c.x + dx, pz = c.z + dz;
+      // お椀を避ける。葉やウキクサと同じ
+      const bx = px - BOWL.pos[0], bz = pz - BOWL.pos[2];
+      const keep = BOWL.outerR + c.r * 0.9;
+      const d = Math.hypot(bx, bz);
+      if (d < keep) {
+        const k = d > 1e-4 ? keep / d : 1;
+        px = BOWL.pos[0] + bx * k;
+        pz = BOWL.pos[2] + bz * k;
+      }
+      const m = c.r * 1.6;
+      px = Math.min(Math.max(px, -TANK.halfX + m), TANK.halfX - m);
+      pz = Math.min(Math.max(pz, -TANK.halfZ + m), TANK.halfZ - m);
+      p.set('uPos', [px, pz])
+       .setFloat('uR', c.r)
+       // 浮いた葉はゆっくり回る。止まっていると貼り紙に見える
+       .setFloat('uYaw', c.yaw + Math.sin(time * 0.048 + ph) * 0.26)
+       .setFloat('uSeed', 0.23 + i * 0.417);
+      this.mPad.draw();
+    });
+  }
+
   #drawWeed(time) {
     const p = this.pWeed.use();
     this.#lights(p); this.#water(p);
@@ -761,6 +795,7 @@ export class Renderer {
 
     this.#drawPads(time);
     this.#drawWeed(time);
+    this.#drawLeaf(time);
 
     // 泡。水面より手前に重ねる。小さいので屈折までは追わない
     {
