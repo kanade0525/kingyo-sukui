@@ -1,3 +1,6 @@
 .DS_Store
 node_modules/
 shots/
+
+# 音源の元ファイル。素のままでは置かない（scripts/pack-sound.mjs 参照）
+assets/sound/*.m4a

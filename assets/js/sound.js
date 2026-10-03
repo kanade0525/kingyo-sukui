@@ -28,16 +28,30 @@ const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
  * （ニュージーランドのセミ、西洋の音階付き風鈴）は置き換えた。
  * 出どころは assets/sound/CREDITS.md。
  *
- * 形式は m4a（AAC）。ogg vorbis は iOS の Safari が読めず、
+ * 中身は m4a（AAC）。ogg vorbis は iOS の Safari が読めず、
  * 読み込みに失敗して黙って合成へ落ちていた。
  * どの層も 2 秒の重ね合わせで輪にしてあるので、繋ぎ目で跳ねない。
+ *
+ * 拡張子が .bin なのは、素のままの音源ファイルとして置かないため。
+ * 配布元が「できる限りでよいので、音源ファイルを隠す措置を」と
+ * 添えているので、鍵で XOR してから置いている（scripts/pack-sound.mjs）。
+ * 暗号ではなく、覗いて持っていくのに一手間かかる、という程度のもの。
  */
 const CLIPS = {
-  cicada: 'assets/sound/semi-hiru.m4a',
-  dusk:   'assets/sound/semi-yugata.m4a',
-  furin:  'assets/sound/furin.m4a',
-  rain:   'assets/sound/ame.m4a',
+  cicada: 'assets/sound/s1.bin',
+  dusk:   'assets/sound/s2.bin',
+  furin:  'assets/sound/s3.bin',
+  rain:   'assets/sound/s4.bin',
 };
+
+/** scripts/pack-sound.mjs の KEY と同じ。片方だけ変えると音が出ない */
+const KEY = 'kingyo-sukui';
+
+/** 置いてある形から元の m4a へ戻す。XOR なので同じ操作で往復する */
+function unscramble(bytes) {
+  for (let i = 0; i < bytes.length; i++) bytes[i] ^= KEY.charCodeAt(i % KEY.length);
+  return bytes;
+}
 
 /**
  * 合成版も持っている層。ここに無い層は、切り替えに関わらず録音を鳴らす。
@@ -150,7 +164,8 @@ export class Sound {
     for (const [key, url] of Object.entries(CLIPS)) {
       try {
         const res = await fetch(url);
-        const buf = await this.ctx.decodeAudioData(await res.arrayBuffer());
+        const raw = unscramble(new Uint8Array(await res.arrayBuffer()));
+        const buf = await this.ctx.decodeAudioData(raw.buffer);
         this.buffers[key] = buf;
         const g = this.ctx.createGain();
         g.gain.value = 0;

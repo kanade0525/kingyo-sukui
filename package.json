@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
+    "pack-sound": "node scripts/pack-sound.mjs",
     "stamp": "node scripts/stamp.mjs"
   },
   "engines": {
