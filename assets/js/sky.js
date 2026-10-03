@@ -52,8 +52,13 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR) {
   const azim = (-75 + 150 * clamp01(t) + ORIENT + yawDeg) * DEG;
 
   const sunUp = Math.sin(elev);
-  // 薄明。太陽が地平の 7° 下あたりまでは、まだ空が明るい
-  const daylight = clamp01((sunUp + 0.12) / 0.12);
+  // 薄明。
+  //
+  // 幅を 0.12 で取っていたら、日の入りの 18:48 から 19:12 までの
+  // 24 分で昼から夜へ切り替わっていた。実際の薄明はもっと長く、
+  // 空が焼けているあいだに提灯へ灯が入る。そこがいちばんきれいな時間なので、
+  // 地平の下 14° あたりまで引き伸ばす（1 時間半ほど）
+  const daylight = clamp01((sunUp + 0.25) / 0.30);
   const ext = Math.pow(Math.max(sunUp, 0.015), 0.42) * daylight;
   const night = 1 - daylight;
 
@@ -105,7 +110,10 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR) {
     horizon,
     ground,
     // 提灯。和紙を透かした橙。1 個ぶんの強さ（距離の二乗で割る前）
-    lantern: scale3([1.00, 0.50, 0.195], 0.195 * lanternOn),
+    // 1 個ぶんの強さ。距離の二乗で割る前の値。
+    // 青いトレーに橙の光を掛けると鈍い緑になるので、
+    // 「ちょうど」に見えるところまで上げると、数字としてはかなり強くなる
+    lantern: scale3([1.00, 0.52, 0.215], 0.78 * lanternOn),
     lanternOn,
     closed,
     daylight,

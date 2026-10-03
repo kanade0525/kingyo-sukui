@@ -11,7 +11,7 @@
 // 水深は 14.5cm しかないので、15cm を超える茎は途中で倒れて水面の下を這う。
 // 真上から見る絵でこれは大事で、まっすぐ立てると茎が点にしか見えない。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030133';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030248';
 
 // ---------------------------------------------------------------- 浮き葉
 
@@ -150,6 +150,7 @@ void main(){
                 + lanternLight(vW, N) + lanternAmbient(vW));
     // 蝋の膜。水を弾くので、芯の硬い照りが乗る
     col += ggx(N, V, uSunDir, 0.085, vec3(0.055)) * uSunColor * PI * 1.1;
+    col += lanternSpec(vW, N, V, 0.085, vec3(0.055));
     // 葉の上に残った水玉
     // 弾かれた水が玉になって残る。細かくしすぎると病斑に見えるので、
     // 数を絞って大きめに置く
@@ -209,7 +210,7 @@ void main(){
 
   // 石の口のばらつきと、上がりながらのふらつき
   float wob = sin(uTime * (2.2 + r3 * 1.8) + i * 2.3) * 0.004 * up;
-  vec3 c = vec3(uStone.x + (r1 - 0.5) * 0.020 + wob, y, uStone.z + (r3 - 0.5) * 0.012);
+  vec3 c = vec3(uStone.x + (r1 - 0.5) * 0.044 + wob, y, uStone.z + (r3 - 0.5) * 0.030);
 
   // 粒の大きさ。エアストーンから出る泡は 1〜3mm。
   // 水面に着くと、半球に潰れてから輪になって開く
@@ -464,12 +465,12 @@ void main(){
   float y = uFall * (1.0 - t);
 
   vec2 at = (vec2(r1, r3) * 2.0 - 1.0) * uArea;
-  float rad = 0.0010 + r2 * 0.0007;
+  float rad = 0.0007 + r2 * 0.0006;
   vP = aUvi.xy;
   // 縦に引き伸ばす。速いので筋に見える
   vec3 w = vec3(at.x, y, at.y)
          + uRight * aUvi.x * rad
-         + uUp * aUvi.y * rad * 9.0;
+         + uUp * aUvi.y * rad * (7.0 + r1 * 9.0);
   vFade = step(i, uCount) * smoothstep(0.0, 0.08, t) * step(0.0, y);
   gl_Position = uVP * vec4(w, 1.0);
 }`;
@@ -483,8 +484,9 @@ out vec4 frag;
 void main(){
   if(vFade < 0.01) discard;
   // 縦に細い筋。端ほど薄い
-  float a = (1.0 - abs(vP.x)) * (1.0 - vP.y * vP.y * 0.55) * vFade * 0.55;
-  if(a < 0.02) discard;
-  vec3 col = uSkyZenith * 2.2 + uSkyHorizon * 0.8;
+  // 雨粒は水の筒なので、空を透かすだけ。白い棒を描くと作り物に見える
+  float a = (1.0 - abs(vP.x)) * (1.0 - vP.y * vP.y * 0.55) * vFade * 0.26;
+  if(a < 0.015) discard;
+  vec3 col = uSkyZenith * 1.3 + uSkyHorizon * 0.55;
   frag = vec4(col * a, a);
 }`;

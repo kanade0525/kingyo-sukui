@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610030133';
-import { Poi } from './poi.js?v=202610030133';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610030133';
+import { School } from './fish.js?v=202610030248';
+import { Poi } from './poi.js?v=202610030248';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610030248';
 
 /** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
 const h11 = (x) => {
@@ -225,11 +225,13 @@ export class Game {
         const period = 0.70 + r1 * 0.55;
         // 位相が 1 周したら、その粒が水面に着いたということ
         if (Math.floor(this.time / period + r2) === Math.floor(prev / period + r2)) continue;
+        // 波紋は格子（4mm 刻み）より十分大きく取る。小さいと波が
+        // 格子の縦横にしか進めず、輪ではなく菱形に広がる
         this.ripple.drop(
           (r1 * 2 - 1) * TANK.halfX * 1.05,
           (r3 * 2 - 1) * TANK.halfZ * 1.05,
-          0.006 + r2 * 0.004,
-          0.0016,
+          0.014 + r2 * 0.008,
+          0.0013,
         );
       }
     }
@@ -245,11 +247,13 @@ export class Game {
       if (!crossed) continue;
       // 1 粒ずつは弱く。54 粒が毎秒 60 回も同じ所を叩くので、
       // 1 回ぶんを強くすると、石の上に窪みが立ったまま残る
+      // 出口は石の長さ（30mm）ぶんに散らす。1 点を叩き続けると、
+      // 波が干渉して花のような定在模様が立ったまま残る
       this.ripple.drop(
-        AIR.stone[0] + (r1 - 0.5) * 0.020,
-        AIR.stone[2] + (r3 - 0.5) * 0.012,
-        0.007 + r3 * 0.004,
-        0.00028,
+        AIR.stone[0] + (r1 - 0.5) * 0.044,
+        AIR.stone[2] + (r3 - 0.5) * 0.030,
+        0.013 + r3 * 0.007,
+        0.00022,
       );
     }
   }

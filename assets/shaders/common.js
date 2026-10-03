@@ -138,8 +138,15 @@ float flagstone(vec2 p, out float joint, out float id, out float dish){
  * すとんと落ちている。立ち上がりを急にして、頂上を平らにする。
  */
 float gravel(vec2 p, float scale, out float cavity){
+  // worley は「いちばん近い種までの距離」なので、粒の中心ほど小さく、
+  // 粒と粒の境でいちばん大きい。
+  //
+  // ここで cavity を smoothstep(0.44, 0.14, d) と書いていた。これは
+  // 距離が小さいほど 1 になる式なので、谷ではなく粒の天面を指している。
+  // 呼び出し側はこれを遮蔽として暗く落としていたので、粒の真ん中が
+  // いちばん暗くなり、砂利が硬貨やドーナツの並びに見えていた。
   float d = worley(p * scale);
-  cavity = smoothstep(0.44, 0.14, d);         // 粒の間の落ち込み
+  cavity = smoothstep(0.40, 0.62, d);         // 粒と粒の間の落ち込み
   return smoothstep(0.54, 0.34, d);           // 頂上は平ら、縁で急に落ちる
 }
 
@@ -420,7 +427,29 @@ vec3 ggx(vec3 N, vec3 V, vec3 L, float rough, vec3 F0){
 
 float fresnelSchlick(float ndv, float f0){
   return f0 + (1.0 - f0) * pow(1.0 - ndv, 5.0);
-}`;
+}
+
+/**
+ * 提灯の照り返し。
+ *
+ * 夜の水面が水に見えるのは、提灯の形が水面に伸びて映るから。
+ * 拡散光だけ足しても、青いトレーに橙を掛けた鈍い緑にしかならない。
+ */
+vec3 lanternSpec(vec3 p, vec3 N, vec3 V, float rough, vec3 F0){
+  if(uLanternCol.r < 0.0005) return vec3(0.0);
+  vec3 sum = vec3(0.0);
+  for(int i = 0; i < 2; i++){
+    vec3 L = lanternPos(i) - p;
+    float d2 = max(dot(L, L), 0.04);
+    // 提灯は直径 24cm の面光源。粗さを広げて、面の大きさの代わりにする
+    sum += ggx(N, V, L * inversesqrt(d2), rough + 0.16, F0) / d2;
+  }
+  // 点光源の GGX をそのまま足すと発散する。正しくは光源の立体角を掛ける。
+  // 直径 24cm・距離 1.4m なら Ω ≈ π(0.12)²/1.4² ≈ 0.023 sr なので、
+  // その程度まで落とす
+  return uLanternCol * sum * 0.045;
+}
+`;
 
 /**
  * 水の中にあるものが受ける光。
