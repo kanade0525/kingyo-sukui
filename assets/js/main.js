@@ -4,10 +4,10 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610030059';
-import { Game } from './game.js?v=202610030059';
-import { UI } from './ui.js?v=202610030059';
-import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610030059';
+import { Renderer } from './renderer.js?v=202610030133';
+import { Game } from './game.js?v=202610030133';
+import { UI } from './ui.js?v=202610030133';
+import { localHour, fetchWeather, WEATHER_NAME } from './sky.js?v=202610030133';
 
 const canvas = document.getElementById('scene');
 let renderer = null;
@@ -127,6 +127,9 @@ function frame(now) {
 
   renderer.resize();
   game.update(dt);
+  // 店じまいのあとは、貸してくれるポイがもう無い。
+  // 水面をなでることだけができる
+  game.closed = renderer.sun.closed > 0.6;
   renderer.render({ time: game.time, school: game.school, poi: game.poi, bowl: game.bowl });
 
   if (warmup > 0 && --warmup === 0) ui.ready();
@@ -137,7 +140,6 @@ function frame(now) {
     fpsAcc = 0; fpsN = 0;
   }
   ui.tick(game, fpsShown);
-  ui.setClosed(renderer.sun.closed);
   game.events.length = 0;
 
   requestAnimationFrame(frame);

@@ -11,7 +11,7 @@
 // 水深は 14.5cm しかないので、15cm を超える茎は途中で倒れて水面の下を這う。
 // 真上から見る絵でこれは大事で、まっすぐ立てると茎が点にしか見えない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030059';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030133';
 
 // ---------------------------------------------------------------- 浮き葉
 
@@ -61,7 +61,10 @@ void main(){
   sl *= 0.45;
 
   float a = th + uYaw;
-  vec2 off = vec2(cos(a), sin(a)) * uPadR * padR(th) * rr;
+  // 裏の面は一回り内側に作る。同じ大きさだと、輪郭の外へ紫の縁が
+  // はみ出して、葉に紫の線が引いてあるように見える
+  float shrink = face > 0.5 ? 1.0 : 0.988;
+  vec2 off = vec2(cos(a), sin(a)) * uPadR * padR(th) * rr * shrink;
   vec2 q = uPadPos + off;
 
   // 縁は水を弾いて少し反り返り、中心はへこむ
@@ -97,6 +100,7 @@ void main(){
 export const FS_PAD = `${HEAD}
 ${NOISE}
 ${SKYLIB}
+${MATERIAL}
 ${AMBIENT}
 ${WATERLIB}
 ${CAUSTICS}
@@ -138,6 +142,9 @@ void main(){
     base = mix(base, vec3(0.105, 0.072, 0.034), old * 0.40);
     // 縁は赤みが差す
     base = mix(base, base * vec3(1.30, 0.94, 0.86), smoothstep(0.90, 1.0, rr) * 0.40);
+    // 水面に浮いた塵が葉の上に乗る。虫に齧られた跡も残る
+    base = grime(base, smoothstep(0.52, 0.80, fbm(vec2(th * 5.0, rr * 6.0) + uSeed * 3.0)),
+                 vec3(0.062, 0.058, 0.040), 0.42);
 
     col = base * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N) * 1.15
                 + lanternLight(vW, N) + lanternAmbient(vW));
@@ -146,9 +153,12 @@ void main(){
     // 葉の上に残った水玉
     // 弾かれた水が玉になって残る。細かくしすぎると病斑に見えるので、
     // 数を絞って大きめに置く
-    vec2 bp = vec2(cos(th), sin(th)) * rr * uPadR * 150.0;
-    float bead = smoothstep(0.86, 0.99, 1.0 - worley(bp));
-    col += uSunColor * bead * 0.16 * smoothstep(0.1, 0.5, rr);
+    // 弾かれた水が玉になって残る。
+    // 数を出しすぎると、葉が白い斑点だらけになって病気の葉に見える。
+    // 実際に目に付くのは、光を一点に集めた大きな玉だけ
+    vec2 bp = vec2(cos(th), sin(th)) * rr * uPadR * 42.0;
+    float bead = smoothstep(0.945, 0.995, 1.0 - worley(bp));
+    col += uSunColor * bead * 0.22 * smoothstep(0.15, 0.6, rr);
   } else {
     // 裏。赤紫を帯びて、太い葉脈が浮き出る。水の中なので光の網が落ちる
     float below = max(-vW.y, 0.0);
@@ -177,31 +187,39 @@ out vec2 vP;
 out vec3 vW;
 out float vDist;
 out float vFade;
+out float vBurst;         // 0 = 上がっている, 1 = はじけ終わり
 
 float h11(float x){ return fract(sin(x * 127.1) * 43758.5453); }
+
+// 上がりきるまでの割合。残りの 1 − RISE ぶんが、水面ではじける時間。
+// JS 側（game.js）も同じ式で位相を見て、ちょうど弾けた瞬間に波紋を落とす
+const float RISE = 0.86;
 
 void main(){
   float i = aUvi.z;
   float r1 = h11(i * 1.7), r2 = h11(i * 3.1 + 5.0), r3 = h11(i * 7.3 + 11.0);
 
-  // 泡は一定の速さで上がる。上がるほど水圧が下がって少し膨らみ、速くなる
+  // 泡は一定の速さで上がる。上がるほど水圧が下がって少し膨らむ
   float rise = 0.14 + r1 * 0.07;                 // [m/s]
-  float t = fract(uTime * rise / 0.16 + r2);     // 0 で石、1 で水面
-  float y = uStone.y + t * (-0.004 - uStone.y);
+  float t = fract(uTime * rise / 0.16 + r2);     // 0 で石、1 で消える
+  float up = min(t / RISE, 1.0);                 // 上がりきったら 1 で止まる
+  vBurst = max(t - RISE, 0.0) / (1.0 - RISE);
+
+  float y = uStone.y + up * (-0.0045 - uStone.y);
 
   // 石の口のばらつきと、上がりながらのふらつき
-  float wob = sin(uTime * (2.2 + r3 * 1.8) + i * 2.3) * 0.004 * t;
-  vec3 c = uStone + vec3((r1 - 0.5) * 0.020 + wob, 0.0, (r3 - 0.5) * 0.012);
-  c.y = y;
+  float wob = sin(uTime * (2.2 + r3 * 1.8) + i * 2.3) * 0.004 * up;
+  vec3 c = vec3(uStone.x + (r1 - 0.5) * 0.020 + wob, y, uStone.z + (r3 - 0.5) * 0.012);
 
-  // 粒の大きさ。エアストーンから出る泡は 1〜3mm
-  float rad = (0.0009 + r3 * 0.0014) * (1.0 + 0.35 * t);
+  // 粒の大きさ。エアストーンから出る泡は 1〜3mm。
+  // 水面に着くと、半球に潰れてから輪になって開く
+  float rad = (0.0009 + r3 * 0.0014) * (1.0 + 0.35 * up);
+  rad += vBurst * rad * 2.6;
+
   vP = aUvi.xy;
   vW = c + (uRight * aUvi.x + uUp * aUvi.y) * rad;
-  // 水面に着く直前に消す。はじけるところまでは描かない
-  // 出口で全部が重なると、石の上に明るい四角の塊ができる。
-  // 出てすぐは薄く、水面の手前で消す
-  vFade = smoothstep(0.0, 0.10, t) * smoothstep(1.0, 0.84, t) * step(i, uCount);
+  // 出てすぐは薄く、はじけ終わりで消える
+  vFade = smoothstep(0.0, 0.10, t) * (1.0 - vBurst * vBurst) * step(i, uCount);
   vDist = distance(vW, uCam);
   gl_Position = uVP * vec4(vW, 1.0);
 }`;
@@ -213,6 +231,7 @@ in vec2 vP;
 in vec3 vW;
 in float vDist;
 in float vFade;
+in float vBurst;
 uniform vec3 uCam;
 out vec4 frag;
 
@@ -220,19 +239,30 @@ void main(){
   float r = length(vP);
   if(r > 1.0 || vFade < 0.01) discard;
 
-  // 泡は水より屈折率が低いので、縁が全反射して明るい輪になる。
-  // 中は向こうが透けて見えるだけなので、ほとんど何も足さない
-  float rim = smoothstep(0.62, 0.99, r);
-  float ndv = sqrt(max(1.0 - r * r, 0.0));
-
   vec3 up = vec3(0.0, 1.0, 0.0);
   vec3 lit = underAmbient(up) + underSun(up) * 0.5 + lanternAmbient(vW) * 1.3;
-  vec3 col = lit * (0.30 + 1.70 * rim);
-  // 上側に小さな照り返しが一点入る
-  float spot = smoothstep(0.34, 0.0, length(vP - vec2(-0.30, 0.34)));
-  col += uSunColor * spot * 0.55;
+  vec3 col;
+  float a;
 
-  float a = (0.10 + 0.80 * rim) * vFade;
+  if(vBurst < 0.001){
+    // 上がっている泡。水より屈折率が低いので、縁が全反射して明るい輪になる。
+    // 中は向こうが透けて見えるだけなので、ほとんど何も足さない
+    float rim = smoothstep(0.62, 0.99, r);
+    col = lit * (0.30 + 1.70 * rim);
+    float spot = smoothstep(0.34, 0.0, length(vP - vec2(-0.30, 0.34)));
+    col += uSunColor * spot * 0.55;
+    a = 0.10 + 0.80 * rim;
+  } else {
+    // はじけたあと。膜が切れて、水の輪だけが外へ開いて消える。
+    // 輪は広がりながら細くなる
+    float w = mix(0.34, 0.10, vBurst);
+    float ring = smoothstep(1.0 - w, 1.0 - w * 0.4, r) * smoothstep(1.0, 1.0 - w * 0.3, r);
+    if(ring < 0.02) discard;
+    col = lit * (0.9 + 1.5 * ring);
+    a = ring;
+  }
+
+  a *= vFade;
   frag = vec4(col * a, a);
 }`;
 
@@ -259,6 +289,7 @@ void main(){
 export const FS_GEAR = `${HEAD}
 ${NOISE}
 ${SKYLIB}
+${MATERIAL}
 ${AMBIENT}
 ${WATERLIB}
 ${CAUSTICS}
@@ -294,12 +325,19 @@ void main(){
     // 軟質塩ビのチューブ。半透明で、曲がった所に白い折り癖が出る
     base = vec3(0.205, 0.215, 0.200) * (0.90 + 0.18 * fbm(vW.xz * 300.0));
     base += vec3(0.05) * pow(1.0 - ndv, 3.0);
+    // 使い込んだチューブ。内側に藻が付いて緑に曇る
+    base = grime(base, smoothstep(0.42, 0.74, fbm(vW.xz * 90.0 + 3.0)),
+                 vec3(0.052, 0.075, 0.040), 0.70);
     rough = 0.16;
   } else if(region == 2){
     // 酸素ボンベの胴。塗装した鋼。細かい擦り傷が縦に走る
     float scr = fbm(vec2(atan(vW.z, vW.x) * 26.0, vW.y * 420.0));
     base = vec3(0.090, 0.150, 0.178) * (0.88 + 0.24 * scr);
     base = mix(base, base * 0.6 + vec3(0.10), smoothstep(0.66, 0.88, scr) * 0.35);
+    // 塗装が剥げて錆が浮く。下へ行くほどひどい
+    float rust = smoothstep(0.58, 0.86, fbm(vec2(vW.y * 42.0, atan(vW.z, vW.x) * 9.0)));
+    base = mix(base, vec3(0.145, 0.058, 0.022), rust * 0.55 * uWear);
+    base = mix(base, base * 0.6 + vec3(0.14), scratch(vec2(atan(vW.z, vW.x), vW.y), 1.57, 1.1) * 0.30);
     rough = 0.34;
   } else {
     // 肩の金具とバルブ。真鍮
@@ -359,14 +397,14 @@ void main(){
   float th = (i / 36.0 + r1 * 0.09) * 6.2831853;
   vec2 dir = vec2(cos(th), sin(th));
   // 入るときは外へ低く、抜くときは上へ高く
-  float vOut = mix(0.55 + r2 * 0.75, 0.22 + r2 * 0.35, uOut) * uPower;
-  float vUp  = mix(0.35 + r3 * 0.55, 0.95 + r3 * 0.90, uOut) * uPower;
+  float vOut = mix(0.26 + r2 * 0.30, 0.12 + r2 * 0.16, uOut) * uPower;
+  float vUp  = mix(0.17 + r3 * 0.24, 0.40 + r3 * 0.38, uOut) * uPower;
 
   float t = uAge * (0.42 + r1 * 0.22);        // 粒ごとに寿命が違う
   vec2 xz = uAt + dir * uRadius * (0.80 + 0.35 * r3) + dir * vOut * t;
   float y = vUp * t - 4.9 * t * t;            // 重力
 
-  float rad = (0.0010 + r2 * 0.0018) * (1.0 - 0.3 * uAge);
+  float rad = (0.0007 + r2 * 0.0011) * (1.0 - 0.3 * uAge);
   vP = aUvi.xy;
   vec3 w = vec3(xz.x, y, xz.y) + (uRight * aUvi.x + uUp * aUvi.y) * rad;
   // 水面を割ったら消える
@@ -387,5 +425,66 @@ void main(){
   float rim = smoothstep(0.45, 1.0, r);
   vec3 col = (uSkyZenith * 1.4 + uSunColor * 0.30) * (0.5 + 1.3 * rim);
   float a = (0.42 + 0.48 * rim) * vFade;
+  frag = vec4(col * a, a);
+}`;
+
+
+// ---------------------------------------------------------------- 雨
+
+/**
+ * 落ちてくる雨粒。
+ *
+ * 粒ごとの位置を CPU で持たず、通し番号と時刻から落下を引く。
+ * JS 側（game.js）が同じ式で着水の瞬間を見て、ちょうどそこに波紋を落とす。
+ * 落ちる所と輪が立つ所が合っていないと、ただのノイズに見える。
+ *
+ * 実際の雨粒は毎秒 4〜9m で落ちるので、目には粒ではなく縦の筋に見える。
+ * だから板を縦に引き伸ばしてある。
+ */
+export const VS_RAIN = `${HEAD}
+layout(location=0) in vec3 aUvi;   // xy = 板の中 (-1..1), z = 粒の通し番号
+uniform mat4 uVP;
+uniform vec3 uCam;
+uniform vec3 uRight, uUp;
+uniform vec2 uArea;      // ふらせる範囲（舟の内寸の半分より少し広く）
+uniform float uTime;
+uniform float uCount;
+uniform float uFall;     // 落ちはじめる高さ
+out vec2 vP;
+out float vFade;
+
+float h11(float x){ return fract(sin(x * 127.1) * 43758.5453); }
+
+void main(){
+  float i = aUvi.z;
+  float r1 = h11(i * 1.7), r2 = h11(i * 3.1 + 5.0), r3 = h11(i * 7.3 + 11.0);
+  // 1 周の長さ。粒ごとに違う速さで、ばらばらに落ちてくる
+  float period = 0.70 + r1 * 0.55;
+  float t = fract(uTime / period + r2);
+  float y = uFall * (1.0 - t);
+
+  vec2 at = (vec2(r1, r3) * 2.0 - 1.0) * uArea;
+  float rad = 0.0010 + r2 * 0.0007;
+  vP = aUvi.xy;
+  // 縦に引き伸ばす。速いので筋に見える
+  vec3 w = vec3(at.x, y, at.y)
+         + uRight * aUvi.x * rad
+         + uUp * aUvi.y * rad * 9.0;
+  vFade = step(i, uCount) * smoothstep(0.0, 0.08, t) * step(0.0, y);
+  gl_Position = uVP * vec4(w, 1.0);
+}`;
+
+export const FS_RAIN = `${HEAD}
+${SKYLIB}
+in vec2 vP;
+in float vFade;
+out vec4 frag;
+
+void main(){
+  if(vFade < 0.01) discard;
+  // 縦に細い筋。端ほど薄い
+  float a = (1.0 - abs(vP.x)) * (1.0 - vP.y * vP.y * 0.55) * vFade * 0.55;
+  if(a < 0.02) discard;
+  vec3 col = uSkyZenith * 2.2 + uSkyHorizon * 0.8;
   frag = vec4(col * a, a);
 }`;

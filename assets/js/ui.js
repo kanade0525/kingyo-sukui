@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 export class UI {
   constructor(handlers) {
     this.el = {
-      fps: $('fps'), hourOut: $('hourOut'), wxNote: $('wxNote'), closed: $('closed'),
+      fps: $('fps'), hourOut: $('hourOut'), wxNote: $('wxNote'),
       loading: $('loading'),
       panel: $('panel'), btnPanel: $('btnPanel'),
       fallback: $('fallback'), fallbackWhy: $('fallbackWhy'),
@@ -85,14 +85,6 @@ export class UI {
     this.el.loading.hidden = true;
     document.getElementById('botbar').hidden = true;
     if (message) this.el.fallbackWhy.textContent = message;
-  }
-
-  /** 店じまいの濃さ。0 でまだ開いている、1 で終わり。 */
-  setClosed(v) {
-    const o = v < 0.35 ? 0 : (v - 0.35) / 0.65;
-    if (this.lastClosed === o) return;
-    this.lastClosed = o;
-    this.el.closed.style.opacity = String(o);
   }
 
   /** 時刻のつまみを外から動かす。 */

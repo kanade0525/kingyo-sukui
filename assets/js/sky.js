@@ -105,7 +105,7 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR) {
     horizon,
     ground,
     // 提灯。和紙を透かした橙。1 個ぶんの強さ（距離の二乗で割る前）
-    lantern: scale3([1.00, 0.46, 0.165], 0.060 * lanternOn),
+    lantern: scale3([1.00, 0.50, 0.195], 0.195 * lanternOn),
     lanternOn,
     closed,
     daylight,

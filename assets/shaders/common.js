@@ -144,6 +144,59 @@ float gravel(vec2 p, float scale, out float cavity){
 }
 
 /** 角の擦れ。縁に近いほど 1。色が抜けた所を作るのに使う。 */
+/* ----------------------------------------------------------------
+ * ウェザリング（汚しと傷）
+ *
+ * 新品そのままの面が並ぶと、どれだけ質感を作り込んでも「CG で置いた物」
+ * に見える。実物が実物に見えるのは、汚れが物の形に沿って出るから。
+ * 乱数のノイズを上から掛けても汚しにはならない。
+ *
+ * ここでは、縁日の道具に実際に出る 5 つを部品にしてある。
+ *   垢   … 凹んだ所・隅・継ぎ目に溜まる
+ *   摩耗 … 角と、手や物が当たる所の色が抜ける
+ *   流痕 … 水が流れた跡が縦に残る
+ *   水垢 … 乾いた水滴の輪が白く残る
+ *   擦過 … 細かい傷が向きを揃えて走る
+ *
+ * 強さは uWear でまとめて動かす。0 で下ろしたて、1 で一夏使ったあと。
+ * ---------------------------------------------------------------- */
+uniform float uWear;
+
+/** 垢。凹みの深さ（0〜1）に応じて、黒ずんだ色へ寄せる。 */
+vec3 grime(vec3 col, float cavity, vec3 tint, float amount){
+  return mix(col, tint, clamp(cavity, 0.0, 1.0) * amount * uWear);
+}
+
+/** 流痕。上から下へ、幅のまちまちな縦の筋。down は 0 が上、1 が下。 */
+float runStain(vec2 p, float down){
+  // 縦に強く引き伸ばした雑音。筋は下へ行くほど広がって薄れる
+  float a = fbm(vec2(p.x * 34.0, p.y * 1.6));
+  float b = fbm(vec2(p.x * 11.0 + 7.0, p.y * 0.9));
+  float s = smoothstep(0.52, 0.74, a * 0.6 + b * 0.4);
+  return s * smoothstep(0.0, 0.35, down) * (1.0 - 0.45 * down) * uWear;
+}
+
+/** 水垢。乾いた水滴の輪。白い粉が縁に残る。 */
+float waterMark(vec2 p, float scale){
+  float d = worley(p * scale);
+  // 輪だけを残す。中は乾いていて何も無い
+  return smoothstep(0.30, 0.20, abs(d - 0.34)) * uWear;
+}
+
+/** 擦過。向きの揃った細い傷。dirAngle は傷の走る向き。 */
+float scratch(vec2 p, float dirAngle, float density){
+  float c = cos(dirAngle), sn = sin(dirAngle);
+  vec2 q = vec2(p.x * c - p.y * sn, p.x * sn + p.y * c);
+  // 1 方向だけ強く引き伸ばす
+  float n = fbm(vec2(q.x * 420.0, q.y * 3.0));
+  return smoothstep(1.0 - density * 0.16, 1.0 - density * 0.06, n) * uWear;
+}
+
+/** 埃。上を向いた面ほど積もる。 */
+float dust(vec3 n, vec2 p){
+  return max(n.y, 0.0) * (0.55 + 0.45 * fbm(p * 26.0)) * uWear;
+}
+
 float wearEdge(float dist, float width){
   return 1.0 - smoothstep(0.0, width, dist);
 }
@@ -233,22 +286,17 @@ const float PI = 3.14159265;
 // 間隔をあけて並べて吊るす。日が落ちるとこれが主な光源になる。
 // 和紙（実際はビニル幌）を透かした橙で、水面には縦に伸びた筋として映る。
 uniform vec3 uLanternCol;    // 1 個ぶんの強さ × 色。消えているときは 0
-uniform vec4 uLanternGeo;    // x = 吊る高さ, y = 奥行き位置, z = 間隔, w = 個数
+uniform vec4 uLanternP[2];   // 提灯の位置。画面の左右に 1 つずつ
 
-/** i 番目の提灯の位置。列の中心が舟の中心の真上に来るように並べる。 */
-vec3 lanternPos(int i){
-  float x = (float(i) - (uLanternGeo.w - 1.0) * 0.5) * uLanternGeo.z;
-  return vec3(x, uLanternGeo.x, uLanternGeo.y);
-}
+vec3 lanternPos(int i){ return uLanternP[i].xyz; }
 
 /** 連提灯から受ける明るさ。距離の二乗で落ちる点光源の和。 */
 vec3 lanternLight(vec3 p, vec3 N){
   if(uLanternCol.r < 0.0005) return vec3(0.0);
   vec3 sum = vec3(0.0);
-  for(int i = 0; i < 7; i++){
-    if(float(i) >= uLanternGeo.w) break;
+  for(int i = 0; i < 2; i++){
     vec3 L = lanternPos(i) - p;
-    float d2 = max(dot(L, L), 0.02);
+    float d2 = max(dot(L, L), 0.04);
     sum += max(dot(N, L * inversesqrt(d2)), 0.0) / d2;
   }
   return uLanternCol * sum;
@@ -258,26 +306,24 @@ vec3 lanternLight(vec3 p, vec3 N){
 vec3 lanternAmbient(vec3 p){
   if(uLanternCol.r < 0.0005) return vec3(0.0);
   float s = 0.0;
-  for(int i = 0; i < 7; i++){
-    if(float(i) >= uLanternGeo.w) break;
+  for(int i = 0; i < 2; i++){
     vec3 L = lanternPos(i) - p;
-    s += 1.0 / max(dot(L, L), 0.02);
+    s += 1.0 / max(dot(L, L), 0.04);
   }
-  return uLanternCol * s * 0.22;
+  return uLanternCol * s * 0.30;
 }
 
 /** 見上げた先に提灯があれば、その玉を返す。 */
 vec3 lanternOrbs(vec3 d, vec3 from){
   if(uLanternCol.r < 0.0005 || d.y < 0.02) return vec3(0.0);
   vec3 sum = vec3(0.0);
-  for(int i = 0; i < 7; i++){
-    if(float(i) >= uLanternGeo.w) break;
+  for(int i = 0; i < 2; i++){
     vec3 L = lanternPos(i) - from;
     float t = dot(L, d);
     if(t < 0.0) continue;
     // 提灯までの最短距離。直径 24cm の玉として当たり判定する
     float m = length(L - d * t);
-    sum += uLanternCol * smoothstep(0.13, 0.04, m) * 62.0;
+    sum += uLanternCol * smoothstep(0.13, 0.03, m) * 85.0;
   }
   return sum;
 }

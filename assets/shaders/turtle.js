@@ -6,7 +6,7 @@
 // 真上から見たときの手がかりは、甲羅の鱗板の割れ方と、四肢の漕ぐ動き、
 // それに目の後ろの赤い斑。この三つが揃うと一目でミドリガメになる。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030059';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030133';
 
 export const VS_TURTLE = `${HEAD}
 layout(location=0) in vec2 aUv;
@@ -135,21 +135,44 @@ uniform vec3 uCam;
 uniform float uSeed;
 out vec4 frag;
 
-/** 甲羅の鱗板の継ぎ目。中央列・側列・縁列の三段に割れる。 */
-float scuteSeam(float th, float rr){
+/**
+ * 甲羅の鱗板の継ぎ目。
+ *
+ * カメの背甲を真上から見ると、中央に椎甲板が 5 枚、その左右に肋甲板が
+ * 4 対、さらに外へ縁甲板が 11〜12 対並ぶ。四角い板が並ぶ形で、
+ * 中心から放射する線ではない。極座標で切ると車輪の輻のようになって、
+ * 甲羅ではなく蓮の葉に見えてしまう。
+ *
+ * so 体に沿った座標（前後 u・左右 v）で切る。
+ */
+float scuteSeam(float th, float rr, out float plate){
+  float u = cos(th) * rr;        // -1 後ろ … +1 前
+  float v = sin(th) * rr;        // 左右
+  float av = abs(v);
   float seam = 0.0;
-  // 縁列との境
-  seam = max(seam, 1.0 - smoothstep(0.0, 0.055, abs(rr - 0.74)));
-  // 中央列と側列の境（左右 2 本）
-  float lat = abs(abs(sin(th)) - 0.52);
-  seam = max(seam, (1.0 - smoothstep(0.0, 0.10, lat)) * smoothstep(0.80, 0.70, rr));
-  // 前後の仕切り。中央列は 5 枚、側列は 4 枚
-  float along = cos(th) * rr;
-  float cuts = abs(fract(along * 2.2 + 0.5) - 0.5);
-  seam = max(seam, (1.0 - smoothstep(0.0, 0.055, cuts)) * smoothstep(0.80, 0.72, rr));
-  // 縁列の切れ目は細かい
-  float edge = abs(fract(th * 3.8) - 0.5);
-  seam = max(seam, (1.0 - smoothstep(0.0, 0.10, edge)) * smoothstep(0.70, 0.80, rr));
+  float id = 0.0;
+
+  // 縁甲板。外周の帯を 12 対に刻む。ここは細かい
+  float rim = smoothstep(0.70, 0.80, rr);
+  float marg = abs(fract(th / 6.2831853 * 24.0) - 0.5) * 2.0;
+  seam = max(seam, (1.0 - smoothstep(0.55, 0.92, marg)) * rim);
+  // 椎甲板との境（縁甲板の内側のふち）
+  seam = max(seam, 1.0 - smoothstep(0.0, 0.045, abs(rr - 0.745)));
+
+  float body = 1.0 - rim;
+  // 椎甲板と肋甲板の境。左右に 2 本、前後に通る
+  seam = max(seam, (1.0 - smoothstep(0.0, 0.055, abs(av - 0.255))) * body);
+  // 肋甲板と縁甲板の境
+  seam = max(seam, (1.0 - smoothstep(0.0, 0.055, abs(av - 0.615))) * body);
+
+  // 前後の刻み。椎甲板は 5 枚、肋甲板は 4 対で、継ぎ目の位置がずれている
+  float n = av < 0.255 ? 5.0 : 4.0;
+  float off = av < 0.255 ? 0.0 : 0.5;
+  float cut = abs(fract((u * 0.5 + 0.5) * n + off) - 0.5) * 2.0;
+  seam = max(seam, (1.0 - smoothstep(0.55, 0.95, cut)) * body);
+
+  // 板ごとの通し番号。板ごとに色を振るのに使う
+  plate = floor((u * 0.5 + 0.5) * n + off) * 3.0 + floor(av * 3.3) + rim * 11.0;
   return seam;
 }
 
@@ -168,15 +191,22 @@ void main(){
     float th = u * 6.2831853, rr = v;
     vec3 dark  = vec3(0.052, 0.068, 0.036);
     vec3 olive = vec3(0.115, 0.135, 0.062);
+    float plate;
+    float seam = scuteSeam(th, rr, plate);
     float mottle = fbm(vec2(th * 2.4 + uSeed * 9.0, rr * 3.2));
     base = mix(dark, olive, mottle);
-    // 鱗板ごとの放射する筋
-    float ray = 0.5 + 0.5 * sin(th * 16.0 + uSeed * 5.0 + rr * 7.0);
-    base = mix(base, vec3(0.165, 0.180, 0.080), ray * 0.35 * smoothstep(0.75, 0.25, rr));
+    // 板ごとに地の濃さが違う
+    base *= 0.84 + 0.32 * hash12(vec2(plate, uSeed * 31.0));
+    // アカミミガメの甲羅には、板ごとに黄緑の細い筋が渦を巻いて入る。
+    // 中心から全体へ放射するのではなく、板の中で閉じている
+    vec2 lp = vec2(cos(th), sin(th)) * rr * 9.0;
+    float swirl = 0.5 + 0.5 * sin(length(fract(lp) - 0.5) * 26.0 + plate);
+    base = mix(base, vec3(0.150, 0.168, 0.072), swirl * 0.28 * (1.0 - seam));
+    // 板の中の成長輪。縁ほど詰む
+    base *= 0.94 + 0.10 * sin(rr * 46.0 + plate * 2.0);
     // 継ぎ目は溝なので暗い
-    float seam = scuteSeam(th, rr);
-    base *= 1.0 - seam * 0.55;
-    // 縁列は黄色みが強い
+    base *= 1.0 - seam * 0.62;
+    // 縁甲板は黄色みが強い
     base = mix(base, vec3(0.150, 0.145, 0.058), smoothstep(0.76, 0.95, rr) * 0.7);
     gloss = 0.46;
   } else if(vPart == 1){

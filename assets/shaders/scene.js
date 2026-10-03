@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030059';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610030133';
 
 
 
@@ -131,6 +131,9 @@ void main(){
       // 目地は最後に落とす。砂が溜まっていても、凹んでいるぶんは必ず暗い
       base = mix(base, vec3(0.055, 0.048, 0.038), joint * 0.80 * (1.0 - cover * 0.45));
 
+      // 踏まれて土埃が擦り込まれる。目地のまわりがいちばん黒い
+      base = grime(base, joint * 0.8 + (1.0 - cover) * 0.2, vec3(0.045, 0.038, 0.028), 0.45);
+
       // 舟と器のまわりは水が跳ねて濡れている
       float ring = outerDist(pp);
       float wet = clamp((1.0 - smoothstep(0.0, 0.30, ring)) * 0.75
@@ -215,6 +218,7 @@ uniform float uBowlRim;
 uniform vec3 uBowlPos;
 uniform float uGroundY;
 uniform float uRimTop2;
+#define TANK_RIM uRimTop2
 uniform vec2 uTankOuter2;
 out vec4 frag;
 
@@ -258,6 +262,18 @@ void main(){
     // 壁が傾いているので、内寸はその高さで測る
     float corner = smoothstep(0.10, 0.004, tankIn(vW.xz - uTankDraft * vW.y));
     base *= 1.0 - corner * 0.22;
+
+    // 一夏使ったトレーの汚し。
+    // 隅に溜まった垢、壁を伝った水の跡、乾いた水垢の輪、それに擦り傷
+    base = grime(base, corner, vec3(0.026, 0.035, 0.028), 0.55);
+    if(region == 1){
+      // 内壁。水位が下がった跡が縦に残る
+      float down = clamp((TANK_RIM - vW.y) / 0.19, 0.0, 1.0);
+      base = mix(base, vec3(0.038, 0.052, 0.040),
+                 runStain(vec2(vW.x + vW.z, vW.y), down) * 0.26);
+    }
+    base = mix(base, base * 0.50 + vec3(0.21, 0.24, 0.24),
+               scratch(vW.xz, 0.4, 1.0) * 0.30);
 
     vec3 bn = normalize(vec3((grain - 0.5) * 0.10, 1.0, (fade - 0.5) * 0.05));
     float tarpAO = 0.88 + 0.12 * grain;
@@ -317,6 +333,11 @@ void main(){
     // 口元の呉須の一本線
     float lip = 1.0 - smoothstep(0.0, 0.0035, abs(vW.y - (uBowlRim - 0.009)));
     cer = mix(cer, vec3(0.085, 0.135, 0.300), lip * 0.85);
+    // 使い込んだ器。貫入に茶渋が入り、糸底の近くは土埃で曇る
+    cer = grime(cer, craze, vec3(0.145, 0.105, 0.062), 0.65);
+    cer = mix(cer, vec3(0.195, 0.175, 0.145),
+              (1.0 - smoothstep(uBowlRim - 0.075, uBowlRim - 0.040, vW.y)) * 0.30 * uWear);
+    cer = mix(cer, cer * 0.70 + vec3(0.16), scratch(bp * 0.05, 1.1, 0.9) * 0.22);
     if(region == 5){
       cer *= 0.80;
       // 水に浸かっている所は水の色を帯びる。白磁のままだと水が入って見えない
@@ -371,6 +392,17 @@ void main(){
     // 水の跳ねた跡。乾くと白い輪が残る
     float splash = smoothstep(0.52, 0.80, fbm(vW.xz * 7.0 + 5.0));
     wood = mix(wood, wood * 0.80 + vec3(0.10, 0.11, 0.11), splash * 0.35);
+    // 外壁を伝って下りた水の跡。下へ行くほど広がって薄れる
+    float down3 = clamp((TANK_RIM - vW.y) / 0.21, 0.0, 1.0);
+    wood = mix(wood, vec3(0.044, 0.052, 0.048),
+               runStain(vec2(vW.x + vW.z * 0.7, vW.y), down3) * 0.50);
+    // 乾いた水垢の輪
+    wood = mix(wood, wood * 0.72 + vec3(0.26, 0.27, 0.26), waterMark(vW.xz, 26.0) * 0.30);
+    // 地面に近いほど土埃をかぶる
+    wood = mix(wood, vec3(0.085, 0.074, 0.058),
+               (1.0 - smoothstep(uGroundY, uGroundY + 0.07, vW.y)) * 0.55 * uWear);
+    // 擦り傷。立てかけたり引きずったりで、横向きに付く
+    wood = mix(wood, wood * 0.55 + vec3(0.22, 0.24, 0.24), scratch(vW.xy, 0.0, 1.2) * 0.34);
 
     // 下へ行くほど地面の照り返ししか届かない
     float toGround = smoothstep(uGroundY, uGroundY + 0.14, vW.y);

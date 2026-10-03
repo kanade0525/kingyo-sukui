@@ -9,19 +9,19 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610030059';
-import { VS_FULL } from '../shaders/common.js?v=202610030059';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610030059';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610030059';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610030059';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610030059';
-import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH } from '../shaders/props.js?v=202610030059';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610030059';
-import { Ocean } from './ocean.js?v=202610030059';
-import { Ripple } from './ripple.js?v=202610030059';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN } from './world.js?v=202610030059';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610030059';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610030059';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh } from './glx.js?v=202610030133';
+import { VS_FULL } from '../shaders/common.js?v=202610030133';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER } from '../shaders/scene.js?v=202610030133';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610030133';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610030133';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610030133';
+import { VS_PAD, FS_PAD, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610030133';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610030133';
+import { Ocean } from './ocean.js?v=202610030133';
+import { Ripple } from './ripple.js?v=202610030133';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, AIR, LANTERN, RAIN } from './world.js?v=202610030133';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610030133';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610030133';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -69,6 +69,7 @@ export class Renderer {
     this.pPad = new Program(gl, VS_PAD, FS_PAD, 'pad');
     this.pBubble = new Program(gl, VS_BUBBLE, FS_BUBBLE, 'bubble');
     this.pSplash = new Program(gl, VS_SPLASH, FS_SPLASH, 'splash');
+    this.pRain = new Program(gl, VS_RAIN, FS_RAIN, 'rain');
     this.pGear = new Program(gl, VS_GEAR, FS_GEAR, 'gear');
     this.pBright = new Program(gl, VS_FULL, FS_BRIGHT, 'bright');
     this.pBlur = new Program(gl, VS_FULL, FS_BLUR, 'blur');
@@ -83,11 +84,13 @@ export class Renderer {
     this.mPad = padMesh(gl);
     this.mBubble = bubbleMesh(gl, AIR.bubbles);
     this.mSplash = splashMesh(gl, 36);
+    this.mRain = splashMesh(gl, RAIN.count);
     this.mGear = gearMesh(gl, -TANK.depth);
     this.stonePos = [AIR.stone[0], -TANK.depth + 0.014, AIR.stone[2]];
     this.mWater = gridMesh(gl, 220, 150);
 
     this.weather = WEATHER.CLEAR;
+    this.wear = 1.0;
     this.setHour(DEFAULT_HOUR);
 
     // 縁の滑らか化。既定で入れる。FXAA なので経路が軽く、
@@ -220,6 +223,17 @@ export class Renderer {
     BOWL.pos[0] = this.bowlPos[0];
     BOWL.pos[2] = this.bowlPos[2];
 
+    // 提灯は画面の左右に 1 つずつ。縦画面でも横画面でも、
+    // 遊んでいる人から見て「両脇から照らされている」形にする
+    for (let i = 0; i < 2; i++) {
+      const sx = i === 0 ? -LANTERN.across : LANTERN.across;
+      LANTERN.pos[i] = [
+        rightV[0] * sx + towardV[0] * LANTERN.toward,
+        LANTERN.y,
+        rightV[2] * sx + towardV[2] * LANTERN.toward,
+      ];
+    }
+
 
     const fwd = norm3(sub3(target, eye));
     const right = norm3(cross3(fwd, [0, 1, 0]));
@@ -278,7 +292,16 @@ export class Renderer {
       .setFloat('uRefrTan', this.refrTan)
             // 水深 16cm の舟では、屈折のずれが小さすぎてコースティクスがほとんど
       // 出ない（clearwater は水深 1.6m）。見える強さまで誇張している
-      .setFloat('uCausGain', 6.0 * s.direct)
+      // コースティクスの強さ。
+      //
+      // 明るさは水面の曲率に比例するので、波を低くすると素直に消える。
+      // 物理としては正しいが、「波の高さ」のつまみを下げただけで
+      // 水底の網目まで無くなってしまうのは意図と違う。
+      // 波の高さで割り戻して、見え方をある程度そろえる。
+      // 完全には割り戻さない（0.75 乗）ので、波を上げれば網目も強くなる
+      .setFloat('uCausGain', 6.0 * s.direct * Math.pow(0.55 / Math.max(this.ocean.amp, 0.05), 0.75))
+      // 汚しの強さ。0 で下ろしたて、1 で一夏使ったあと
+      .setFloat('uWear', this.wear)
       // 屋台の天幕。舟より奥と真上を覆い、手前は開けておく。
       // 水面がこちらへ返す光は上と奥を向くので、そこを塞ぐと
       // 映り込みに構造が入り、灰色の靄が消える
@@ -286,7 +309,10 @@ export class Renderer {
       .set('uTentBox', TENT.box)
       // 連提灯
       .set('uLanternCol', s.lantern)
-      .set('uLanternGeo', [LANTERN.y, LANTERN.z, LANTERN.spacing, LANTERN.count])
+      .vec4Array('uLanternP[0]', new Float32Array([
+        LANTERN.pos[0][0], LANTERN.pos[0][1], LANTERN.pos[0][2], 0,
+        LANTERN.pos[1][0], LANTERN.pos[1][1], LANTERN.pos[1][2], 0,
+      ]), 2)
       // 幌布を透かしてくる光。白い布なので日向の空よりずっと暗く、
       // わずかに暖かい
       .set('uTentTint', [
@@ -436,8 +462,13 @@ export class Renderer {
       this.mGear.draw();
     }
     this.#drawFish(school, false, time);
-    // 沈めたポイは水面に隠れてしまうので、水中パスにも描く
-    if (poi.visible && poi.y < 0.02) this.#drawPoi(poi, true);
+    // ポイは水中パスにも必ず描く。
+    //
+    // 本パスでは水面より奥になった時点で深度に落とされる。閾値を
+    // 「水面のすぐ上」に置いていたら、持ち上げる途中で波紋がポイより
+    // 高く盛り上がった一瞬だけ、どちらにも描かれず消えていた。
+    // 水の上にあるときに重ねて描いても、同じ絵が重なるだけで害はない
+    if (poi.visible) this.#drawPoi(poi, true);
 
     // ---- 本パス ----
     bindFbo(gl, this.fbos.hdr);
@@ -537,6 +568,20 @@ export class Renderer {
           .setFloat('uPower', poi.splashV)
           .setFloat('uOut', poi.splashIn ? 0 : 1);
         this.mSplash.draw();
+      }
+
+      // 雨。落ちてくる粒。着水の波紋は game.js が同じ式で落としている
+      if (this.weather === 2) {
+        const rp = this.pRain.use();
+        this.#lights(rp);
+        rp.mat4('uVP', this.vp).set('uCam', this.cam)
+          .set('uRight', this.basis.right)
+          .set('uUp', this.basis.up)
+          .set('uArea', [TANK.halfX * 1.05, TANK.halfZ * 1.05])
+          .setFloat('uFall', RAIN.fall)
+          .setFloat('uCount', RAIN.count)
+          .setFloat('uTime', time);
+        this.mRain.draw();
       }
 
       gl.enable(gl.DEPTH_TEST);

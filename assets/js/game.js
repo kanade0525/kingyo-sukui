@@ -8,9 +8,15 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610030059';
-import { Poi } from './poi.js?v=202610030059';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR } from './world.js?v=202610030059';
+import { School } from './fish.js?v=202610030133';
+import { Poi } from './poi.js?v=202610030133';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610030133';
+
+/** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
+const h11 = (x) => {
+  const v = Math.sin(x * 127.1) * 43758.5453;
+  return v - Math.floor(v);
+};
 
 export const PHASE = { READY: 'ready', PLAY: 'play', OVER: 'over' };
 
@@ -25,6 +31,9 @@ export class Game {
     this.phase = PHASE.READY;
     this.showUntil = 0;
     this.rain = 0;      // 0 = 降っていない, 1 = 本降り
+    // 店じまい。ポイを貸してもらえないので、水面をなでることしかできない
+    this.closed = false;
+    this.touch = null;
     this.time = 0;          // シェーダへ渡す経過時間。止めない
     this.reset();
   }
@@ -65,12 +74,14 @@ export class Game {
 
   /** 画面から拾った水面上の位置。null なら動かさない。 */
   aim(hit) {
-    if (hit) this.poi.aim(hit[0], hit[1]);
+    if (!hit) return;
+    if (this.closed) { this.touch = [hit[0], hit[1]]; return; }
+    this.poi.aim(hit[0], hit[1]);
   }
 
   press(down) {
     if (this.phase !== PHASE.PLAY) return;
-    const was = this.poi.pressed;
+    if (this.closed) { this.stroking = down; return; }
     this.poi.pressed = down;
   }
 
@@ -80,35 +91,27 @@ export class Game {
 
     this.#updateBowl(dt);
 
-    // 雨。水面に当たった粒が、絶え間なく小さな輪を作る。
-    // 雨の日の水面が雨に見えるのは、ほとんどこの輪のおかげ
-    if (this.rain > 0 && this.ripple) {
-      this.rainAt = (this.rainAt ?? 0) - dt;
-      let guard = 0;
-      while (this.rainAt < 0 && guard++ < 12) {
-        this.rainAt += 0.010 / this.rain;
-        this.ripple.drop(
-          (Math.random() * 2 - 1) * TANK.halfX,
-          (Math.random() * 2 - 1) * TANK.halfZ,
-          0.005 + Math.random() * 0.005,
-          0.0013,
-        );
-      }
-    }
+    // 雨粒も泡も、描いている粒と同じ式で位相を見て、
+    // ちょうど水面に届いた瞬間に波紋を落とす
+    this.#surfaceHits(dt);
 
-    // エアストーンの泡が水面ではじける。
-    // 1 粒ずつ追わず、出る量に見合う間隔で小さな波紋を立てる。
-    // これが無いと、泡が上がってきて水面にそっと吸い込まれる
-    this.burstAt = (this.burstAt ?? 0) - dt;
-    if (this.burstAt < 0 && this.ripple) {
-      this.burstAt = 0.045 + Math.random() * 0.05;
-      this.ripple.drop(
-        AIR.stone[0] + (Math.random() - 0.5) * 0.030,
-        AIR.stone[2] + (Math.random() - 0.5) * 0.020,
-        0.009 + Math.random() * 0.006,
-        0.00055,
-      );
+    // 店じまいのあと。ポイは片付けられていて、水面をなでるだけ。
+    // 指の跡に沿って、浅い波が立つ
+    if (this.closed) {
+      poi.visible = false;
+      poi.pressed = false;
+      if (this.stroking && this.touch && this.ripple) {
+        const [x, z] = this.touch;
+        const d = this.lastTouch ? Math.hypot(x - this.lastTouch[0], z - this.lastTouch[1]) : 0;
+        this.ripple.drop(x, z, 0.030, -0.0004 - Math.min(d, 0.05) * 0.030);
+        this.lastTouch = [x, z];
+      } else {
+        this.lastTouch = null;
+      }
+      this.school.update(dt, { submerged: false, x: 0, z: 0, y: 1 }, this.ripple);
+      return;
     }
+    poi.visible = true;
 
     if (this.phase !== PHASE.PLAY) {
       // 遊んでいない間も水面は動かす。開始前の画面がただの静止画にならない
@@ -201,6 +204,53 @@ export class Game {
         f.respawnAt = this.time + (f.turtle ? TURTLE.interval * (0.6 + Math.random()) : 0.9);
       }
       this.held.length = 0;
+    }
+  }
+
+  /**
+   * 水面に届いたものから波紋を落とす。
+   *
+   * 雨粒も泡も、描画側（props.js の頂点シェーダ）が通し番号と時刻から
+   * 位置を引いている。ここでも同じ式を使い、位相が切り替わった粒だけを拾う。
+   * 別々に乱数で出すと、落ちている所と輪の立つ所が合わず、
+   * 「雨が降っている」ではなく「水面がざわついている」にしか見えない。
+   */
+  #surfaceHits(dt) {
+    if (!this.ripple || dt <= 0) return;
+    const prev = this.time - dt;
+
+    if (this.rain > 0) {
+      for (let i = 0; i < RAIN.count; i++) {
+        const r1 = h11(i * 1.7), r2 = h11(i * 3.1 + 5.0), r3 = h11(i * 7.3 + 11.0);
+        const period = 0.70 + r1 * 0.55;
+        // 位相が 1 周したら、その粒が水面に着いたということ
+        if (Math.floor(this.time / period + r2) === Math.floor(prev / period + r2)) continue;
+        this.ripple.drop(
+          (r1 * 2 - 1) * TANK.halfX * 1.05,
+          (r3 * 2 - 1) * TANK.halfZ * 1.05,
+          0.006 + r2 * 0.004,
+          0.0016,
+        );
+      }
+    }
+
+    // 泡。上がりきった瞬間にはじけて、小さな輪が立つ。
+    // 0.86 は props.js の RISE と同じ値
+    for (let i = 0; i < AIR.bubbles; i++) {
+      const r1 = h11(i * 1.7), r2 = h11(i * 3.1 + 5.0), r3 = h11(i * 7.3 + 11.0);
+      const k = (0.14 + r1 * 0.07) / 0.16;
+      const was = (prev * k + r2) % 1;
+      const now = (this.time * k + r2) % 1;
+      const crossed = now < was ? was < 0.86 : (was < 0.86 && now >= 0.86);
+      if (!crossed) continue;
+      // 1 粒ずつは弱く。54 粒が毎秒 60 回も同じ所を叩くので、
+      // 1 回ぶんを強くすると、石の上に窪みが立ったまま残る
+      this.ripple.drop(
+        AIR.stone[0] + (r1 - 0.5) * 0.020,
+        AIR.stone[2] + (r3 - 0.5) * 0.012,
+        0.007 + r3 * 0.004,
+        0.00028,
+      );
     }
   }
 

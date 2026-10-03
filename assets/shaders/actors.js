@@ -7,7 +7,7 @@
 // ひれは不透明に描く。水中パスの α にはカメラからの距離を入れていて、
 // ブレンドすると距離が壊れ、水面の屈折が狂うため。薄さは色で表す。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030059';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610030133';
 
 // ---------------------------------------------------------------- 金魚
 
@@ -43,9 +43,11 @@ float prof(float u){
   // 和金。フナ型
   float slim = 0.248 * (1.0 - smoothstep(0.50, 0.93, u) * 0.88)
              * (0.60 + 0.40 * sin(3.14159265 * clamp(u / 0.72, 0.0, 1.0)));
-  // 琉金型。重心が前に寄った、短くて深い胴
+  // 琉金型。重心が前に寄った、短くて深い胴。
+  // 頭は小さい。ここを太くすると、張り出した目が胴に埋もれて見えなくなる
   float fat = 0.360 * (1.0 - smoothstep(0.38, 0.86, u) * 0.93)
-            * (0.42 + 0.58 * sin(3.14159265 * clamp(u / 0.58, 0.0, 1.0)));
+            * (0.42 + 0.58 * sin(3.14159265 * clamp(u / 0.58, 0.0, 1.0)))
+            * (0.56 + 0.44 * smoothstep(0.04, 0.34, u));
   return nose * mix(slim, fat, uFancy);
 }
 
@@ -54,8 +56,36 @@ vec3 shapeOf(float u, float v, int part){
     float ang = v * 6.2831853;
     float ca = cos(ang), sa = sin(ang);
     float r = prof(u);
-    float bulge = 1.0 + uBulge * exp(-pow((u - 0.105) / 0.075, 2.0)) * abs(sa);
-    return vec3(0.5 - u, ca * r * (1.16 - 0.13 * ca) * bulge, sa * r * 0.74 * bulge);
+    vec3 p = vec3(0.5 - u, ca * r * (1.16 - 0.13 * ca), sa * r * 0.74);
+
+    // 出目金の目。
+    //
+    // 頭の両脇に、ほとんど体高の半分もある球が張り出している。
+    // これが出目金を出目金たらしめているので、胴の半径を一様に膨らませる
+    // のではなく、球そのものを足す。膨らませるだけだと真上から見たとき
+    // 「頭が太い魚」にしかならず、目が見えない。
+    //
+    // 和の取り方は、体の軸から出た光線に沿って「遠いほう」を採る。
+    // 球に入った頂点を単に球面へ押し出すと、手前側の面へ寄ってしまい、
+    // かえって胴がへこむ。
+    if(uBulge > 0.01){
+      vec3 axis = vec3(0.5 - u, 0.0, 0.0);
+      vec3 ray = p - axis;
+      float tb = length(ray);
+      if(tb > 1e-5){
+        vec3 dir = ray / tb;
+        float er = 0.098 * uBulge / 0.55;
+        float tmax = tb;
+        for(int k = 0; k < 2; k++){
+          vec3 oc = vec3(0.5 - 0.112, -0.006, k == 0 ? 0.120 : -0.120) - axis;
+          float b2 = dot(oc, dir);
+          float disc = b2 * b2 - dot(oc, oc) + er * er;
+          if(disc > 0.0) tmax = max(tmax, b2 + sqrt(disc));
+        }
+        p = axis + dir * tmax;
+      }
+    }
+    return p;
   }
   if(part == 1){
     // 尾びれ。
@@ -150,6 +180,7 @@ void main(){
 export const FS_FISH = `${HEAD}
 ${NOISE}
 ${SKYLIB}
+${MATERIAL}
 ${AMBIENT}
 ${WATERLIB}
 ${CAUSTICS}
@@ -206,8 +237,12 @@ void main(){
       base = mix(belly, flank, smoothstep(0.08, 0.52, up));
       base = mix(base, back, smoothstep(0.58, 0.95, up));
     } else if(uKind == 1){
-      // 黒出目金。黒天鵞絨に、斜めから見ると青銅の照り
-      base = vec3(0.030, 0.025, 0.034) + vec3(0.085, 0.045, 0.020) * pow(1.0 - ndv, 2.5);
+      // 黒出目金。黒天鵞絨に、斜めから見ると青銅の照り。
+      // 真っ黒にすると真上から形がまるで読めず、黒い塊になる。
+      // 実物も、光が当たる面はうっすら茶を帯びて明るい
+      base = vec3(0.058, 0.048, 0.062)
+           + vec3(0.115, 0.062, 0.028) * pow(1.0 - ndv, 2.2)
+           + vec3(0.040, 0.034, 0.030) * up;
     } else {
       // 更紗出目金。白地に緋の斑。境目は実物どおり硬い。
       // 白が勝ちすぎると、真上から見たとき白い影がよぎるようにしか
@@ -230,10 +265,13 @@ void main(){
     float pearl = sheen * (0.75 + 0.25 * sc);
 
     // 目。白目のふちと黒い瞳、小さな写り込み
-    vec2 e1 = vec2((u - 0.100) * 2.6, v - 0.195);
-    vec2 e2 = vec2((u - 0.100) * 2.6, v - 0.805);
+    // 目。出目金は横へ張り出した球の頂点に来るので、v が真横（0.25 / 0.75）
+    float ev = uKind == 0 ? 0.195 : 0.250;
+    float eu = uKind == 0 ? 0.100 : 0.118;
+    vec2 e1 = vec2((u - eu) * 2.6, v - ev);
+    vec2 e2 = vec2((u - eu) * 2.6, v - (1.0 - ev));
     float eye = min(length(e1), length(e2));
-    float eyeR = uKind == 0 ? 0.029 : 0.050;   // 出目金は目が張り出す
+    float eyeR = uKind == 0 ? 0.029 : 0.062;   // 出目金は目が張り出す
     base = mix(base, vec3(0.30, 0.25, 0.20), 1.0 - smoothstep(eyeR, eyeR * 1.14, eye));
     base = mix(base, vec3(0.012, 0.010, 0.013), 1.0 - smoothstep(eyeR * 0.74, eyeR * 0.88, eye));
     float glint = 1.0 - smoothstep(0.003, 0.008,
@@ -306,7 +344,7 @@ void main(){
   vec3 col = base * lit * (0.80 + 0.30 * up);
   // ひれは薄くて照りが乗らない。胴だけ光らせる。
   // ここを胴と同じにすると、ひれ一面に鏡面が乗ってセロファンに見える
-  float gloss = vPart == 0 ? 0.8 : 0.03;
+  float gloss = vPart == 0 ? (uKind == 1 ? 1.5 : 0.8) : 0.03;
   float grough = vPart == 0 ? 0.24 : 0.55;
   col += ggx(N, V, underSunDir(), grough, vec3(0.035)) * uSunColor * gloss * PI;
   col += base * pow(1.0 - ndv, 4.0) * 0.10 * lit;  // 縁の照り返し
@@ -357,6 +395,7 @@ void main(){
 export const FS_POI = `${HEAD}
 ${NOISE}
 ${SKYLIB}
+${MATERIAL}
 ${AMBIENT}
 in vec3 vW;
 in vec3 vN;
@@ -399,6 +438,8 @@ void main(){
     // 濡れた所は斑に透ける
     col *= 1.0 - uWet * 0.18 * smoothstep(0.45, 0.72, fbm(vUv * 7.0 + 3.0));
     col = mix(vec3(0.72, 0.56, 0.48), col, lip);
+    // 前の客が使った紙。手の脂で曇った所と、毛羽立ちが残る
+    col = grime(col, smoothstep(0.48, 0.80, fbm(vUv * 3.1 + 11.0)), vec3(0.50, 0.45, 0.40), 0.38);
     // 紙は光を透かす
     // 和紙は光を透かす。裏から回った分を足す
     // 和紙は光を透かす。表から当たる分と、裏へ回って透けてくる分を足す。
@@ -439,7 +480,9 @@ void main(){
 
     // 使い込んで擦れた所は、樹脂が白化して色が抜ける
     float wear = smoothstep(0.62, 0.88, fbm(vUv * 13.0 + 4.0));
-    col = mix(col, col * 0.55 + vec3(0.26, 0.17, 0.16), wear * 0.30);
+    col = mix(col, col * 0.55 + vec3(0.26, 0.17, 0.16), wear * 0.30 + scratch(vUv * 0.4, 0.6, 1.4) * 0.26);
+    // 何度も水に浸かった枠には、乾いた水垢が白く残る
+    col = mix(col, col * 0.62 + vec3(0.21, 0.17, 0.16), waterMark(vUv * 0.5, 7.0) * 0.26);
 
     col = col * (uSunColor * max(dot(N, uSunDir), 0.0) + skyAmbient(N)
                + lanternLight(vW, N) + lanternAmbient(vW));

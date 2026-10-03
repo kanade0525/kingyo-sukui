@@ -4,8 +4,8 @@
 // 水中で速く動かしたときの方が一気に傷む。斜めに入れて静かに抜くのが
 // 上手い人のやり方なので、ゲームとしてもそこに報いる。
 
-import { TANK, POI } from './world.js?v=202610030059';
-import { clamp, lerp } from './mat.js?v=202610030059';
+import { TANK, POI } from './world.js?v=202610030133';
+import { clamp, lerp } from './mat.js?v=202610030133';
 
 export class Poi {
   constructor() {
@@ -82,7 +82,7 @@ export class Poi {
     this.splash = Math.max(0, (this.splash || 0) - dt * 2.6);
     if (ripple) {
       if (this.submerged !== wasUnder) {
-        ripple.drop(this.x, this.z, POI.radius * 1.9, this.submerged ? -0.0062 : 0.0075);
+        ripple.drop(this.x, this.z, POI.radius * 1.9, this.submerged ? -0.0040 : 0.0046);
         // 飛沫の合図。入るときのほうが派手に散る
         this.splash = 1.0;
         this.splashAt = [this.x, this.z];
