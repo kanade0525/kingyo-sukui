@@ -30,6 +30,8 @@ const DICT = {
     wxRain: '雨',
     backToNow: 'いまの時刻と天気に戻す',
 
+    liveNow: 'いまの時刻と天気',
+    setByHand: '手動で設定中',
     here: '現在地',
     locating: '現在地を確認中…',
     noLocation: '現在地が取れず晴れ',
@@ -83,6 +85,8 @@ const DICT = {
     wxRain: 'Rain',
     backToNow: 'Back to the time and weather here',
 
+    liveNow: 'Your local time and weather',
+    setByHand: 'Set by hand',
     here: 'Your location',
     locating: 'Finding your location…',
     noLocation: 'No location — showing clear',

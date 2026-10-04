@@ -294,3 +294,51 @@ export const RAIN = {
 export const MAX_FISH = 108;
 /** 器に泳がせておく数の上限。これを超えたら古いものから引っ込める。 */
 export const MAX_BOWL = 12;
+
+
+/**
+ * 水面に浮かぶ物を、お椀の外へ押しのける。
+ *
+ * 置き場所はお椀と重ならないように選んであるが、お椀は見下ろす角度で
+ * 舟の中へ寄るので（真上にすると手前へのずらしがほとんど効かなくなる）、
+ * 表の値だけでは足りない。真上から見ると葉が 6〜8cm 食い込んでいた。
+ *
+ * 描画から切り離してあるのは、角度と向きの全ての組み合わせで
+ * 貫通しないことを、絵を描かずに確かめられるようにするため。
+ *
+ * @param x,z      押しのける前の位置
+ * @param keep     お椀の中心から空けたい距離
+ * @param bowl     お椀の位置 [x, y, z]
+ * @param margin   舟の内側へ収めるときの余白
+ */
+export function pushOutOfBowl(x, z, keep, bowl, margin) {
+  let px = x, pz = z;
+  const bx = px - bowl[0], bz = pz - bowl[2];
+  const d = Math.hypot(bx, bz);
+  if (d < keep) {
+    const k = d > 1e-4 ? keep / d : 1;
+    px = bowl[0] + bx * k;
+    pz = bowl[2] + bz * k;
+  }
+  return [
+    Math.min(Math.max(px, -TANK.halfX + margin), TANK.halfX - margin),
+    Math.min(Math.max(pz, -TANK.halfZ + margin), TANK.halfZ - margin),
+  ];
+}
+
+/**
+ * 見下ろす角度と画面の向きから、お椀が来るワールド座標を出す。
+ * renderer と同じ式。こちらも検査のために切り出してある。
+ */
+export function bowlPosFor(pitchDeg, portrait) {
+  const DEG = Math.PI / 180;
+  const yaw = portrait ? Math.PI / 2 : 0;
+  const across = portrait ? BOWL.acrossPortrait : BOWL.across;
+  const lean = Math.cos(pitchDeg * DEG) / Math.cos(65 * DEG);
+  const toward = (portrait ? BOWL.towardPortrait : BOWL.toward) * lean;
+  return [
+    Math.cos(yaw) * across + Math.sin(yaw) * toward,
+    0,
+    -Math.sin(yaw) * across + Math.cos(yaw) * toward,
+  ];
+}

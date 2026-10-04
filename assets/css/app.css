@@ -158,12 +158,19 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
   font-variant-numeric:tabular-nums;
 }
 :root.panel-open #nowbar{display:none}
+/* 何を映しているかの一行。いまの時刻と天気を見せていることを、
+   画面だけで分かるようにする */
+#nowWhat{
+  font-size:9px;letter-spacing:.10em;color:#fff;
+  background:var(--hi);border-radius:999px;
+  padding:2px 8px;margin:0 0 4px auto;display:inline-block;
+}
+#nowWhat.manual{background:rgba(23,34,43,.42)}
+
 #nowPlace{font-family:var(--disp);font-size:13px;letter-spacing:.10em;color:var(--ink)}
 #nowSky{font-size:11px;color:var(--ink-dim)}
 #nowTime{font-family:var(--disp);font-size:17px;letter-spacing:.06em;color:var(--hi)}
 #nowTime.manual{color:var(--ink-dim)}
-#nowTime .mark{font-family:var(--body);font-size:10px;letter-spacing:.08em;
-  margin-left:5px;vertical-align:2px}
 
 
 /* いまの時刻と天気では鳴らない層。

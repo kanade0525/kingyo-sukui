@@ -4,14 +4,14 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610031425';
-import { Game } from './game.js?v=202610031425';
-import { UI } from './ui.js?v=202610031425';
-import { localHour, fetchWeather, sunFor } from './sky.js?v=202610031425';
-import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610031425';
-import { Sound, layerWants } from './sound.js?v=202610031425';
-import { POI } from './world.js?v=202610031425';
-import { nearestCity } from './place.js?v=202610031425';
+import { Renderer } from './renderer.js?v=202610041317';
+import { Game } from './game.js?v=202610041317';
+import { UI } from './ui.js?v=202610041317';
+import { localHour, fetchWeather, sunFor } from './sky.js?v=202610041317';
+import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610041317';
+import { Sound, layerWants } from './sound.js?v=202610041317';
+import { POI } from './world.js?v=202610041317';
+import { nearestCity } from './place.js?v=202610041317';
 
 // 言葉をいちばん先に差し替える。覆いの題字も見えてしまうので
 applyI18n();
@@ -115,16 +115,19 @@ function showNow() {
   const el = document.getElementById('nowTime');
   el.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   el.classList.toggle('manual', manualHour);
+
+  // いまの時刻と天気を映していることを、札の先頭に明記する。
+  // 場所も天気も気温も時刻も出してはいたが、それが「あなたのいる所の、
+  // いまの様子」だとは書いていなかった。人が手で動かしたら言い換える
+  const hand = manualHour || manualWeather;
+  const what = document.getElementById('nowWhat');
+  what.textContent = t(hand ? 'setByHand' : 'liveNow');
+  what.classList.toggle('manual', hand);
+
   // want は毎コマ更新されるが、つまみを動かした直後はまだ古い。
   // ここで引き直してから反映する
   sound.setScene(renderer.sun);
   ui.setLayerState(sound.want);
-  if (manualHour) {
-    const mark = document.createElement('span');
-    mark.className = 'mark';
-    mark.textContent = t('manual');
-    el.append(mark);
-  }
   bar.hidden = false;
 }
 

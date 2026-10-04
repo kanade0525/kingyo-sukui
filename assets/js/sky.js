@@ -24,6 +24,11 @@ export function setSite(lat, lon) {
   site = { lat, lon };
 }
 
+/** いま使っている観測地。試験と表示のために読めるようにしてある */
+export function getSite() {
+  return { ...site };
+}
+
 /**
  * 屋台の向き（度）。カメラの向きに対する太陽の方位差でハイライトの出方が決まる。
  *   0°  … 照り返しが水面の中央に座り、白い靄で底が見えなくなる
@@ -49,10 +54,9 @@ const DAWN = 4.6;
  *
  * 戻り値の方位は「画面の奥」を 0 とし、右回りを正にした角度。
  */
-function solarPosition(hour) {
-  const now = new Date();
+function solarPosition(hour, when = new Date()) {
   // 通日。1 月 1 日が 1
-  const day = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+  const day = Math.floor((when - new Date(when.getFullYear(), 0, 0)) / 86400000);
 
   // 赤緯。地軸の傾き 23.44 度を、冬至からの角度で振る
   const decl = -23.44 * DEG * Math.cos((2 * Math.PI * (day + 10)) / 365.25);
@@ -63,7 +67,7 @@ function solarPosition(hour) {
   const eot = 9.87 * Math.sin(2 * b) - 7.53 * Math.cos(b) - 1.5 * Math.sin(b);
 
   // 標準時の基準となる経線。端末の時差から出すので、海外でも合う
-  const meridian = (-new Date().getTimezoneOffset() / 60) * 15;
+  const meridian = (-when.getTimezoneOffset() / 60) * 15;
   // 真太陽時。これの 12 時が南中
   const solar = hour + (site.lon - meridian) / 15 + eot / 60;
   const H = (solar - 12) * 15 * DEG;      // 時角
@@ -98,8 +102,8 @@ export const WEATHER_NAME = ['晴れ', 'くもり', '雨'];
  * きらめきも「方向の揃った強い光」が要るので、ここが落ちると同時に消える。
  * これは手加減ではなく、曇りの日に水底の網目が出ないのと同じこと。
  */
-export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR) {
-  const sp = solarPosition(hour);
+export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR, when = new Date()) {
+  const sp = solarPosition(hour, when);
   // 日の出前・日の入り後は負になる。そのまま使って地平線の下へ沈める
   const elev = sp.elev;
   const azim = sp.azimFromBack + (ORIENT + yawDeg) * DEG;
