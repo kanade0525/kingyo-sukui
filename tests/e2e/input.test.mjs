@@ -79,7 +79,9 @@ export default {
   }),
 
   '店じまいのあとはポイが片付けられている': () => withPage({ hour: 23 }, async (page) => {
-    eq(await peek(page, 'closed'), true, '23 時なのに店じまいになっていない');
+    // 時刻を入れても、game.closed が追いつくのは次のコマ。
+    // 混み合っているとそれが 1 秒先になることがある
+    await until(page, 'closed', (c) => c === true, '23 時にしても店じまいにならない');
     await until(page, 'poi', (p) => !p.visible, '店じまいなのにポイが出たまま');
   }),
 

@@ -342,6 +342,46 @@ export const ROOM = {
  */
 export const HOME = { fit: 3, max: 60 };
 
+/**
+ * 家のカメラの向き。
+ *
+ * 指でなぞった量（-1〜1）から、見下ろす角度と左右の回りを出す。
+ * 縁側に座って首を振るくらいの範囲に限る。後ろへ回り込めないので、
+ * 背景は正面から側面までしか作らなくて済む。
+ *
+ * 式を world.js に置いてあるのは、「どう回しても鉢が画面に収まる」を
+ * 絵を描かずに単体試験で確かめるため（bowlPosFor と同じ作法）。
+ */
+// 既定を 27 度にしていたら、画面がほとんど床で埋まって背景が入らなかった。
+// 縦の画角の半分が 22 度ほどなので、それより浅く構える
+export const ORBIT = { yaw: 60, pitchMin: 8, pitchMax: 70, pitch0: 16 };
+
+export function jarView(orbit = { x: 0, y: 0 }) {
+  const DEG = Math.PI / 180;
+  const x = Math.min(Math.max(orbit.x ?? 0, -1), 1);
+  const y = Math.min(Math.max(orbit.y ?? 0, -1), 1);
+  const yaw = x * ORBIT.yaw * DEG;
+  const span = y < 0 ? ORBIT.pitch0 - ORBIT.pitchMin : ORBIT.pitchMax - ORBIT.pitch0;
+  return [(ORBIT.pitch0 + y * span) * DEG, yaw];
+}
+
+/**
+ * 鉢の輪郭。底（0）から口（1）までの高さに対する外径。
+ *
+ * 太鼓鉢は「底がすぼまり、胴がふくらみ、口がまたすぼまる」。
+ * ここを真っ直ぐにすると、ただのコップになって金魚鉢に見えない。
+ * 胴のいちばん太い所は、高さの 4 割あたり。
+ */
+export function jarRadius(t) {
+  const u = Math.min(Math.max(t, 0), 1);
+  const belly = Math.sin(Math.PI * Math.pow(u, 0.82));      // 胴のふくらみ
+  const foot = JAR.footR / JAR.outerR;
+  const mouth = JAR.mouthR / JAR.outerR;
+  // 底と口を直線で結んだ上に、ふくらみを乗せる
+  const base = foot + (mouth - foot) * u;
+  return JAR.outerR * Math.min(base + (1 - base) * belly, 1);
+}
+
 
 /**
  * 水面に浮かぶ物を、お椀の外へ押しのける。

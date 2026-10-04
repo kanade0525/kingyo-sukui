@@ -4,8 +4,8 @@
 // 形は頂点シェーダで作る。泳ぎのうねりを毎フレーム CPU で計算して
 // 転送するのは無駄で、しかも法線を作り直す手間が増えるため。
 
-import { Mesh } from './glx.js?v=202610042332';
-import { TANK, POI, BOWL, AIR } from './world.js?v=202610042332';
+import { Mesh } from './glx.js?v=202610042356';
+import { TANK, POI, BOWL, AIR, JAR, jarRadius } from './world.js?v=202610042356';
 
 /** 位置・法線・領域の 3 属性を貯めて Mesh にする小さな入れ物。 */
 class Builder {
@@ -589,4 +589,79 @@ function tubeY(b, pts, region, SIDE, capTop = false, sideways = false) {
     const r0 = base + (pts.length - 1) * N;
     for (let k = 0; k < SIDE; k++) b.idx.push(ci, r0 + k, r0 + k + 1);
   }
+}
+
+
+/**
+ * 家のガラスの金魚鉢。太鼓鉢の回転体。
+ *
+ * 領域は 7（ガラスの外側）・8（砂利）・9（鉢の中の水面）・10（ガラスの内側）。
+ * 屋台のお椀（4/5/6）と番号がぶつからないようにしてある。
+ *
+ * ガラスは内と外の二枚。薄いので両面を描いて、シェーダ側で
+ * どちら向きかを法線で見分ける。
+ */
+export function jarMesh(gl) {
+  const b = new Builder();
+  const SEG = 56, RINGS = 28;
+
+  // --- ガラス。外側と内側を二枚 ---
+  for (const inside of [false, true]) {
+    const base = b.pos.length / 3;
+    for (let i = 0; i <= RINGS; i++) {
+      const t = i / RINGS;
+      const r = jarRadius(t) - (inside ? JAR.wall : 0);
+      const y = t * JAR.height;
+      // 法線は輪郭の傾きから。少し先の半径との差で出す
+      const dt = 0.01;
+      const r2 = jarRadius(Math.min(t + dt, 1)) - (inside ? JAR.wall : 0);
+      const slope = (r2 - r) / (dt * JAR.height);
+      for (let j = 0; j <= SEG; j++) {
+        const a = (j / SEG) * Math.PI * 2;
+        const ca = Math.cos(a), sa = Math.sin(a);
+        b.pos.push(ca * r, y, sa * r);
+        const nl = Math.hypot(1, slope) || 1;
+        const sgn = inside ? -1 : 1;
+        b.nrm.push(ca * sgn / nl, -slope * sgn / nl, sa * sgn / nl);
+        b.reg.push(inside ? 10 : 7);
+      }
+    }
+    for (let i = 0; i < RINGS; i++) {
+      for (let j = 0; j < SEG; j++) {
+        const a = base + i * (SEG + 1) + j;
+        const c = a + SEG + 1;
+        if (inside) b.idx.push(a, a + 1, c, a + 1, c + 1, c);
+        else b.idx.push(a, c, a + 1, a + 1, c, c + 1);
+      }
+    }
+  }
+
+  // --- 底の砂利。鉢の中に薄く敷く ---
+  {
+    const r = jarRadius(0.02) - JAR.wall;
+    const base = b.pos.length / 3;
+    b.pos.push(0, JAR.wall + 0.004, 0); b.nrm.push(0, 1, 0); b.reg.push(8);
+    for (let j = 0; j <= SEG; j++) {
+      const a = (j / SEG) * Math.PI * 2;
+      b.pos.push(Math.cos(a) * r, JAR.wall + 0.004, Math.sin(a) * r);
+      b.nrm.push(0, 1, 0); b.reg.push(8);
+    }
+    for (let j = 0; j < SEG; j++) b.idx.push(base, base + j + 1, base + j + 2);
+  }
+
+  // --- 鉢の中の水面 ---
+  {
+    const t = JAR.waterY / JAR.height;
+    const r = jarRadius(t) - JAR.wall;
+    const base = b.pos.length / 3;
+    b.pos.push(0, JAR.waterY, 0); b.nrm.push(0, 1, 0); b.reg.push(9);
+    for (let j = 0; j <= SEG; j++) {
+      const a = (j / SEG) * Math.PI * 2;
+      b.pos.push(Math.cos(a) * r, JAR.waterY, Math.sin(a) * r);
+      b.nrm.push(0, 1, 0); b.reg.push(9);
+    }
+    for (let j = 0; j < SEG; j++) b.idx.push(base, base + j + 1, base + j + 2);
+  }
+
+  return b.build(gl);
 }

@@ -4,14 +4,16 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610042332';
-import { Game } from './game.js?v=202610042332';
-import { UI } from './ui.js?v=202610042332';
-import { localHour, fetchWeather, sunFor } from './sky.js?v=202610042332';
-import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610042332';
-import { Sound, layerWants } from './sound.js?v=202610042332';
-import { POI } from './world.js?v=202610042332';
-import { nearestCity } from './place.js?v=202610042332';
+import { Renderer } from './renderer.js?v=202610042356';
+import { Game } from './game.js?v=202610042356';
+import { UI } from './ui.js?v=202610042356';
+import { localHour, fetchWeather, sunFor } from './sky.js?v=202610042356';
+import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610042356';
+import { Sound, layerWants } from './sound.js?v=202610042356';
+import { POI } from './world.js?v=202610042356';
+import { nearestCity } from './place.js?v=202610042356';
+import { Home } from './home.js?v=202610042356';
+import { HOME, MAX_BOWL } from './world.js?v=202610042356';
 
 // 言葉をいちばん先に差し替える。覆いの題字も見えてしまうので
 applyI18n();
@@ -20,6 +22,16 @@ const canvas = document.getElementById('scene');
 let renderer = null;
 
 const game = new Game();
+// 家の鉢。持ち帰った金魚はこの端末に残る
+const home = new Home();
+
+/**
+ * いま見ている画面。
+ *
+ * ルータは作らない。location.hash の二値で足りるし、こうしておくと
+ * ブックマーク・再読み込み・ブラウザの戻るがただで効く。
+ */
+let view = location.hash === '#home' ? 'home' : 'stall';
 const sound = new Sound();
 game.sound = sound;
 
@@ -40,6 +52,8 @@ const ui = new UI({
   mix(k, v) { sound.setMix(k, v); },
   soundSource(m) { sound.setSource(m); },
   now() { manualHour = false; manualWeather = false; applyNow(true); },
+  takeHome() { takeHome(); },
+  lamp(on) { renderer?.setLamp(on); },
   jumpTo(key) { jumpToLayer(key); },
   amp(v) { renderer?.setAmp(v); },
   wind(v) { renderer?.setWind(v); },
@@ -60,6 +74,8 @@ function boot() {
     throw err;
   }
   game.start();
+  ui.setView(view);
+  renderer.setView(view);
   applyNow(false);
   requestAnimationFrame(frame);
 }
@@ -174,6 +190,34 @@ function jumpToLayer(key) {
   showNow();
 }
 
+/**
+ * 器の金魚を持ち帰る。
+ *
+ * 先に保存して、そのあとで退場を見せる。「書けたから消えた」の順に
+ * しないと、保存に失敗したときに金魚だけ消える。
+ */
+function takeHome() {
+  if (!game.bowl.length) return;
+  if (home.full) { ui.toast(t('homeFull'), 3200); return; }
+  const caught = game.takeHome();          // 器から値を抜く（絵はまだ残る）
+  const n = home.add(caught);              // ここで保存する
+  ui.toast(t('tookHome', { n }));
+  // 持ち帰ったら家へ移る。袋を提げて帰ったことになる
+  setTimeout(() => { location.hash = '#home'; }, 900);
+}
+
+/** 画面を切り替える */
+function setView(next) {
+  if (view === next) return;
+  view = next;
+  ui.setView(view);
+  if (renderer) renderer.setView(view);
+}
+
+window.addEventListener('hashchange', () => {
+  setView(location.hash === '#home' ? 'home' : 'stall');
+});
+
 // 時計に追従する。人が時刻を掴んでいるあいだは動かさない
 setInterval(() => {
   if (renderer && !manualHour) {
@@ -207,6 +251,12 @@ if (new URLSearchParams(location.search).has('test')) {
     get clips() { return Object.keys(sound.buffers); },
     get closed() { return game.closed; },
     get rainDrops() { return game.rainDrops.map((d) => ({ x: d.x, z: d.z, t: d.t })); },
+    get view() { return view; },
+    get home() {
+      return home.list.map((f) => ({ kind: f.kind, turtle: f.turtle, len: f.len }));
+    },
+    get stored() { try { return localStorage.getItem('kingyo.home'); } catch { return null; } },
+    get bowlFull() { return game.bowlFull; },
     /** 画面の座標を、水面の上のワールド座標へ直す */
     pick(nx, ny) { return renderer?.pickWater(nx, ny); },
     // 手元で確かめるとき、中身をそのまま触れるように
@@ -249,20 +299,48 @@ function aimAt(e) {
   game.aim(hit);
 }
 
+/**
+ * 家の鉢を指で回す。
+ *
+ * 縁側に座って首を振るくらいの範囲（左右 ±60 度・上下 8〜70 度）に
+ * 限ってある。後ろへ回り込めないので、背景は正面から側面までしか
+ * 作らなくて済む。範囲を丸めるのは world.js の jarView。
+ */
+let drag = null;
+
 canvas.addEventListener('pointerdown', (e) => {
   sound.unlock();
   if (pointerId !== null) return;
   pointerId = e.pointerId;
   canvas.setPointerCapture(e.pointerId);
+  if (view === 'home') {
+    drag = { x: e.clientX, y: e.clientY, ox: renderer.orbit.x, oy: renderer.orbit.y };
+    return;
+  }
   aimAt(e);
   game.press(true);
 });
 
-canvas.addEventListener('pointermove', aimAt);
+canvas.addEventListener('pointermove', (e) => {
+  if (view === 'home') {
+    if (!drag) return;
+    const r = canvas.getBoundingClientRect();
+    // 画面の 7 割をなぞると端まで回る。全幅にすると鈍く感じる
+    renderer.orbit = {
+      x: clamp1(drag.ox + (e.clientX - drag.x) / (r.width * 0.7)),
+      y: clamp1(drag.oy + (e.clientY - drag.y) / (r.height * 0.7)),
+    };
+    return;
+  }
+  aimAt(e);
+});
+
+const clamp1 = (v) => (v < -1 ? -1 : v > 1 ? 1 : v);
 
 const release = (e) => {
   if (pointerId !== e.pointerId) return;
   pointerId = null;
+  drag = null;
   game.press(false);
 };
 canvas.addEventListener('pointerup', release);
@@ -289,6 +367,7 @@ let fpsAcc = 0, fpsN = 0, fpsShown = null;
 // 1 フレーム目は水面の場がまだ立ち上がっていない
 let warmup = 3;
 let layerTick = 0;
+let homeTime = 0;
 
 /**
  * 解像度の自動調整。
@@ -321,7 +400,6 @@ function frame(now) {
   last = now;
 
   renderer.resize();
-  game.update(dt);
   // 店じまいのあとは、貸してくれるポイがもう無い。
   // 水面をなでることだけができる
   game.closed = renderer.sun.closed > 0.6;
@@ -330,8 +408,23 @@ function frame(now) {
   // コマ数で間引くと、描画の遅い機械でそのぶん遅れるので、時間で間引く
   layerTick += dt;
   if (layerTick >= 0.25) { layerTick = 0; ui.setLayerState(sound.want); }
-  renderer.render({ time: game.time, school: game.school, poi: game.poi,
-                    bowl: game.bowl, rainDrops: game.rainDrops });
+
+  if (view === 'home') {
+    // 家では FFT も舟の波紋も回さない。眺めるだけの画面に、
+    // いちばん重い計算を置く理由がない
+    homeTime += dt;
+    home.update(dt, homeTime);
+    renderer.renderHome({ time: homeTime, fish: home.list });
+    ui.setHome(home.list.length, HOME.fit, home.full);
+    ui.setLampVisible(renderer.sun.daylight < 0.55);
+  } else {
+    game.update(dt);
+    renderer.render({ time: game.time, school: game.school, poi: game.poi,
+                      bowl: game.bowl, rainDrops: game.rainDrops });
+    // 「持ち帰る」の出し入れ。退場中の金魚は数えない
+    const live = game.bowl.reduce((n, f) => n + (f.leaveAt === null ? 1 : 0), 0);
+    ui.setBowl(game.closed ? 0 : live, live >= MAX_BOWL);
+  }
 
   if (warmup > 0 && --warmup === 0) ui.ready();
   if (warmup === 0) tuneResolution(now, dt);

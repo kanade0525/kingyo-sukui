@@ -9,21 +9,22 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610042332';
-import { VS_FULL } from '../shaders/common.js?v=202610042332';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610042332';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610042332';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610042332';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610042332';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610042332';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610042332';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610042332';
-import { Ocean } from './ocean.js?v=202610042332';
-import { Ripple } from './ripple.js?v=202610042332';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor } from './world.js?v=202610042332';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610042332';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610042332';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610042356';
+import { VS_FULL } from '../shaders/common.js?v=202610042356';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610042356';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610042356';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610042356';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610042356';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610042356';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610042356';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610042356';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610042356';
+import { Ocean } from './ocean.js?v=202610042356';
+import { Ripple } from './ripple.js?v=202610042356';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
+         pushOutOfBowl, bowlPosFor } from './world.js?v=202610042356';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610042356';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610042356';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -83,11 +84,17 @@ export class Renderer {
     this.pWater = new Program(gl, VS_WATER, FS_WATER, 'water');
     this.pFish = new Program(gl, VS_FISH, FS_FISH, 'fish');
     this.pPoi = new Program(gl, VS_POI, FS_POI, 'poi');
+    this.pRoom = new Program(gl, VS_FULL, FS_ROOM, 'room');
+    this.pGlass = new Program(gl, VS_JAR, FS_JAR, 'glass');
     this.pEnvBake = new Program(gl, VS_FULL, FS_ENVBAKE, 'envBake');
     this.pEnvFilter = new Program(gl, VS_FULL, FS_ENVFILTER, 'envFilter');
     this.envCube = makeCube(gl, ENV_SIZE, ENV_MIPS);
     this.envFb = gl.createFramebuffer();
     this.envDirty = true;
+    this.scene = 'stall';
+    // 家の鉢を回した量（-1〜1）。指でなぞると動く
+    this.orbit = { x: 0, y: 0 };
+    this.lampOn = true;
     this.pTurtle = new Program(gl, VS_TURTLE, FS_TURTLE, 'turtle');
     this.pPad = new Program(gl, VS_PAD, FS_PAD, 'pad');
     this.pWeed = new Program(gl, VS_WEED, FS_WEED, 'weed');
@@ -109,6 +116,7 @@ export class Renderer {
     this.mTurtle = turtleMesh(gl);
     this.mPad = padMesh(gl);
     this.mWeed = weedMesh(gl);
+    this.mJar = jarMesh(gl);
     this.mBubble = bubbleMesh(gl, AIR.bubbles);
     this.mSplash = splashMesh(gl, 36);
     this.mRain = splashMesh(gl, RAIN.count);
@@ -292,6 +300,175 @@ export class Renderer {
 
   /** 時刻から太陽と空を決める。後で夕方や実時刻へ差し替えられるよう、
    *  光の条件はすべてこの一箇所から配る。 */
+  /**
+   * 見ている画面を切り替える。
+   *
+   * 環境マップは焼き直す。屋台のままだと、家の鉢の映り込みに
+   * 天幕（3.6×5.4m のビニル幌布）が出てしまう。
+   */
+  setView(scene) {
+    // this.view はビュー行列なので、画面の名前は scene で持つ
+    this.scene = scene;
+    this.envDirty = true;
+    // 屋台へ戻るときはカメラを組み直す。
+    //
+    // updateCamera() は resize() からしか呼ばれず、その resize() は
+    // 画面の大きさが変わらないと素通りする。家から戻ったあと、
+    // 舟を家のカメラ（浅い見下ろしの近景）で描いていた
+    if (scene === 'stall') this.updateCamera();
+  }
+
+  /** 部屋の明かり。夜に点く。入切できる */
+  setLamp(on) {
+    this.lampOn = on;
+    this.envDirty = true;
+  }
+
+  /**
+   * 家のカメラ。
+   *
+   * 丸い鉢は横から見るもの。真上から覗くと形が分からないし、
+   * ガラスの屈折（向こう側の金魚が歪む）も出ない。
+   * 屋台の 65 度に対して、ここは浅く構える。
+   */
+  #homeCamera() {
+    const aspect = this.w / this.h;
+    const portrait = aspect < 0.95;
+    this.portrait = portrait;
+    const [pitch, yaw] = jarView(this.orbit);
+    const tanH = Math.tan(FOV_Y / 2);
+    // 鉢がちょうど収まる距離。縦画面は横に余裕が無いので引く
+    const need = (JAR.outerR * 1.95) / (tanH * Math.min(aspect, 1.0) * (portrait ? 0.92 : 1.0));
+    const dist = Math.max(need, (JAR.height * 1.5) / tanH);
+    const base = [JAR.pos[0], ROOM.floorY + JAR.height * 0.46, JAR.pos[2]];
+    const eye = [
+      base[0] + Math.sin(yaw) * Math.cos(pitch) * dist,
+      base[1] + Math.sin(pitch) * dist,
+      base[2] + Math.cos(yaw) * Math.cos(pitch) * dist,
+    ];
+    this.cam = eye;
+    perspective(this.proj, FOV_Y, aspect, 0.02, 12);
+    lookAt(this.view, eye, base, [0, 1, 0]);
+    multiply(this.vp, this.proj, this.view);
+    const fwd = norm3(sub3(base, eye));
+    const right = norm3(cross3(fwd, [0, 1, 0]));
+    this.basis = { fwd, right, up: cross3(right, fwd) };
+    this.tanH = tanH;
+    this.aspect = aspect;
+    this.setHour(this.hour, (yaw * 180) / Math.PI);
+  }
+
+  /**
+   * 家の鉢。
+   *
+   * 屋台と分けてあるのは、要るものが違うから。FFT の水面も、舟の
+   * 波紋も、金魚の影を焼く段も回さない。眺めるだけの画面に、
+   * いちばん重い計算を置く理由がない。
+   *
+   * 仕上げ（ブルーム・被写界深度・縁の滑らか化）は屋台と同じものを通す。
+   */
+  renderHome(state) {
+    const gl = this.gl;
+    const { time, fish } = state;
+    if (this.envDirty) this.#bakeEnv();
+    this.#homeCamera();
+
+    gl.disable(gl.CULL_FACE);
+
+    // ---- 鉢の中身。ガラス越しに読み直すので、別の板へ描く ----
+    bindFbo(gl, this.fbos.scene);
+    gl.depthMask(true);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.disable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 60);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    // まず部屋を敷く。ガラスの鉢は向こう側も透けているので、
+    // 鉢越しに見えるのは「水の向こうの部屋」になる
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    this.#drawRoom(time);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
+    this.#jarPass(0, time);
+    this.#homeFish(fish, time, 1);
+
+    // ---- 本パス ----
+    bindFbo(gl, this.fbos.hdr);
+    gl.depthMask(true);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // 部屋と縁側
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    this.#drawRoom(time);
+
+    // ガラス。中身（別の板に描いてある）を屈折して読み直し、1 枚で仕上げる。
+    //
+    // 中身を本パスにも描くと、素の像とガラス越しの像が重なって
+    // 曇りガラスになる。手前の面だけを描くので、面の裏は切る
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(gl.BACK);
+    this.#jarPass(1, time);
+    gl.disable(gl.CULL_FACE);
+
+    this.#finish(time);
+  }
+
+  /** 縁側と庭。画面いっぱいの 1 枚 */
+  #drawRoom(time) {
+    const p = this.pRoom.use();
+    this.#lights(p);
+    p.set('uCam', this.cam)
+     .set('uRight', this.basis.right)
+     .set('uUp', this.basis.up)
+     .set('uFwd', this.basis.fwd)
+     .setFloat('uTanHalf', this.tanH)
+     .setFloat('uAspect', this.aspect)
+     .setFloat('uFloorY', ROOM.floorY)
+     .setFloat('uTime', time);
+    this.full.draw();
+  }
+
+  /** 鉢そのもの。pass 0 = 中身（砂利・水面）、1 = ガラスの外側 */
+  #jarPass(pass, time) {
+    const p = this.pGlass.use();
+    this.#lights(p);
+    p.mat4('uVP', this.vp).set('uCam', this.cam)
+     .tex('uScene', this.fbos.scene.tex[0])
+     .set('uRes', [this.w, this.h])
+     .set('uJar', [JAR.outerR, JAR.height, JAR.mouthR, JAR.footR])
+     .setFloat('uWall', JAR.wall)
+     .setFloat('uWaterY', JAR.waterY)
+     .setInt('uPass', pass)
+     .setFloat('uTime', time);
+    this.mJar.draw();
+  }
+
+  /** 鉢の中の金魚。water が 1 なら水中パス（α に距離） */
+  #homeFish(fish, time, underwater) {
+    if (!fish.length) return;
+    const p = this.#fishProgram(time);
+    p.setInt('uUnderwater', underwater);
+    for (const f of fish) if (!f.turtle) this.#oneFish(p, f);
+    let tp = null;
+    for (const f of fish) {
+      if (!f.turtle) continue;
+      if (!tp) {
+        tp = this.pTurtle.use();
+        this.#lights(tp);
+        tp.mat4('uVP', this.vp).set('uCam', this.cam)
+          .setFloat('uTime', time).setInt('uUnderwater', underwater);
+      }
+      tp.set('uPos', f.p).setFloat('uYaw', f.yaw).setFloat('uLen', f.len)
+        .setFloat('uPhase', f.phase).setFloat('uBeat', f.beat).setFloat('uSeed', f.seed);
+      this.mTurtle.draw();
+    }
+  }
+
   setWeather(w) {
     this.weather = w;
     this.setHour(this.hour);
@@ -313,6 +490,18 @@ export class Renderer {
 
   #lights(p) {
     const s = this.sun;
+    // 家では、提灯の仕組みをそのまま部屋の明かりに読み替える。
+    //
+    // 座敷の天井の明かりが縁側へ漏れる。屋台の提灯（橙 2 灯）と違って
+    // 1 灯で白い。消すと月明かりだけになり、鉢が青く浮かぶ
+    const home = this.scene === 'home';
+    const on = home && this.lampOn ? Math.max(1 - s.daylight, 0) : 0;
+    const lamp = home ? [0.170 * on, 0.158 * on, 0.136 * on] : s.lantern;
+    const lampPos = home
+      ? [ROOM.lamp[0], ROOM.lamp[1], ROOM.lamp[2], 0,
+         ROOM.lamp[0], ROOM.lamp[1], ROOM.lamp[2], 0]
+      : [LANTERN.pos[0][0], LANTERN.pos[0][1], LANTERN.pos[0][2], 0,
+         LANTERN.pos[1][0], LANTERN.pos[1][1], LANTERN.pos[1][2], 0];
     // 焼いた遠景。bake のシェーダでは使っていないので、そちらでは
     // uniform ごと落ちて何も束ねられない（自分を読みながら書く事故を防ぐ）
     p.cube('uEnv', this.envCube).setFloat('uEnvMips', ENV_MIPS);
@@ -343,14 +532,13 @@ export class Renderer {
       // 屋台の天幕。舟より奥と真上を覆い、手前は開けておく。
       // 水面がこちらへ返す光は上と奥を向くので、そこを塞ぐと
       // 映り込みに構造が入り、灰色の靄が消える
-      .setFloat('uTentY', TENT.y)
-      .set('uTentBox', TENT.box)
-      // 連提灯
-      .set('uLanternCol', s.lantern)
-      .vec4Array('uLanternP[0]', new Float32Array([
-        LANTERN.pos[0][0], LANTERN.pos[0][1], LANTERN.pos[0][2], 0,
-        LANTERN.pos[1][0], LANTERN.pos[1][1], LANTERN.pos[1][2], 0,
-      ]), 2)
+      // 家では部屋の天井。屋台のままだと、鉢の映り込みに
+      // 3.6×5.4m のビニル幌布が出てしまう
+      .setFloat('uTentY', home ? ROOM.ceilY : TENT.y)
+      .set('uTentBox', home ? ROOM.ceilBox : TENT.box)
+      // 連提灯。家では部屋の明かりに読み替える
+      .set('uLanternCol', lamp)
+      .vec4Array('uLanternP[0]', new Float32Array(lampPos), 2)
       // 幌布を透かしてくる光。白い布なので日向の空よりずっと暗く、
       // わずかに暖かい
       .set('uTentTint', [
@@ -885,6 +1073,17 @@ export class Renderer {
       gl.disable(gl.BLEND);
     }
 
+    this.#finish(time);
+  }
+
+  /**
+   * 仕上げ。ブルーム・被写界深度・トーンマップ・縁の滑らか化。
+   *
+   * 屋台と家で同じものを通す。切り出してあるのは、家の描画から
+   * そのまま呼べるようにするため。中身は 1 行も変えていない。
+   */
+  #finish(time) {
+    const gl = this.gl;
     // ---- 仕上げ ----
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(false);

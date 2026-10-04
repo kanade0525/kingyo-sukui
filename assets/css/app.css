@@ -195,3 +195,51 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 .rl .mute:hover{color:var(--ink)}
 /* 押せる印は、薄くしすぎると読めない。行だけ落として印は残す */
 .row.off .rl .mute{opacity:1}
+
+
+/* 持ち帰る。器に金魚がいるときだけ出る。
+   いちばん押してほしいものなので、ほかの操作より目立たせる */
+#btnTakeHome{
+  background:var(--hi);color:#fff;border-color:var(--hi);font-weight:700;
+}
+#btnTakeHome:hover{color:#fff;border-color:var(--hi)}
+
+/* 家の鉢へ。ボタンと同じ札にする（a 要素なので形を揃える） */
+#btnHome{
+  font-family:var(--body);font-size:12px;color:var(--ink);text-decoration:none;
+  background:rgba(255,255,255,.88);border:1px solid rgba(23,34,43,.30);
+  box-shadow:0 1px 3px rgba(23,34,43,.12);
+  border-radius:999px;padding:7px 15px;white-space:nowrap;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+#btnHome:hover{border-color:var(--hi-soft);color:var(--hi-soft)}
+
+/* 家の画面の札。右上の「いまの時刻と天気」と同じ形 */
+#homebar{
+  position:fixed;z-index:4;
+  top:calc(12px + env(safe-area-inset-top,0px));
+  left:calc(12px + env(safe-area-inset-left,0px));
+  padding:8px 13px;border-radius:12px;
+  background:rgba(255,255,255,.80);border:1px solid rgba(23,34,43,.18);
+  box-shadow:0 1px 3px rgba(23,34,43,.12);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  font-family:var(--disp);font-size:13px;letter-spacing:.10em;color:var(--ink);
+  font-variant-numeric:tabular-nums;pointer-events:none;
+}
+
+/* 短い知らせ。画面の真ん中の下寄りに出て、数秒で消える */
+#toast{
+  position:fixed;z-index:6;left:50%;transform:translateX(-50%);
+  bottom:calc(84px + env(safe-area-inset-bottom,0px));
+  padding:9px 18px;border-radius:999px;
+  background:rgba(23,34,43,.82);color:#fff;
+  font-size:12px;letter-spacing:.06em;white-space:nowrap;
+  pointer-events:none;opacity:0;transition:opacity .35s;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+#toast.show{opacity:1}
+
+
+/* 部屋の明かりの入切。点いているときは灯りの色 */
+#btnLamp{padding:7px 12px;font-size:14px;line-height:1}
+#btnLamp[aria-pressed=true]{background:var(--hi);color:#fff;border-color:var(--hi)}

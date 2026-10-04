@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610042332';
-import { Poi } from './poi.js?v=202610042332';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610042332';
+import { School } from './fish.js?v=202610042356';
+import { Poi } from './poi.js?v=202610042356';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610042356';
 
 /** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
 const h11 = (x) => {
@@ -71,7 +71,23 @@ export class Game {
 
   /** 器の中の金魚を回す。ただ円を描かせるだけ。 */
   #updateBowl(dt) {
+    // 持ち帰った金魚の退場。
+    //
+    // 袋は描かない。一式作ると家の画面と同じ作業量になる。
+    // 代わりに、水を汲み上げられて上へ抜けていくところだけ見せる。
+    // 新しい絵を 1 つも作らずに済む（uLen を縮めるだけ）
+    const LEAVE = 0.5;
+    for (let i = this.bowl.length - 1; i >= 0; i--) {
+      const f = this.bowl[i];
+      if (f.leaveAt === null) continue;
+      const t = (this.time - f.leaveAt) / LEAVE;
+      if (t >= 1) { this.bowl.splice(i, 1); continue; }
+      f.p[1] += dt * 0.09;
+      f.len *= 1 - dt * 1.9;
+    }
+
     for (const f of this.bowl) {
+      if (f.leaveAt !== null) continue;
       f.a += f.spin * dt;
       f.r += Math.sin(this.time * 0.7 + f.phase) * 0.004 * dt;
       f.p[0] = BOWL.pos[0] + Math.cos(f.a) * f.r;
@@ -182,7 +198,15 @@ export class Game {
     // 破れかけでも、残っているのは外周だけなので、乗る範囲が狭くなる。
     // 紙の破れはシェーダ側で「中心から外へ」広がるので、それに合わせて
     // 有効な半径を health で縮める。
-    if (poi.vy > 0.001 && poi.y < 0.015 && !poi.broke && poi.health > 0.02) {
+    //
+    // 器が一杯なら乗せない。
+    //
+    // もとは 13 匹目を掬うと `this.bowl.shift()` で古い金魚が黙って
+    // 消えていた。器の飾りだったうちはそれでよかったが、持ち帰れるように
+    // なった以上、これは利用者の持ち物が消えることになる。
+    // 掬わせない代わりに「器がいっぱい」と知らせる
+    if (poi.vy > 0.001 && poi.y < 0.015 && !poi.broke && poi.health > 0.02
+        && this.bowl.length < MAX_BOWL) {
       const reach = POI.radius * 1.35 * Math.sqrt(poi.health);
       for (const f of this.school.list) {
         if (f.held || f.gone) continue;
@@ -336,8 +360,41 @@ export class Game {
       p: [BOWL.pos[0], BOWL.waterY - 0.009, BOWL.pos[2]],
       yaw: 0,
       bend: 0,
+      // 持ち帰るときの退場。null なら居る。
+      // 0 を「居る」の印にすると、遊び始めて 0 秒ちょうどに
+      // 持ち帰ったときだけ退場しない
+      leaveAt: null,
     });
-    if (this.bowl.length > MAX_BOWL) this.bowl.shift();
+  }
+
+  /** 器が一杯か。画面に「いっぱいです」を出すのに使う */
+  get bowlFull() {
+    return this.bowl.length >= MAX_BOWL;
+  }
+
+  /**
+   * 器の金魚を持ち帰る。
+   *
+   * 返すのは「家で要る値」だけ。泳ぎの値（角度・半径・位相）は
+   * お椀を基準に作ってあるので、鉢へ持っていっても使えない。
+   *
+   * 呼んだ側が先に保存し、そのあとで退場を見せる。
+   * 「書けたから消えた」の順にしないと、書けなかったときに
+   * 金魚だけ消える。
+   */
+  takeHome() {
+    const out = this.bowl.map((f) => ({
+      turtle: f.turtle, kind: f.kind, len: f.len, seed: f.seed, beat: f.beat,
+    }));
+    // すぐには消さない。0.5 秒かけて上へ抜けていく
+    for (const f of this.bowl) f.leaveAt = this.time;
+    if (this.ripple) this.ripple.drop(BOWL.pos[0], BOWL.pos[2], BOWL.innerR * 1.2, -0.0036);
+    this.poi.splash = 1.0;
+    this.poi.splashAt = [BOWL.pos[0], BOWL.pos[2]];
+    this.poi.splashIn = false;
+    this.poi.splashV = 0.9;
+    this.sound?.splash(0.9, true);
+    return out;
   }
 
   /** 制限時間もポイの消耗も止めているので、いまは誰も呼ばない。

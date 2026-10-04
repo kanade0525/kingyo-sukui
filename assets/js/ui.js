@@ -1,6 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
 
-import { t } from './i18n.js?v=202610042332';
+import { t } from './i18n.js?v=202610042356';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -14,6 +14,8 @@ export class UI {
       loading: $('loading'),
       panel: $('panel'), btnPanel: $('btnPanel'),
       fallback: $('fallback'), fallbackWhy: $('fallbackWhy'),
+      btnTakeHome: $('btnTakeHome'), btnHome: $('btnHome'), btnLamp: $('btnLamp'),
+      homebar: $('homebar'), homeCount: $('homeCount'), toast: $('toast'),
     };
 
 
@@ -22,6 +24,14 @@ export class UI {
     window.visualViewport?.addEventListener('resize', refit);
     window.visualViewport?.addEventListener('scroll', refit);
     window.addEventListener('orientationchange', () => setTimeout(refit, 250));
+
+    this.el.btnTakeHome.addEventListener('click', () => handlers.takeHome());
+
+    this.el.btnLamp.addEventListener('click', () => {
+      const on = this.el.btnLamp.getAttribute('aria-pressed') !== 'true';
+      this.el.btnLamp.setAttribute('aria-pressed', String(on));
+      handlers.lamp(on);
+    });
 
     this.el.btnPanel.addEventListener('click', () => {
       const open = this.el.panel.hidden;
@@ -176,6 +186,75 @@ export class UI {
     if (!vv) return;                      // 知らないブラウザは CSS に任せる
     const pad = 96;                       // 下の操作列と上下の余白ぶん
     this.el.panel.style.maxHeight = `${Math.max(Math.round(vv.height) - pad, 160)}px`;
+  }
+
+  /**
+   * 画面を切り替える。
+   *
+   * 屋台と家で、出す操作が違う。DOM を触るのはこのファイルだけ、という
+   * 決まりがあるので、出し入れは全部ここに集める。
+   */
+  setView(view) {
+    const home = view === 'home';
+    this.el.homebar.hidden = !home;
+    this.el.btnHome.hidden = home;
+    if (home) this.el.btnTakeHome.hidden = true;
+    if (!home) { this.el.btnLamp.hidden = true; this.lampShown = false; }
+    // 水面の設定は家では効かない。「いまは鳴らない」の印と同じ考えで、
+    // 動かしても何も起きないつまみを出しておかない
+    for (const sec of this.#waterRows()) sec.hidden = home;
+  }
+
+  /** 設定の「水面」の節（見出しと、その下の行） */
+  #waterRows() {
+    if (this.waterRows) return this.waterRows;
+    const out = [];
+    let on = false;
+    for (const el of $('panel').children) {
+      if (el.tagName === 'H3') on = el.dataset.t === 'hWater';
+      if (on) out.push(el);
+    }
+    this.waterRows = out;
+    return out;
+  }
+
+  /** 「持ち帰る」の出し入れ。匹数が変わったときだけ書き換える */
+  setBowl(n, full) {
+    if (this.bowlShown === n) return;
+    this.bowlShown = n;
+    this.el.btnTakeHome.hidden = n === 0;
+    if (n > 0) this.el.btnTakeHome.textContent = t('takeHome', { n });
+    if (full) this.toast(t('bowlFull'), 3200);
+  }
+
+  /** 家の鉢の匹数。目安を超えていたらそう書く */
+  /** 明かりのボタン。暗くなってからだけ出す。昼は押しても変わらない */
+  setLampVisible(show) {
+    if (this.lampShown === show) return;
+    this.lampShown = show;
+    this.el.btnLamp.hidden = !show;
+  }
+
+  setHome(n, fit, full) {
+    const text = n === 0 ? t('homeEmpty')
+               : full ? `${t('homeCount', { n })}・${t('homeFull')}`
+               : n > fit ? t('homeCrowded', { n, fit })
+               : t('homeCount', { n });
+    if (this.el.homeCount.textContent !== text) this.el.homeCount.textContent = text;
+  }
+
+  /** 短い知らせ。数秒で消える */
+  toast(text, ms = 2400) {
+    const el = this.el.toast;
+    el.textContent = text;
+    el.hidden = false;
+    // いったん描かせてから透かす。でないと最初の 1 回が出ない
+    requestAnimationFrame(() => el.classList.add('show'));
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => { el.hidden = true; }, 400);
+    }, ms);
   }
 
   /** 最初の絵が出たら覆いを外す。 */
