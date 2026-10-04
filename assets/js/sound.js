@@ -117,6 +117,23 @@ export function layerWants({ daylight, lanternOn, closed, weather, elev = 0 }) {
 }
 
 
+/**
+ * 音の出入りにかける時間（秒）。
+ *
+ * すべての変化をこの一つの値で揃える。もとは層ごとに 1.2 や 0.5 の
+ * 時定数を使っていて、指数で近づくので「いつ鳴り終わったか」が層ごとに
+ * 違っていた。直線で同じ長さをかければ、どれも同じ呼吸で出入りする。
+ */
+const FADE = 1.4;
+
+/** 音量をなめらかに動かす。途中でも割り込める。dur が 0 なら即座に */
+function ramp(param, to, t, dur = FADE) {
+  param.cancelScheduledValues(t);
+  if (dur <= 0) { param.setValueAtTime(to, t); return; }
+  param.setValueAtTime(param.value, t);
+  param.linearRampToValueAtTime(to, t + dur);
+}
+
 export class Sound {
   constructor() {
     this.ctx = null;
@@ -125,6 +142,8 @@ export class Sound {
     this.buffers = {};
     this.recNodes = {};
     this.on = true;
+    // 親のフェードが開けきったか。開けきるまでは層を直に置く
+    this.opened = false;
     this.master = null;
     this.layers = null;
     this.want = { pump: 1, cicada: 0, dusk: 0, furin: 0,
@@ -146,7 +165,9 @@ export class Sound {
     this.ctx = ctx;
 
     this.master = ctx.createGain();
-    this.master.gain.value = this.on ? 0.9 * this.mix.master : 0;
+    // 無音から立ち上げる。いきなり最大から始めると、
+    // 最初の 1 音だけが飛び出して聞こえる
+    this.master.gain.value = 0;
     // 層が重なった時に割れないよう、最後に軽く頭を抑える
     const lim = ctx.createDynamicsCompressor();
     lim.threshold.value = -8;
@@ -203,11 +224,18 @@ export class Sound {
     this.#loop('insect', () => 0.42 + Math.random() * 0.22, () => this.#suzumushi());
     this.#loop('pump', () => 0.055 + Math.random() * 0.075, () => this.#bubble());
     this.apply();
+    // ここまで組み上げてから、親をゆっくり開ける。
+    //
+    // 立ち上がりのフェードは、親の 1 本だけに任せる。層も元栓も同時に
+    // 上げると、直線の掛け合わせで t³ の形になって、終わり際に
+    // 一気に飛び出す。開けきるまでは、ほかは目標値へ直に置く。
+    ramp(this.master.gain, this.on ? 0.9 * this.mix.master : 0, ctx.currentTime);
+    setTimeout(() => { this.opened = true; }, FADE * 1000);
   }
 
   setEnabled(v) {
     this.on = v;
-    if (this.master) this.master.gain.setTargetAtTime(v ? 0.9 * this.mix.master : 0, this.ctx.currentTime, 0.08);
+    if (this.master) ramp(this.master.gain, v ? 0.9 * this.mix.master : 0, this.ctx.currentTime);
   }
 
   /** 合成と録音の切り替え。 */
@@ -221,24 +249,38 @@ export class Sound {
    * 合成側と録音側は別の枝にしておき、apply() でどちらかを 0 にする。
    */
   async #loadClips() {
-    for (const [key, url] of Object.entries(CLIPS)) {
+    // まとめて読む。
+    //
+    // 1 本ずつ順に読んでいたので、読み終わった順に鳴り始めていた。
+    // 回線の速さしだいで蝉だけ先に出たり、祭囃子が数秒遅れたりする。
+    // 全部そろえてから、同じ瞬間に始める。
+    const loaded = await Promise.all(Object.entries(CLIPS).map(async ([key, url]) => {
       try {
         const res = await fetch(url);
         const raw = unscramble(new Uint8Array(await res.arrayBuffer()));
-        const buf = await this.ctx.decodeAudioData(raw.buffer);
-        this.buffers[key] = buf;
-        const g = this.ctx.createGain();
-        g.gain.value = 0;
-        g.connect(this.layers[key]);
-        const src = this.ctx.createBufferSource();
-        src.buffer = buf;
-        src.loop = true;
-        src.connect(g);
-        src.start(this.ctx.currentTime + Math.random() * 2);
-        this.recNodes[key] = g;
+        return [key, await this.ctx.decodeAudioData(raw.buffer)];
       } catch {
-        // 読めなければ合成のまま。鳴らないよりはよい
+        return null;        // 読めなければ合成のまま。鳴らないよりはよい
       }
+    }));
+
+    const t0 = this.ctx.currentTime + 0.05;
+    for (const e of loaded) {
+      if (!e) continue;
+      const [key, buf] = e;
+      this.buffers[key] = buf;
+      const g = this.ctx.createGain();
+      g.gain.value = 0;
+      g.connect(this.layers[key]);
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.connect(g);
+      // 始める「時刻」ではなく、輪の中の「どこから入るか」を散らす。
+      // 遅らせると鳴り出しがばらつくが、入る位置を変えるだけなら
+      // 同時に始まったまま、重なりの癖だけがほぐれる
+      src.start(t0, Math.random() * buf.duration);
+      this.recNodes[key] = g;
     }
     this.apply();
   }
@@ -263,6 +305,7 @@ export class Sound {
   apply() {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+    const dur = this.opened ? FADE : 0;
     // 層ごとの音量。実測して決めた。
     // 最初に置いた値は全部で頂点 0.069（ほぼ聞こえない）だったので、
     // 合わせて 6 倍ほどまで上げてある
@@ -281,15 +324,15 @@ export class Sound {
     for (const k of Object.keys(this.layers)) {
       // 層が増えたときに want の鍵が欠けても落ちないようにする
       const w = this.want[k] ?? 0;
-      this.layers[k].gain.setTargetAtTime(w * vol[k] * (this.mix[k] ?? 1), t, 1.2);
+      ramp(this.layers[k].gain, w * vol[k] * (this.mix[k] ?? 1), t, dur);
     }
     // 録音がある層は、合成と録音のどちらかだけを鳴らす。
     // 合成版を持たない層は、切り替えに関わらず録音を鳴らす
     for (const k of Object.keys(CLIPS)) {
       const rec = this.source === 'rec' || !SYNTH_TRIM[k];
       const g = this.recNodes[k];
-      if (g) g.gain.setTargetAtTime(rec ? 1 : 0, t, 0.5);
-      if (this.synthGate[k]) this.synthGate[k].gain.setTargetAtTime(rec ? 0 : SYNTH_TRIM[k], t, 0.5);
+      if (g) ramp(g.gain, rec ? 1 : 0, t, dur);
+      if (this.synthGate[k]) ramp(this.synthGate[k].gain, rec ? 0 : SYNTH_TRIM[k], t, dur);
     }
   }
 

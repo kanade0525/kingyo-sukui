@@ -312,18 +312,29 @@ export const MAX_BOWL = 12;
  * @param margin   舟の内側へ収めるときの余白
  */
 export function pushOutOfBowl(x, z, keep, bowl, margin) {
-  let px = x, pz = z;
-  const bx = px - bowl[0], bz = pz - bowl[2];
+  const lx = TANK.halfX - margin, lz = TANK.halfZ - margin;
+  const inside = (p) => Math.abs(p[0]) <= lx + 1e-9 && Math.abs(p[1]) <= lz + 1e-9;
+  const clampIn = (p) => [Math.min(Math.max(p[0], -lx), lx), Math.min(Math.max(p[1], -lz), lz)];
+
+  const p = clampIn([x, z]);
+  const bx = p[0] - bowl[0], bz = p[1] - bowl[2];
   const d = Math.hypot(bx, bz);
-  if (d < keep) {
-    const k = d > 1e-4 ? keep / d : 1;
-    px = bowl[0] + bx * k;
-    pz = bowl[2] + bz * k;
+  if (d >= keep) return p;
+
+  // 器の外へ出す。
+  //
+  // まっすぐ外へ出すだけだと、出した先が舟の外になることがある。
+  // そこで舟の内側へ丸め直すと、丸めが器の中へ押し戻してしまう。
+  // 器のまわりを少しずつ回って、舟に収まる向きを探す。
+  const a0 = d > 1e-4 ? Math.atan2(bz, bx) : 0;
+  for (let i = 0; i < 25; i++) {
+    const step = Math.ceil(i / 2) * (Math.PI / 12);
+    const a = a0 + (i % 2 ? -step : step);
+    const q = [bowl[0] + Math.cos(a) * keep, bowl[2] + Math.sin(a) * keep];
+    if (inside(q)) return q;
   }
-  return [
-    Math.min(Math.max(px, -TANK.halfX + margin), TANK.halfX - margin),
-    Math.min(Math.max(pz, -TANK.halfZ + margin), TANK.halfZ - margin),
-  ];
+  // どこにも置けない。器が舟いっぱいでない限り起きないが、落とさない
+  return p;
 }
 
 /**
@@ -336,9 +347,17 @@ export function bowlPosFor(pitchDeg, portrait) {
   const across = portrait ? BOWL.acrossPortrait : BOWL.across;
   const lean = Math.cos(pitchDeg * DEG) / Math.cos(65 * DEG);
   const toward = (portrait ? BOWL.towardPortrait : BOWL.toward) * lean;
+  const x = Math.cos(yaw) * across + Math.sin(yaw) * toward;
+  const z = -Math.sin(yaw) * across + Math.cos(yaw) * toward;
+  // 舟の内側へ収める。
+  //
+  // 見下ろす角度を浅くすると手前へのずらしが効きすぎて、角度 55° の
+  // 横画面では器の縁が短辺の内壁を 0.5mm 超えていた。
+  // 浮かべた器が壁に食い込むのはあり得ないので、ここで止める
+  const m = BOWL.outerR + 0.004;
   return [
-    Math.cos(yaw) * across + Math.sin(yaw) * toward,
+    Math.min(Math.max(x, -TANK.halfX + m), TANK.halfX - m),
     0,
-    -Math.sin(yaw) * across + Math.cos(yaw) * toward,
+    Math.min(Math.max(z, -TANK.halfZ + m), TANK.halfZ - m),
   ];
 }

@@ -4,14 +4,14 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610041317';
-import { Game } from './game.js?v=202610041317';
-import { UI } from './ui.js?v=202610041317';
-import { localHour, fetchWeather, sunFor } from './sky.js?v=202610041317';
-import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610041317';
-import { Sound, layerWants } from './sound.js?v=202610041317';
-import { POI } from './world.js?v=202610041317';
-import { nearestCity } from './place.js?v=202610041317';
+import { Renderer } from './renderer.js?v=202610041403';
+import { Game } from './game.js?v=202610041403';
+import { UI } from './ui.js?v=202610041403';
+import { localHour, fetchWeather, sunFor } from './sky.js?v=202610041403';
+import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610041403';
+import { Sound, layerWants } from './sound.js?v=202610041403';
+import { POI } from './world.js?v=202610041403';
+import { nearestCity } from './place.js?v=202610041403';
 
 // 言葉をいちばん先に差し替える。覆いの題字も見えてしまうので
 applyI18n();
@@ -183,6 +183,38 @@ setInterval(() => {
   }
   showNow();
 }, 30000);
+/**
+ * 試験から中を覗くための口。
+ *
+ * ?test=1 を付けたときだけ開く。絵の画素を読んで当てにいくと、
+ * 波も金魚も動いているので判定が揺れる。中の値を直に見られるほうが、
+ * 試験が何を確かめているのかもはっきりする。
+ * 普段の読み込みでは何も生えない。
+ */
+if (new URLSearchParams(location.search).has('test')) {
+  window.__kingyo = {
+    get sun() { return renderer?.sun; },
+    get want() { return { ...sound.want }; },
+    get weather() { return renderer?.weather; },
+    get hour() { return renderer?.hour; },
+    get portrait() { return renderer?.portrait; },
+    get poi() {
+      const p = game.poi;
+      return { x: p.x, y: p.y, z: p.z, health: p.health, broke: p.broke, visible: p.visible };
+    },
+    get fish() { return game.school.list.filter((f) => !f.gone).length; },
+    get bowl() { return game.bowl.length; },
+    get clips() { return Object.keys(sound.buffers); },
+    get closed() { return game.closed; },
+    get rainDrops() { return game.rainDrops.map((d) => ({ x: d.x, z: d.z, t: d.t })); },
+    /** 画面の座標を、水面の上のワールド座標へ直す */
+    pick(nx, ny) { return renderer?.pickWater(nx, ny); },
+    // 手元で確かめるとき、中身をそのまま触れるように
+    get renderer() { return renderer; },
+    get game() { return game; },
+  };
+}
+
 // 1 フレーム待ってから組み立てる。rAF だけだと、同じフレームの中で
 // 走って覆いが画面に出ないことがある
 requestAnimationFrame(() => setTimeout(boot, 0));
@@ -315,5 +347,3 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-// 手元で確かめるための窓口。描画の中身を外から覗けるようにしておく。
-window.__kingyo = { get renderer() { return renderer; }, game };

@@ -4,3 +4,7 @@ shots/
 
 # 音源の元ファイル。素のままでは置かない（scripts/pack-sound.mjs 参照）
 assets/sound/*.m4a
+
+# 試験のために入れるもの。本体は依存ゼロのまま
+node_modules/
+package-lock.json

@@ -9,20 +9,21 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610041317';
-import { VS_FULL } from '../shaders/common.js?v=202610041317';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610041317';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610041317';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610041317';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610041317';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610041317';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610041317';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610041317';
-import { Ocean } from './ocean.js?v=202610041317';
-import { Ripple } from './ripple.js?v=202610041317';
-import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, AIR, LANTERN, RAIN } from './world.js?v=202610041317';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610041317';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610041317';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610041403';
+import { VS_FULL } from '../shaders/common.js?v=202610041403';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610041403';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610041403';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610041403';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610041403';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610041403';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610041403';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610041403';
+import { Ocean } from './ocean.js?v=202610041403';
+import { Ripple } from './ripple.js?v=202610041403';
+import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, AIR, LANTERN, RAIN,
+         pushOutOfBowl, bowlPosFor } from './world.js?v=202610041403';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610041403';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610041403';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -246,20 +247,13 @@ export class Renderer {
     // きらめきの出方が変わってしまう
     this.setHour(this.hour, (yaw * 180) / Math.PI);
 
-    // 器は画面基準で置く。カメラの右方向と手前方向へずらすだけ
-    const across = portrait ? BOWL.acrossPortrait : BOWL.across;
-    // 真上に近づくほど「手前」は画面でほとんど動かないので、横へ寄せる
-    const lean = Math.cos(pitch) / Math.cos(65 * DEG);
-    const toward = (portrait ? BOWL.towardPortrait : BOWL.toward) * lean;
+    // 器は画面基準で置く。カメラの右方向と手前方向へずらすだけ。
+    // 式は world.js と共用する。片方だけ直すと、絵と当たり判定がずれる
     const rightV = [Math.cos(yaw), 0, -Math.sin(yaw)];     // 画面の右
     const towardV = [Math.sin(yaw), 0, Math.cos(yaw)];     // 画面の手前
     this.yaw = yaw;
     this.toward = towardV;
-    this.bowlPos = [
-      rightV[0] * across + towardV[0] * toward,
-      0,
-      rightV[2] * across + towardV[2] * toward,
-    ];
+    this.bowlPos = bowlPosFor(this.pitchDeg, portrait);
     BOWL.pos[0] = this.bowlPos[0];
     BOWL.pos[2] = this.bowlPos[2];
 
@@ -514,19 +508,8 @@ export class Renderer {
                + Math.sin(time * 0.041 + ph * 1.6) * LEAF.drift * 1.5;
       const dz = Math.cos(time * 0.083 + ph * 1.2) * LEAF.drift
                + Math.cos(time * 0.035 + ph) * LEAF.drift * 1.3;
-      let px = c.x + dx, pz = c.z + dz;
-      // お椀を避ける。葉やウキクサと同じ
-      const bx = px - BOWL.pos[0], bz = pz - BOWL.pos[2];
-      const keep = BOWL.outerR + c.r * 0.9;
-      const d = Math.hypot(bx, bz);
-      if (d < keep) {
-        const k = d > 1e-4 ? keep / d : 1;
-        px = BOWL.pos[0] + bx * k;
-        pz = BOWL.pos[2] + bz * k;
-      }
-      const m = c.r * 1.6;
-      px = Math.min(Math.max(px, -TANK.halfX + m), TANK.halfX - m);
-      pz = Math.min(Math.max(pz, -TANK.halfZ + m), TANK.halfZ - m);
+      const [px, pz] = pushOutOfBowl(c.x + dx, c.z + dz,
+                                     BOWL.outerR + c.r * 0.9, BOWL.pos, c.r * 1.6);
       p.set('uPos', [px, pz])
        .setFloat('uR', c.r)
        // 浮いた葉はゆっくり回る。止まっていると貼り紙に見える
@@ -546,19 +529,8 @@ export class Renderer {
                + Math.sin(time * 0.051 + w.ph * 1.7) * WEED.drift * 1.5;
       const dz = Math.cos(time * 0.101 + w.ph * 1.3) * WEED.drift
                + Math.cos(time * 0.043 + w.ph) * WEED.drift * 1.3;
-      let px = w.x + dx, pz = w.z + dz;
-      // お椀を避ける。葉と同じで、見下ろす角度でお椀が動く
-      const bx = px - BOWL.pos[0], bz = pz - BOWL.pos[2];
-      const keep = BOWL.outerR + w.len;
-      const d = Math.hypot(bx, bz);
-      if (d < keep) {
-        const k = d > 1e-4 ? keep / d : 1;
-        px = BOWL.pos[0] + bx * k;
-        pz = BOWL.pos[2] + bz * k;
-      }
-      const m = w.len * 2.2;
-      px = Math.min(Math.max(px, -TANK.halfX + m), TANK.halfX - m);
-      pz = Math.min(Math.max(pz, -TANK.halfZ + m), TANK.halfZ - m);
+      const [px, pz] = pushOutOfBowl(w.x + dx, w.z + dz,
+                                     BOWL.outerR + w.len, BOWL.pos, w.len * 2.2);
       p.set('uPos', [px, pz])
        .setFloat('uLen', w.len)
        .setFloat('uYaw', w.yaw + Math.sin(time * 0.06 + w.ph) * 0.3)
@@ -587,18 +559,9 @@ export class Renderer {
       // ずらしがほとんど効かなくなる）、表の値だけでは足りない。
       // 真上から見ると、葉が 6〜8cm お椀に食い込んでいた。
       // 置き場所を直してもまた角度で動くので、ここで押しのける。
-      let px = c.x + dx, pz = c.z + dz;
-      const bx = px - BOWL.pos[0], bz = pz - BOWL.pos[2];
-      const keep = BOWL.outerR + c.r * 0.86;   // 葉は縁が波打つので少し食い込ませる
-      const d = Math.hypot(bx, bz);
-      if (d < keep) {
-        const k = d > 1e-4 ? keep / d : 1;
-        px = BOWL.pos[0] + bx * k;
-        pz = BOWL.pos[2] + bz * k;
-        // 押し出した先が舟の外に出ないように戻す
-        px = Math.min(Math.max(px, -TANK.halfX + c.r), TANK.halfX - c.r);
-        pz = Math.min(Math.max(pz, -TANK.halfZ + c.r), TANK.halfZ - c.r);
-      }
+      // 葉は縁が波打つので、少しだけ食い込ませてよい
+      const [px, pz] = pushOutOfBowl(c.x + dx, c.z + dz,
+                                     BOWL.outerR + c.r * 0.86, BOWL.pos, c.r);
       p.set('uPadPos', [px, pz])
        .setFloat('uPadR', c.r)
        .setFloat('uYaw', c.yaw + Math.sin(time * 0.055 + ph) * 0.22)

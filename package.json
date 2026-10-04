@@ -7,11 +7,15 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "pack-sound": "node scripts/pack-sound.mjs",
-    "stamp": "node scripts/stamp.mjs"
+    "stamp": "node scripts/stamp.mjs",
+    "test": "node tests/run.mjs"
   },
   "engines": {
     "node": ">=20"
   },
   "author": "kanade ishida",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.62.0"
+  }
 }
