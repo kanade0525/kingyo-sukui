@@ -126,6 +126,15 @@ export function layerWants({ daylight, lanternOn, closed, weather, elev = 0 }) {
  */
 const FADE = 1.4;
 
+/**
+ * 親の音量。つまみの 100 がこの値にあたる。
+ *
+ * 0.9 では大きかった。縁日の音を部屋で流すものなので、
+ * 控えめなところから始めて、欲しい人がつまみで上げる形にする。
+ * 以前の 40%。
+ */
+const MASTER = 0.36;
+
 /** 音量をなめらかに動かす。途中でも割り込める。dur が 0 なら即座に */
 function ramp(param, to, t, dur = FADE) {
   param.cancelScheduledValues(t);
@@ -229,13 +238,13 @@ export class Sound {
     // 立ち上がりのフェードは、親の 1 本だけに任せる。層も元栓も同時に
     // 上げると、直線の掛け合わせで t³ の形になって、終わり際に
     // 一気に飛び出す。開けきるまでは、ほかは目標値へ直に置く。
-    ramp(this.master.gain, this.on ? 0.9 * this.mix.master : 0, ctx.currentTime);
+    ramp(this.master.gain, this.on ? MASTER * this.mix.master : 0, ctx.currentTime);
     setTimeout(() => { this.opened = true; }, FADE * 1000);
   }
 
   setEnabled(v) {
     this.on = v;
-    if (this.master) ramp(this.master.gain, v ? 0.9 * this.mix.master : 0, this.ctx.currentTime);
+    if (this.master) ramp(this.master.gain, v ? MASTER * this.mix.master : 0, this.ctx.currentTime);
   }
 
   /** 合成と録音の切り替え。 */

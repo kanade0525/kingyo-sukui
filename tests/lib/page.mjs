@@ -115,6 +115,19 @@ export async function stillWater(page) {
  * 範囲は画面に対する割合で渡す。
  */
 export async function measure(page, box = { x0: 0.2, x1: 0.8, y0: 0.35, y1: 0.75 }, cols = 1) {
+  // 一部だけ黒い帯で返ってくることがある。全体が黒いかどうかだけ見ていると
+  // 通ってしまい、「その帯だけ模様が無い」というあり得ない結果になる。
+  // 測った帯に、まったく変化の無いものが混じっていたら撮り直す
+  for (let i = 0; i < 3; i++) {
+    const got = await measureOnce(page, box, cols);
+    const list = cols === 1 ? [got] : got;
+    if (list.every((g) => g.detail > 0 && g.mean > 0)) return got;
+    await page.waitForTimeout(600);
+  }
+  return measureOnce(page, box, cols);
+}
+
+async function measureOnce(page, box, cols) {
   const { width, height, data } = await shot(page);
   const lum = (i) => 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
   const out = [];

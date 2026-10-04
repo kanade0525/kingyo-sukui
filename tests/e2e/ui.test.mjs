@@ -13,31 +13,67 @@ const withPage = async (opt, fn) => {
   try { await fn(page, errors); } finally { await ctx.close(); }
 };
 
-const PHONE = { viewport: { width: 390, height: 844 }, mobile: true };
+/**
+ * iPhone の実際の表示領域。
+ *
+ * 390 × 844 は画面全体の大きさで、Safari の上下のバーを引いた
+ * 見えている範囲はもっと狭い。844 で測っていたので、
+ * 「設定を開くと時刻が画面の外に出る」のを見逃していた。
+ */
+const PHONES = [
+  ['iPhone 13', { width: 390, height: 664 }],
+  ['iPhone SE', { width: 375, height: 553 }],
+  ['さらに狭い', { width: 360, height: 460 }],
+];
 
 export default {
-  'スマホで設定のすべてのつまみに手が届く': () => withPage(PHONE, async (page) => {
-    await page.click('#btnPanel');
-    await page.waitForTimeout(500);
-    const bad = await page.evaluate(() => {
-      const panel = document.getElementById('panel');
-      const out = [];
-      for (const el of panel.querySelectorAll('input, button')) {
-        // 隠してあるもの（鳴っている層の「鳴る時刻へ」など）は対象外
-        if (el.hidden || el.offsetParent === null) continue;
-        el.scrollIntoView({ block: 'center' });
-        const r = el.getBoundingClientRect();
-        if (r.top < 0 || r.bottom > innerHeight || r.width < 8 || r.height < 8) {
-          out.push(`${el.id || el.textContent.trim().slice(0, 10)}`
-                 + `（上 ${Math.round(r.top)} / 下 ${Math.round(r.bottom)} / 画面 ${innerHeight}）`);
-        }
-      }
-      return out;
-    });
-    eq(bad.length, 0, `画面の外に出ている操作: ${bad.join(', ')}`);
-  }),
+  'スマホで設定が画面に収まる': async () => {
+    for (const [name, viewport] of PHONES) {
+      await withPage({ viewport, mobile: true }, async (page) => {
+        await page.click('#btnPanel');
+        await page.waitForTimeout(600);
+        const r = await page.evaluate(() => {
+          const p = document.getElementById('panel');
+          const b = p.getBoundingClientRect();
+          return { top: b.top, bottom: b.bottom, vh: innerHeight,
+                   vv: visualViewport ? Math.round(visualViewport.height) : null,
+                   set: p.style.maxHeight };
+        });
+        ok(r.top >= -0.5, `${name}: 設定の上が画面から ${(-r.top).toFixed(0)}px はみ出している`);
+        ok(r.bottom <= r.vh + 0.5, `${name}: 設定の下が画面から ${(r.bottom - r.vh).toFixed(0)}px はみ出している`);
+        // 見えている高さから入れていること。CSS の vh だけに任せると、
+        // iOS では URL バーのぶん大きく出てしまう
+        ok(r.set !== '', `${name}: 高さが見えている範囲から入っていない`);
+        ok(parseFloat(r.set) <= r.vv, `${name}: 入れた高さ ${r.set} が見えている範囲 ${r.vv}px より大きい`);
+      });
+    }
+  },
 
-  '設定を開くと右上の札が引っ込む': () => withPage(PHONE, async (page) => {
+  'スマホで設定の端から端まで送れる': async () => {
+    for (const [name, viewport] of PHONES) {
+      await withPage({ viewport, mobile: true }, async (page) => {
+        await page.click('#btnPanel');
+        await page.waitForTimeout(600);
+        const r = await page.evaluate(() => {
+          const p = document.getElementById('panel');
+          const look = (el) => {
+            const b = el.getBoundingClientRect();
+            return b.top >= 0 && b.bottom <= innerHeight && b.height > 8;
+          };
+          const rows = [...p.querySelectorAll('.row')];
+          p.scrollTop = 0;
+          const first = look(document.getElementById('hour'));
+          p.scrollTop = p.scrollHeight;
+          const last = look(rows[rows.length - 1]);
+          return { first, last, scroll: p.scrollHeight > p.clientHeight };
+        });
+        ok(r.first, `${name}: いちばん上まで送っても時刻のつまみに届かない`);
+        ok(r.last, `${name}: いちばん下まで送っても最後の行に届かない`);
+      });
+    }
+  },
+
+  '設定を開くと右上の札が引っ込む': () => withPage({ viewport: PHONES[0][1], mobile: true }, async (page) => {
     await page.click('#btnPanel');
     await page.waitForTimeout(400);
     const over = await page.evaluate(() => {

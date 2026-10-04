@@ -79,9 +79,19 @@ button:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
   position:fixed;right:16px;bottom:calc(60px + env(safe-area-inset-bottom,0px));z-index:3;
   width:272px;max-width:calc(100vw - 32px);
   /* 高さを決めずに下端から積み上げていたので、項目が増えたとき
-     画面の上へはみ出して、そこから先に触れなくなっていた */
+     画面の上へはみ出して、そこから先に触れなくなっていた。
+     
+     単位は dvh。iOS の Safari で 100vh が指すのは「URL バーが隠れた
+     ときの高さ」で、実際に見えている範囲より 80px ほど大きい。
+     パネルは下端基準なので、その差ぶん上がはみ出して、いちばん上の
+     時刻が URL バーの裏へ入っていた。dvh なら、いま見えている高さに追う。
+     vh の行は、dvh を知らないブラウザのために残してある。
+     さらに確かなところは main.js が visualViewport から直に入れる */
   max-height:calc(100vh - 96px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+  max-height:calc(100dvh - 96px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
   overflow-y:auto;overscroll-behavior:contain;
+  /* 中身が長いときに、指で弾いて送れるように */
+  -webkit-overflow-scrolling:touch;
   background:var(--ai-pane);border:1px solid rgba(23,34,43,.16);border-radius:12px;
   padding:14px;display:flex;flex-direction:column;gap:12px;
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);

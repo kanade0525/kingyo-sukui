@@ -1,6 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
 
-import { t } from './i18n.js?v=202610041403';
+import { t } from './i18n.js?v=202610042332';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -17,12 +17,19 @@ export class UI {
     };
 
 
+    // URL バーの出入りや回転で、見えている高さが変わる
+    const refit = () => { if (!this.el.panel.hidden) this.fitPanel(); };
+    window.visualViewport?.addEventListener('resize', refit);
+    window.visualViewport?.addEventListener('scroll', refit);
+    window.addEventListener('orientationchange', () => setTimeout(refit, 250));
+
     this.el.btnPanel.addEventListener('click', () => {
       const open = this.el.panel.hidden;
       this.el.panel.hidden = !open;
       this.el.btnPanel.setAttribute('aria-expanded', String(open));
       // 右上の札はパネルの上に重なる。開いているあいだは引っ込める
       document.documentElement.classList.toggle('panel-open', open);
+      if (open) this.fitPanel();
     });
 
     this.#range('hour', 'hourOut', (v, fromCode) => {
@@ -152,6 +159,23 @@ export class UI {
         mark.textContent = `${t('silentNow')} · ${t(k === 'rain' ? 'makeRain' : 'jumpTime')}`;
       }
     }
+  }
+
+  /**
+   * 設定の高さを、いま見えている範囲に合わせる。
+   *
+   * CSS の dvh でだいたい合うが、iOS の Safari は URL バーの出入りで
+   * 見える高さが変わるうえ、position:fixed はレイアウト側の座標に貼り付く。
+   * visualViewport は「いま目に入っている範囲」そのものなので、
+   * そこから直に入れるのがいちばん確か。
+   *
+   * 開いているあいだ、バーが出入りするたびに呼ぶ。
+   */
+  fitPanel() {
+    const vv = window.visualViewport;
+    if (!vv) return;                      // 知らないブラウザは CSS に任せる
+    const pad = 96;                       // 下の操作列と上下の余白ぶん
+    this.el.panel.style.maxHeight = `${Math.max(Math.round(vv.height) - pad, 160)}px`;
   }
 
   /** 最初の絵が出たら覆いを外す。 */

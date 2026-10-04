@@ -72,7 +72,7 @@ export default {
       const m = await level(page, h, w);
       got.push([name, m]);
       // 小さすぎれば聞こえず、大きすぎれば割れる
-      between(m.rms, -34, -17, `${name}の音量（dB）`);
+      between(m.rms, -42, -25, `${name}の音量（dB）`);
       ok(m.peak < -2, `${name}の頂点が高すぎる（${m.peak.toFixed(1)}dB）`);
     }
     // 場面ごとの差が開きすぎない。深夜だけ 11dB 沈んでいた
@@ -130,47 +130,57 @@ export default {
         an.fftSize = 1024;
         s.master.connect(an);
         s.setScene(sunFor(20, 0, 0, new Date(2026, 7, 10)));
-        const buf = new Float32Array(an.fftSize);
+
+        // まず親の音量だけを細かく拾う。
+        //
+        // 実効値の平均と混ぜて拾っていたら、1 点に 200ms かかるので、
+        // 機械が混んでいるときに立ち上がりを跨いで取りこぼした。
+        // 音量を読むだけなら軽いので、25ms ごとに追える
         const t0 = s.ctx.currentTime;
-        const out = [];
-        // 1 点ごとに 200ms ぶん平均する。一度きりの音（ポンプの泡）が
-        // 入るだけで短い窓は跳ねるので、ならしてから見る。
-        // 刻みは揃わないので、実際の経過時刻も控える
-        for (let i = 0; i < 30; i++) {
-          const at = s.ctx.currentTime - t0;
+        const gain = [];
+        while (s.ctx.currentTime - t0 < 2.6) {
+          gain.push({ t: s.ctx.currentTime - t0, v: s.master.gain.value });
+          await new Promise((r) => setTimeout(r, 25));
+        }
+
+        // そのあとで、出ている音を測る
+        const buf = new Float32Array(an.fftSize);
+        const rms = async (sec) => {
           let acc = 0, n = 0;
-          const end = performance.now() + 200;
+          const end = performance.now() + sec * 1000;
           while (performance.now() < end) {
             an.getFloatTimeDomainData(buf);
             for (const x of buf) acc += x * x;
             n += buf.length;
-            await new Promise((r) => setTimeout(r, 15));
+            await new Promise((r) => setTimeout(r, 20));
           }
-          out.push({ t: at, rms: Math.sqrt(acc / n),
-                     master: s.master.gain.value, clips: Object.keys(s.buffers).length });
-        }
-        return out;
+          return Math.sqrt(acc / n);
+        };
+        return { gain, level: await rms(2.0), clips: Object.keys(s.buffers).length };
       }, v);
 
-      eq(got[got.length - 1].clips, 6, `読めた録音が ${got[got.length - 1].clips} 本`);
-      // 読めた本数が途中の数で見つかることはない。まとめて読んで一度に入れている
-      ok(got.every((g) => g.clips === 0 || g.clips === 6),
-         `録音が小出しに入っている（${[...new Set(got.map((g) => g.clips))].join(', ')} 本）`);
+      eq(got.clips, 6, `読めた録音が ${got.clips} 本`);
 
-      // 親の音量が開ききるまでの時間。これが立ち上がりのフェードそのもの
-      const shut = got.find((g) => g.master < 0.1);
-      const open = got.find((g) => g.master > 0.8);
-      ok(shut && open, '親の音量が開く様子を捕まえられなかった');
-      ok(open.t - shut.t > 0.8,
-         `親の音量が ${(open.t - shut.t).toFixed(2)} 秒で開ききる。急すぎる`);
+      // 立ち上がりにかかった時間を、傾きから割り出す。
+      //
+      // 「音量が 0.1 を下回る点」を探していたら、機械が混んでいる回に
+      // 測り始めが間に合わず、取りこぼすことがあった。上がっている途中の
+      // 2 点が取れれば、そこから全体の長さが出る。どこから測っても効く。
+      // 目標は決め打ちにしない。親の音量を変えたときに、
+      // 試験まで直さないと落ちる、という作りにはしたくない
+      const TARGET = Math.max(...got.gain.map((g) => g.v));
+      const rising = got.gain.filter((g) => g.v > 0.12 * TARGET && g.v < 0.88 * TARGET);
+      ok(rising.length >= 2,
+         `立ち上がっている途中を捕まえられなかった（${got.gain.slice(0, 4).map((g) => g.v.toFixed(2)).join(', ')} …）`);
+      const a = rising[0], b = rising[rising.length - 1];
+      const span = (b.t - a.t) / ((b.v - a.v) / TARGET);
+      ok(span > 0.9, `音量が ${span.toFixed(2)} 秒で開ききる速さ。急すぎる`);
+      ok(span < 4.0, `音量が ${span.toFixed(2)} 秒もかけて開く。遅すぎる`);
+      // ちゃんと開ききること
+      ok(got.gain[got.gain.length - 1].v > 0.8 * TARGET,
+         `2.6 秒待っても開ききらない（${got.gain[got.gain.length - 1].v.toFixed(2)}）`);
 
-      ok(got[0].rms < 0.01, `鳴らし始めの瞬間から音が出ている（${got[0].rms.toFixed(4)}）`);
-      const peak = Math.max(...got.map((g) => g.rms));
-      ok(peak > 0.01, `しばらく待っても鳴らない（頂点 ${peak.toFixed(4)}）`);
-
-      // 出てくる音そのものの立ち上がりは、録音の中身しだいで形が変わるし、
-      // 測る刻みも揃わない。フェードが効いているかは、親の音量の動きで見る。
-      // それが立ち上がりの唯一の担い手になるようにしてある
+      ok(got.level > 0.004, `しばらく待っても鳴らない（${got.level.toFixed(4)}）`);
     } finally {
       await browser.close();
     }

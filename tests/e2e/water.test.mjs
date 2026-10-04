@@ -70,7 +70,10 @@ export default {
       }
       await pg.waitForTimeout(400);
     }
-    ok(seen.size > 60, `雨粒が ${seen.size} 通りの場所にしか落ちない`);
+    // 26 粒 × 6 回 = 156 標本。重なるので、見える通り数はこれより減る。
+    // 場所が番号で固定だった頃は 26 通りで頭打ちだった。
+    // 細かい確かめは単体の試験（tests/unit/water）でやっている
+    ok(seen.size > 40, `雨粒が ${seen.size} 通りの場所にしか落ちない`);
     await setWeather(pg, 0);
   },
 
