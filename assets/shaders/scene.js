@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610050550';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610050644';
 
 
 
@@ -85,6 +85,8 @@ uniform vec3 uCam;
 uniform vec3 uRight, uUp, uFwd;
 uniform float uTanHalf, uAspect;
 uniform float uGroundY;
+uniform float uRainWet;    // 雨で濡れている度合い 0〜1
+uniform float uSkyTime;    // 雨粒の輪を動かす時刻
 uniform vec2 uTankOuter;   // 舟の外寸の半分（いちばん張り出す縁の上端で）
 uniform float uTankOuterR; // その角の丸み
 
@@ -226,6 +228,12 @@ void main(){
       float ring = outerDist(pp);
       float wet = clamp((1.0 - smoothstep(0.01, 0.13, ring)) * 0.60
                       + smoothstep(0.66, 0.86, fbm(pp * 1.6 + 7.0)) * 0.30, 0.0, 1.0);
+      // 雨。参道ぜんぶが濡れ、窪みには水が溜まる。
+      //
+      // 明るさを落とすだけだと「暗い晴れの日」にしか見えない。
+      // 雨の日の地面がそれと分かるのは、溜まり水が空を映すから
+      float pool = smoothstep(0.50, 0.70, fbm(pp * 2.1 + 19.0)) * uRainWet;
+      wet = clamp(wet + uRainWet * 0.62 + pool * 0.55, 0.0, 1.0);
       base *= 1.0 - wet * 0.22;
 
       // 粒の谷は空が見えないので、環境光だけを落とす。
@@ -247,6 +255,22 @@ void main(){
       // 真上から見える砂利は「平らな天面」が並んだもので、粒を分けて
       // いるのは縁の照りではなく、粒と粒の間に落ちる影のほう
       vec3 n = normalize(vec3(-hs * 0.11 * cover, 1.0, -hz * 0.11 * cover));
+      // 溜まり水は面が平らになり、粒の凹凸を埋めてしまう。
+      // 落ちる雨粒がそこに輪を立てる
+      if(pool > 0.002){
+        float rr = 0.0;
+        vec2 cell = floor(pp * 1.4);
+        for(int k = 0; k < 3; k++){
+          float f = float(k);
+          float cyc = floor(uSkyTime * 1.6 + f * 0.41);
+          vec2 c = (cell + hash22(cell + vec2(cyc, f))) / 1.4;
+          float age = fract(uSkyTime * 1.6 + f * 0.41);
+          rr += smoothstep(0.012, 0.0, abs(length(pp - c) - age * 0.17))
+              * (1.0 - age) * (1.0 - age);
+        }
+        n = normalize(mix(n, normalize(vec3(rr * 0.35, 1.0, rr * 0.28)), pool));
+        rough = mix(rough, 0.07, pool);
+      }
 
       float sh = groundShadow(p);
       // 濡れた膜が返す環境。焼いた遠景を使い、提灯は位置を合わせて別に足す

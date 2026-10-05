@@ -60,12 +60,32 @@ export default {
     const pg = await page();
     await setWeather(pg, 0);
     const clear = await bright(pg, 13);
+    // 下限は「夕方に見えない」こと。割合を決め打ちにすると、
+    // 露出の取り方を変えるたびにその数字のほうを動かすことになる。
+    // 実際の夕暮れを測って、それより明るいことを見る
+    const dusk = await bright(pg, 18);
     await setWeather(pg, 2);
     await setHour(pg, 13);
     const rain = (await measure(pg)).mean;
     await setWeather(pg, 0);
     ok(rain < clear, `雨（${rain.toFixed(0)}）が晴れ（${clear.toFixed(0)}）より暗くない`);
-    ok(rain > clear * 0.45, `雨が暗すぎる（晴れの ${(rain / clear * 100).toFixed(0)}%）。ただの夕方に見える`);
+    ok(rain > dusk * 1.15,
+       `雨の昼（${rain.toFixed(0)}）が夕暮れ（${dusk.toFixed(0)}）と変わらない`);
+  },
+
+  '天気が変われば空の様子も変わる': async () => {
+    // 明るさを落とすだけでは、晴れも曇りも雨も同じのっぺりした空になる。
+    // 雲が掛かっていれば、空の帯に濃淡が出る
+    const pg = await page();
+    await setHour(pg, 13);
+    const sky = { x0: 0.30, x1: 0.70, y0: 0.0, y1: 0.08 };
+    await setWeather(pg, 0);
+    const clear = await measure(pg, sky);
+    await setWeather(pg, 2);
+    const rain = await measure(pg, sky);
+    await setWeather(pg, 0);
+    ok(rain.mean < clear.mean * 0.92,
+       `雨の空（${rain.mean.toFixed(0)}）が晴れの空（${clear.mean.toFixed(0)}）と変わらない`);
   },
 
   'おしまい': async () => {

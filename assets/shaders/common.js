@@ -292,6 +292,55 @@ uniform float uHaze;
 
 const float PI = 3.14159265;
 
+/**
+ * 雲。[覆う量, 明るさ（地平の空に対する比）, 流れた量 x, 同 z]。
+ *
+ * 明るさだけ落として曇りにしていたら、晴れも曇りも雨も同じのっぺりした
+ * 空になって、天気が画面に出ていなかった。
+ */
+uniform vec4 uCloud;
+
+// 雲のための値雑音。NOISE を取り込んでいないプログラムからも
+// 空を引くので、ここだけで閉じるように別に持つ
+float cloudHash(vec2 p){
+  vec3 q = fract(vec3(p.xyx) * 0.1031);
+  q += dot(q, q.yzx + 33.33);
+  return fract((q.x + q.y) * q.z);
+}
+float cloudNoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(cloudHash(i), cloudHash(i + vec2(1, 0)), f.x),
+             mix(cloudHash(i + vec2(0, 1)), cloudHash(i + vec2(1, 1)), f.x), f.y);
+}
+float cloudFbm(vec2 p){
+  float a = 0.0, w = 0.5;
+  for(int i = 0; i < 5; i++){ a += cloudNoise(p) * w; p *= 2.07; w *= 0.5; }
+  return a;
+}
+
+/**
+ * 見上げた先の雲。rgb と、覆っている度合い w を返す。
+ *
+ * 高さ 1200m の面に貼る。地平へ近づくほど面を斜めに見ることになるので、
+ * 遠くの雲ほど詰まって見える。これが無いと、空に奥行きが出ない。
+ */
+vec4 cloudLook(vec3 d){
+  if(uCloud.x < 0.001 || d.y < 0.010) return vec4(0.0);
+  vec2 p = d.xz * (1.0 / max(d.y, 0.010)) * 0.90 + uCloud.zw;
+  float n = cloudFbm(p * 0.34);
+  // 覆う量。多いほど低い所まで雲になる
+  float cover = smoothstep(0.98 - uCloud.x * 0.90, 1.30 - uCloud.x * 0.90, n + 0.30);
+  // 地平の際は霞に溶ける
+  cover *= smoothstep(0.010, 0.085, d.y);
+  if(cover < 0.002) return vec4(0.0);
+  // 塊の厚い所ほど底が暗く、縁は日を透かして明るい
+  float thick = smoothstep(0.30, 0.95, n);
+  vec3 col = uSkyHorizon * uCloud.y * (0.62 + 0.70 * (1.0 - thick))
+           + uSunColor * 0.016 * uCloud.y * (1.0 - thick);
+  return vec4(col, cover);
+}
+
 // 屋台の連提灯。
 //
 // 9 号長型ビニール提灯（直径 24cm × 高さ 53cm）を、屋台の梁に
@@ -412,6 +461,9 @@ vec3 skyColor(vec3 d, vec3 from){
   // 太陽のまわりの暈け（前方散乱）
   float mu = max(dot(d, uSunDir), 0.0);
   c += uSunColor * (0.050 * pow(mu, 9.0) + 0.008 * pow(mu, 2.0)) * uHaze;
+  // 雲は空の手前
+  vec4 cl = cloudLook(d);
+  c = mix(c, cl.rgb, cl.w);
   // 天幕は空の手前。提灯はさらに手前に吊るしてある
   vec4 tent = tentLook(d);
   return mix(c, tent.rgb, tent.w) + orb;

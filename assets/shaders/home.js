@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610050550';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610050644';
 
 /**
  * 縁側。
@@ -315,6 +315,9 @@ void main(){
     float up = clamp(d.y, 0.0, 1.0);
     col = mix(uSkyHorizon, uSkyZenith, pow(up, 0.5));
     depth = 1e5;
+    // 雲。天気が画面に出るのはここがいちばん大きい
+    vec4 cl = cloudLook(d);
+    col = mix(col, cl.rgb, cl.w);
     // 借景。垣の向こうに雑木林が霞んで並ぶ。
     // 垣で閉じきると庭が箱になるので、奥行きはここで作る。
     if(d.z < -1e-4){
@@ -664,7 +667,9 @@ void main(){
     vec3 col = mix(below, refl, F);
     // 輪の斜面が空を拾う照り。上から見た水面で雨粒がいちばん見えるのはこれ
     col += min(ggx(n, V, uSunDir, 0.07, vec3(0.02)) * uSunColor * PI, vec3(0.30));
-    col += envSpec(reflect(-V, n), 0.10) * length(rip) * 7.0;
+    // 輪の照りは、強く振ると水面が白い膜になって中が見えなくなる。
+    // 覗き込んで中が見えることのほうが先で、照りは輪の在りかを示す程度に留める
+    col += min(envSpec(reflect(-V, n), 0.10) * length(rip) * 4.0, vec3(0.22));
     frag = vec4(col, vDist);
     return;
   }
