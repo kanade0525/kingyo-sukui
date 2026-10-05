@@ -8,7 +8,7 @@
 // 泳ぎの値（角度・半径・位相）は屋台のお椀を基準に作られていて、鉢へ
 // 持っていくと鉢の外を泳ぐ。毎回ここで引き直すほうが小さく、壊れにくい。
 
-import { FISH_KINDS, JAR, HOME } from './world.js?v=202610052158';
+import { FISH_KINDS, JAR, HOME, bedTopAt, jarInnerAt } from './world.js?v=202610052307';
 
 /**
  * 保存の版。
@@ -194,11 +194,17 @@ export class Home {
       f.yaw = f.a + (f.spin > 0 ? Math.PI / 2 : -Math.PI / 2);
       f.bend = Math.sin(time * f.beat * 0.25 + f.phase) * 0.10;
       f.p[0] = px;
-      f.p[1] = JAR.pos[1] + Math.min(Math.max(y, 0.012), JAR.waterY - 0.012);
+      // 下限は砂の面。砂を盛ったあとも 1.2cm のままにしていたので、
+      // 金魚が砂に半分埋まって泳いでいた
+      const half = f.len * 0.42;
+      const floor = bedTopAt(r) + half + 0.003;
+      const ceil = Math.max(JAR.waterY - half - 0.003, floor);
+      f.p[1] = JAR.pos[1] + Math.min(Math.max(y, floor), ceil);
       f.p[2] = pz;
-      // 念のため、ガラスの内側へ丸める
+      // ガラスの内側へ丸める。鉢は上も下もすぼまっているので、
+      // いちばん太い所の半径で測ると、底の近くで壁を抜ける
       const d = Math.hypot(f.p[0] - JAR.pos[0], f.p[2] - JAR.pos[2]);
-      const lim = inner - f.len * 0.6;
+      const lim = Math.max(jarInnerAt(f.p[1] - JAR.pos[1]) - f.len * 0.6, 0.004);
       if (d > lim) {
         const k = lim / d;
         f.p[0] = JAR.pos[0] + (f.p[0] - JAR.pos[0]) * k;
@@ -217,9 +223,9 @@ function swimState(f) {
     r: inner * (0.25 + Math.random() * 0.45),
     spin: (Math.random() > 0.5 ? 1 : -1) * (0.35 + Math.random() * 0.55),
     phase: Math.random() * 10,
-    y0: 0.03 + Math.random() * (JAR.waterY - 0.06),
+    y0: bedTopAt(0) + 0.014 + Math.random() * Math.max(JAR.waterY - bedTopAt(0) - 0.034, 0.01),
     sway: 0.012 + Math.random() * 0.020,
-    p: [JAR.pos[0], JAR.pos[1] + 0.07, JAR.pos[2]],
+    p: [JAR.pos[0], JAR.pos[1] + bedTopAt(0) + 0.03, JAR.pos[2]],
     yaw: 0,
     bend: 0,
   };

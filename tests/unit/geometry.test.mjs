@@ -6,7 +6,7 @@
 
 import { TANK, BOWL, PAD, WEED, LEAF, POI, LANTERN, AIR, ROOM,
          JAR, BED, tankHalfAt, pushOutOfBowl, bowlPosFor, mapleLeaves,
-         anacharisLeaves, jarRadius, jarCameraFor } from '../../assets/js/world.js?v=202610041317';
+         anacharisLeaves, jarRadius, jarCameraFor, bedTopAt, jarInnerAt } from '../../assets/js/world.js?v=202610041317';
 import { ok, between, near } from '../lib/assert.mjs';
 
 const PITCHES = [[55, '浅め'], [65, '標準'], [87, '真上']];
@@ -147,6 +147,25 @@ export default {
          `${name} で鉢が小さい（画角の ${(seen / Math.min(halfV, halfH) * 100).toFixed(0)}%）`);
       // 手前の面が near 面（2cm）より向こうにあること
       ok(dist - radius > 0.02, `${name} で鉢が近すぎて切れる`);
+    }
+  },
+
+  '金魚が砂に埋まらず、ガラスも抜けない': () => {
+    // 砂を 3cm 盛ったのに泳ぐ下限を 1.2cm のままにしていて、
+    // 金魚が砂に半分埋まって泳いでいた
+    const inner = JAR.outerR - JAR.wall;
+    // 小赤・小黒は全長 2.6〜3.5cm、出目金は 4.0〜5.0cm、子ガメは 3.0〜3.8cm
+    for (const len of [0.026, 0.035, 0.040, 0.050, 0.030, 0.038]) {
+      const half = len * 0.42;
+      for (let i = 0; i <= 10; i++) {
+        const r = inner * (0.25 + 0.45 * (i / 10));
+        const floor = bedTopAt(r) + half + 0.003;
+        ok(floor - half > bedTopAt(r), `全長 ${len}m の金魚が砂に埋まる`);
+        ok(floor + half < JAR.waterY, `全長 ${len}m の金魚が水面から出る`);
+        // その高さでガラスの内側に収まる
+        const lim = Math.max(jarInnerAt(floor) - len * 0.6, 0.004);
+        ok(lim + len * 0.6 <= jarInnerAt(floor) + 1e-9, 'ガラスを抜ける');
+      }
     }
   },
 

@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610052158';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610052307';
 
 
 
@@ -85,7 +85,6 @@ uniform vec3 uCam;
 uniform vec3 uRight, uUp, uFwd;
 uniform float uTanHalf, uAspect;
 uniform float uGroundY;
-uniform float uRainWet;    // 雨で濡れている度合い 0〜1
 uniform float uSkyTime;    // 雨粒の輪を動かす時刻
 uniform vec2 uTankOuter;   // 舟の外寸の半分（いちばん張り出す縁の上端で）
 uniform float uTankOuterR; // その角の丸み
@@ -561,7 +560,13 @@ void main(){
     // 下へ行くほど地面の照り返ししか届かない
     float toGround = smoothstep(uGroundY, uGroundY + 0.14, vW.y);
     float woodAO = 0.86 + 0.14 * grain2;
+    // 舟の外壁も雨に濡れる。上を向いた縁がいちばん先に濡れて、
+    // そこから壁を伝って下りる。跳ねた水のぶんと足し合わせる
     float wwet = splash * (0.45 + 0.55 * (1.0 - toGround));
+    if(uRainWet > 0.001){
+      wood *= mix(1.0, 0.74, uRainWet);
+      wwet = clamp(wwet + uRainWet * (0.55 + 0.35 * max(N.y, 0.0)), 0.0, 1.0);
+    }
 
     col = wood * (uSunColor * max(dot(N, uSunDir), 0.0)
                 + skyAmbient(N) * (0.35 + 0.65 * toGround) * woodAO

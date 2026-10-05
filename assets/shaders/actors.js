@@ -7,7 +7,7 @@
 // ひれは不透明に描く。水中パスの α にはカメラからの距離を入れていて、
 // ブレンドすると距離が壊れ、水面の屈折が狂うため。薄さは色で表す。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610052158';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610052307';
 
 // ---------------------------------------------------------------- 金魚
 
@@ -317,6 +317,18 @@ void main(){
     base += vec3(0.42) * glint;
 
     base += vec3(0.62, 0.52, 0.45) * pearl * 0.20;
+
+    // 鱗の剥げ。
+    //
+    // 掬われた金魚は無傷では済まない。網と手で鱗がいくつか飛び、
+    // そこだけ下の皮が出て白茶けて見える。艶も無くなる。
+    // 無傷の個体ばかりだと、どれも同じ型から出した置物に見える
+    {
+      vec2 sp = vec2(u * 6.0, v * 4.0) + uSeed * vec2(13.7, 9.1);
+      float off = smoothstep(0.80, 0.93, fbm(sp))
+                * smoothstep(0.12, 0.28, u) * (1.0 - smoothstep(0.62, 0.86, u));
+      base = mix(base, mix(base * 0.72, vec3(0.40, 0.37, 0.34), 0.45), off * 0.70 * uWear);
+    }
   } else {
     // ひれ。実物は薄くて向こうが透けるので、淡く、先ほど白くする。
     // 放射状の条（骨）を入れると、一枚の板に見えなくなる
@@ -337,6 +349,17 @@ void main(){
               : uKind == 2 ? vec3(0.500, 0.250, 0.180)
                            : vec3(0.600, 0.175, 0.055);
     float across = vPart == 1 ? v : (vPart == 2 || vPart == 5 ? u : v);
+
+    // ひれの裂け。
+    //
+    // 尾びれは膜が薄く、ポイにも網にも引っ掛かる。縁から条に沿って
+    // 裂けるので、切れ目は必ず付け根へ向かって走る。
+    // 縁がどれも揃っていると、紙で切り抜いた扇に見える
+    {
+      float tear = fbm(vec2(across * 22.0 + uSeed * 31.0, 1.0));
+      float deep = 0.055 + 0.090 * smoothstep(0.74, 0.96, tear);
+      if(along > 1.0 - deep * smoothstep(0.70, 0.97, tear) * uWear) discard;
+    }
     // 更紗は、ひれにも緋と白が斑に出る
     if(uKind == 3){
       float fn = fbm(vec2(along * 5.0 + uSeed * 17.0, across * 4.0));

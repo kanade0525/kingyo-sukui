@@ -407,6 +407,7 @@ vec3 lanternOrbs(vec3 d, vec3 from){
 uniform float uTentY;      // 天幕の高さ [m]
 uniform vec4 uTentBox;     // 覆う範囲 xmin, xmax, zmin, zmax
 uniform vec3 uTentTint;    // 幌布を透かしてくる光の色
+uniform float uRainWet;    // 雨で濡れている度合い 0〜1
 
 /**
  * 見上げた先の天幕。rgb と、覆っている度合い w を返す。
@@ -434,6 +435,12 @@ vec4 tentLook(vec3 d){
   c *= 1.0 - bar * 0.60;
   // 幌の継ぎ目のたるみ
   c *= 0.90 + 0.14 * sin(h.x * 7.0) * sin(h.y * 2.0);
+  // 雨。幌は濡れて暗く沈み、たるんだ所に水が溜まって重く垂れる。
+  // 明るい白のままだと、水面に映る天幕だけ晴れた日のまま残る
+  if(uRainWet > 0.001){
+    float pool = smoothstep(0.30, 0.85, 0.5 + 0.5 * sin(h.x * 7.0) * sin(h.y * 2.0));
+    c *= mix(1.0, 0.56 - 0.18 * pool, uRainWet);
+  }
   // 端ほど外の光が回り込んで明るい。
   // 1.1 倍まで持ち上げていたが、これも水面に映ると白い帯になる
   float edge = min(min(h.x - uTentBox.x, uTentBox.y - h.x),

@@ -448,6 +448,24 @@ export function mapleLeaves() {
 export const BED = { depth: 0.030, crown: 0.011 };
 
 /**
+ * 底砂の面の高さ。真ん中がいちばん高い山になっている。
+ *
+ * 金魚の泳ぐ下限をここから取る。砂を 3cm 盛ったのに下限を
+ * 1.2cm のままにしていたら、金魚が砂に埋まっていた。
+ */
+export function bedTopAt(r) {
+  const rEdge = jarRadius((JAR.wall + BED.depth) / JAR.height) - JAR.wall;
+  const u = Math.min(Math.max(r, 0) / rEdge, 1);
+  return JAR.wall + BED.depth + BED.crown * (1 - u * u);
+}
+
+/** その高さでのガラスの内側の半径。鉢は上も下もすぼまっている */
+export function jarInnerAt(y) {
+  const t = Math.min(Math.max(y, 0), JAR.height) / JAR.height;
+  return jarRadius(t) - JAR.wall;
+}
+
+/**
  * 鉢に挿す水草。アナカリス（オオカナダモ）。
  *
  * 葉は長さ 1.5〜3.5cm・幅 2〜4.5mm の線形で、茎の同じ節から
