@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610050017';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610050247';
 
 /**
  * 縁側。
@@ -27,84 +27,446 @@ uniform vec3 uFwd;
 uniform float uTanHalf;
 uniform float uAspect;
 uniform float uFloorY;
+uniform vec4 uEave;       // 軒の高さ, 軒の先端 z, 縁側の端 z, 庭の高さ
+uniform vec4 uPost;       // 柱の x, 幅, 竹垣の z, 竹垣の高さ
+uniform vec4 uToro;       // 灯籠の x, z, 高さ, 未使用
+uniform vec4 uBasin;      // 蹲踞の x, z, 半径, 高さ
+uniform vec3 uShrub[3];   // 刈り込みの x, z, 半径
+uniform vec4 uMaple;      // 楓の x, z, 幹の高さ, 葉叢の半径
+uniform vec4 uLeaf[5];    // 葉叢ひと塊の x, y, z, 半径
+uniform float uSkyline;   // 借景の木立までの z
 uniform float uTime;
 out vec4 frag;
 
-/** 鉢の落とす影。鉢は丸いので、円ひとつで足りる */
+// ---- 当たり判定の道具。どれも「いちばん手前の t、無ければ -1」を返す ----
+
+float hitSphere(vec3 ro, vec3 rd, vec3 c, float r){
+  vec3 oc = ro - c;
+  float b = dot(oc, rd);
+  float h = b * b - dot(oc, oc) + r * r;
+  if(h < 0.0) return -1.0;
+  float t = -b - sqrt(h);
+  return t > 0.0 ? t : -1.0;
+}
+
+/** 縦の円柱。中心 c（底の中心）、半径 r、高さ h */
+float hitCyl(vec3 ro, vec3 rd, vec3 c, float r, float h, out vec3 n){
+  n = vec3(0.0, 1.0, 0.0);
+  vec2 o = ro.xz - c.xz, dd = rd.xz;
+  float a = dot(dd, dd);
+  float best = 1e9;
+  if(a > 1e-9){
+    float b = dot(o, dd), cc = dot(o, o) - r * r;
+    float disc = b * b - a * cc;
+    if(disc > 0.0){
+      float t = (-b - sqrt(disc)) / a;
+      float y = ro.y + rd.y * t;
+      if(t > 0.0 && y > c.y && y < c.y + h){
+        best = t;
+        n = normalize(vec3(o.x + dd.x * t, 0.0, o.y + dd.y * t));
+      }
+    }
+  }
+  // 天板
+  if(abs(rd.y) > 1e-6){
+    float t = (c.y + h - ro.y) / rd.y;
+    if(t > 0.0 && t < best && length(ro.xz + rd.xz * t - c.xz) < r){
+      best = t; n = vec3(0.0, 1.0, 0.0);
+    }
+  }
+  return best < 1e9 ? best : -1.0;
+}
+
+/** 軸に沿った箱。中心 c、半径 h（各軸の半分） */
+float hitBox(vec3 ro, vec3 rd, vec3 c, vec3 h, out vec3 n){
+  // 0 除算よけ。ベクトルの比較はできないので、成分ごとに下駄を履かせる
+  vec3 safe = sign(rd) * max(abs(rd), vec3(1e-6));
+  vec3 m = 1.0 / safe;
+  vec3 o = ro - c;
+  vec3 k = abs(m) * h;
+  vec3 t1 = -m * o - k, t2 = -m * o + k;
+  float tn = max(max(t1.x, t1.y), t1.z);
+  float tf = min(min(t2.x, t2.y), t2.z);
+  if(tn > tf || tf < 0.0) return -1.0;
+  n = -sign(rd) * step(t1.yzx, t1.xyz) * step(t1.zxy, t1.xyz);
+  return tn > 0.0 ? tn : -1.0;
+}
+
+/**
+ * 夜の庭に残る明かり。月と、雲や街に返った光。
+ *
+ * 屋台の空は店じまいにならないと月を足さないが、家では夜はただの夜で、
+ * これが無いと垣も刈り込みも真っ黒に沈んで庭が消える。
+ */
+vec3 nightGlow(){
+  float dark = clamp(1.0 - uSunColor.r * 1.7, 0.0, 1.0);
+  return vec3(0.0165, 0.0215, 0.0360) * dark;
+}
+
+/** 石の肌。御影石。白い長石と黒い雲母の斑 */
+vec3 stoneCol(vec3 p, float tone){
+  float sp = fbm(p.xz * 160.0 + p.y * 90.0);
+  float stain = smoothstep(0.42, 0.78, fbm(p.xz * 6.0 + p.y * 3.0));
+  vec3 c = vec3(0.148, 0.146, 0.140) * tone * (0.80 + 0.42 * sp);
+  // 苔と水垢。古い石ほど north 側が緑に寄る
+  return mix(c, c * 0.62 + vec3(0.028, 0.048, 0.022), stain * 0.55);
+}
+
+/** 石の陰影。まとめてここで掛ける */
+vec3 litStone(vec3 p, vec3 n, vec3 d, float tone){
+  vec3 c = stoneCol(p, tone);
+  return c * (uSunColor * max(dot(n, uSunDir), 0.0) * 0.75 + skyAmbient(n) * 1.25
+            + lanternLight(p, n) * 0.8 + lanternAmbient(p) * 0.7)
+       + ggx(n, -d, uSunDir, 0.55, vec3(0.03)) * uSunColor * PI * 0.18
+       + c * nightGlow();
+}
+
+/**
+ * 楓の葉叢。玉を三つ重ね、雑音で縁を刻んで葉の切れ目を作る。
+ *
+ * 刈り込みと同じ球で済ませると、丸く刈った玉にしか見えない。
+ * 楓は輪郭が破れているのが要なので、当たった所の雑音が薄ければ素通りさせる。
+ */
+float hitLeaves(vec3 ro, vec3 rd, vec3 c, float r, out vec3 nn, out float dens){
+  float t = hitSphere(ro, rd, c, r);
+  if(t <= 0.0) return -1.0;
+  vec3 v = (ro + rd * t - c) / r;
+  float f = fbm(v.xy * 4.2 + v.z * 2.4) * 0.60 + fbm(v.xz * 10.5 + v.y * 4.6) * 0.40;
+  // 縁ほど薄く。玉に刈り込んだ輪郭を崩して、枝先の透けを作る
+  f -= smoothstep(0.42, 1.0, length(v)) * 0.36;
+  if(f < 0.16) return -1.0;                    // 葉の無い所。向こうが透ける
+  nn = normalize(v + vec3(fbm(v.xy * 13.0) - 0.5,
+                          fbm(v.yz * 13.0) - 0.5,
+                          fbm(v.xz * 13.0) - 0.5) * 0.9);
+  dens = f;
+  return t;
+}
+
+/** 鉢の落とす影 */
 float jarShadow(vec2 p){
-  float d = length(p);
-  // 接地のきわが濃い。離れるほど広がって薄れる
-  return 1.0 - smoothstep(0.055, 0.155, d) * 0.62;
+  return 1.0 - smoothstep(0.055, 0.155, length(p)) * 0.62;
+}
+
+/** 縁側の板の間。杉の縁甲板。幅 10.5cm */
+vec3 engawa(vec3 p, vec3 d){
+  float board = floor(p.x / 0.105);
+  float across = fract(p.x / 0.105);
+  float seam = 1.0 - smoothstep(0.0, 0.035, min(across, 1.0 - across));
+  float id = hash12(vec2(board, 3.0));
+  float grain = fbm(vec2(p.x * 26.0, p.z * 2.2) + id * 40.0);
+  float ring = fbm(vec2(p.x * 95.0, p.z * 5.0) + id * 11.0);
+  vec3 col = mix(vec3(0.172, 0.118, 0.068), vec3(0.098, 0.062, 0.034),
+                 grain * 0.75 + ring * 0.25);
+  col *= 0.86 + 0.28 * id;
+  col *= 1.0 - seam * 0.55;
+  float knot = smoothstep(0.80, 0.95, fbm(vec2(p.x * 7.0, p.z * 1.4) + id * 70.0));
+  col = mix(col, col * 0.42, knot * 0.7);
+  float worn = smoothstep(0.62, 0.20, abs(p.z + 0.18));
+  col = grime(col, (1.0 - worn) * 0.5, vec3(0.040, 0.028, 0.016), 0.35);
+  vec3 n = vec3(0.0, 1.0, 0.0);
+  float sh = jarShadow(p.xz);
+  // 木漏れ日。左手の楓の影が板に落ちる。奥ほど濃い
+  float dapple = smoothstep(0.30, 0.66, fbm(p.xz * 2.9 + 7.0) * 0.7
+                                      + fbm(p.xz * 8.5 + 2.0) * 0.3);
+  sh *= 1.0 - (1.0 - dapple) * 0.42 * smoothstep(0.55, -0.30, p.z);
+  vec3 lit = col * (uSunColor * 0.46 * sh + skyAmbient(n) * 1.7 * sh
+                  + lanternLight(p, n) + lanternAmbient(p) * 1.2);
+  lit += ggx(n, -d, uSunDir, mix(0.42, 0.18, worn), vec3(0.035)) * uSunColor * PI * 0.32 * sh;
+  lit += lanternSpec(p, n, -d, mix(0.42, 0.18, worn), vec3(0.035)) * 0.8;
+  return lit;
+}
+
+/**
+ * 庭の地面。苔と飛び石。
+ *
+ * 芝生ではない。露地の地面は杉苔で、飛び石はそこへ沈めて据える。
+ * 石を点々と散らすと芝生に白い斑が浮いたようにしか見えないので、
+ * 縁側から奥へ向かう「筋」として並べる。
+ */
+vec3 gardenFloor(vec3 p, vec3 d){
+  // 杉苔。細かい毛の寄り集まり
+  float mossN = fbm(p.xz * 34.0) * 0.55 + fbm(p.xz * 110.0) * 0.45;
+  float spread = fbm(p.xz * 2.4 + 5.0);
+  vec3 moss = mix(vec3(0.030, 0.058, 0.020), vec3(0.056, 0.098, 0.034), mossN);
+  moss *= 0.80 + 0.40 * spread;
+  // 土が覗く所
+  vec3 soil = mix(vec3(0.052, 0.040, 0.028), vec3(0.082, 0.066, 0.046), fbm(p.xz * 9.0));
+  vec3 col = mix(soil, moss, smoothstep(0.24, 0.52, spread));
+
+  // 飛び石。蹲踞の前から灯籠の足元へ、手前を横切って渡る。
+  //
+  // 目の高さが 23cm しかないので、縁側の縁に遮られて地面が見え始めるのは
+  // 1.8m 先から。奥へ真っ直ぐ伸ばすと鉢の真後ろに隠れてしまうため、
+  // 見える帯（1.8〜4.3m）を斜めに横切らせる。
+  vec2 a0 = vec2( 1.46, -1.95);
+  vec2 a1 = vec2(-1.72, -3.80);
+  for(int k = 0; k < 8; k++){
+    float h1 = hash12(vec2(float(k), 1.0));
+    float h2 = hash12(vec2(float(k), 5.0));
+    vec2 c = mix(a0, a1, float(k) / 7.0) + vec2(h1 - 0.5, h2 - 0.5) * 0.19;
+    vec2 q = p.xz - c;
+    float ang = atan(q.y, q.x);
+    // 丸い石は無い。方向で半径を振って、角の取れた多角形にする
+    float rad = 0.168 * (0.84 + 0.18 * sin(ang * 3.0 + h2 * 6.3) + 0.08 * sin(ang * 5.0));
+    float L = length(q);
+    float inside = smoothstep(rad, rad - 0.010, L);
+    vec3 stone = stoneCol(p, 0.94 + h1 * 0.22) * (1.05 + 0.25 * fbm(q * 120.0));
+    // 石の縁は苔が這い上がる
+    stone = mix(stone, stone * 0.7 + moss * 0.5,
+                smoothstep(rad - 0.038, rad - 0.004, L) * 0.6);
+    // まわりは少し窪んで影が溜まる
+    col *= 1.0 - smoothstep(rad + 0.032, rad, L) * 0.22 * (1.0 - inside);
+    col = mix(col, stone, inside);
+  }
+
+  vec3 n = vec3(0.0, 1.0, 0.0);
+  return col * (uSunColor * max(dot(n, uSunDir), 0.0) * 0.85 + skyAmbient(n) * 1.55
+              + lanternAmbient(p) * 0.5 + nightGlow());
+}
+
+/** 竹垣。建仁寺垣。割った竹を立てて並べ、胴縁で押さえる */
+vec3 bambooFence(vec3 p, vec3 d){
+  float w = 0.042;                              // 竹 1 本の幅
+  float i = floor(p.x / w);
+  float u = fract(p.x / w);
+  float id = hash12(vec2(i, 2.0));
+  // 竹の丸み
+  float round_ = sin(u * 3.14159);
+  vec3 bam = mix(vec3(0.118, 0.098, 0.052), vec3(0.168, 0.148, 0.080), id);
+  bam *= 0.55 + 0.55 * round_;
+  // 節。1 本ごとに高さが違う
+  float node = 0.0;
+  for(int k = 0; k < 3; k++){
+    float ny = 0.28 + float(k) * 0.42 + id * 0.18;
+    node = max(node, smoothstep(0.020, 0.004, abs(p.y - ny)));
+  }
+  bam = mix(bam, bam * 1.25 + vec3(0.02), node * 0.6);
+  // 胴縁。横に渡して黒い棕櫚縄で縛る
+  float rail = smoothstep(0.030, 0.018, abs(p.y - 0.52)) + smoothstep(0.030, 0.018, abs(p.y - 1.30));
+  bam = mix(bam, vec3(0.088, 0.070, 0.040), min(rail, 1.0) * 0.8);
+  float knot = min(rail, 1.0) * smoothstep(0.55, 0.85, fract(p.x / (w * 4.0)));
+  bam = mix(bam, vec3(0.030, 0.026, 0.022), knot * 0.7);
+  // 古びて灰色に褪せる。下ほど苔が付く
+  bam = mix(bam, bam * 0.70 + vec3(0.030, 0.034, 0.026),
+            smoothstep(0.55, 0.0, p.y - uEave.w) * 0.5);
+  vec3 n = vec3(0.0, 0.0, 1.0);
+  return bam * (uSunColor * 0.42 + skyAmbient(n) * 1.6 + lanternAmbient(p) * 0.4 + nightGlow());
 }
 
 void main(){
   vec3 d = normalize(uFwd + uRight * (vNdc.x * uTanHalf * uAspect) + uUp * (vNdc.y * uTanHalf));
+  float edgeZ = uEave.z, gy = uEave.w;
 
   vec3 col;
-  if(d.y < -0.002){
-    // ---- 板の間 ----
+  float depth = 1e9;
+  vec3 n;
+
+  // ---- 地面 ----
+  if(d.y < -0.0015){
     float t = (uFloorY - uCam.y) / d.y;
     vec3 p = uCam + d * t;
-
-    // 杉の縁甲板。幅 10.5cm の板を並べる。木目は板の向きに走る
-    float board = floor(p.x / 0.105);
-    float across = fract(p.x / 0.105);
-    float seam = 1.0 - smoothstep(0.0, 0.035, min(across, 1.0 - across));
-    float id = hash12(vec2(board, 3.0));
-
-    // 木目。年輪が板の長手に沿って流れる
-    float grain = fbm(vec2(p.x * 26.0, p.z * 2.2) + id * 40.0);
-    float ring = fbm(vec2(p.x * 95.0, p.z * 5.0) + id * 11.0);
-    vec3 light = vec3(0.172, 0.118, 0.068);
-    vec3 dark  = vec3(0.098, 0.062, 0.034);
-    col = mix(light, dark, grain * 0.75 + ring * 0.25);
-    // 板ごとに色が振れる
-    col *= 0.86 + 0.28 * id;
-    // 継ぎ目は落ち込んで暗い
-    col *= 1.0 - seam * 0.55;
-    // 節。たまに入る
-    float knot = smoothstep(0.80, 0.95, fbm(vec2(p.x * 7.0, p.z * 1.4) + id * 70.0));
-    col = mix(col, col * 0.42, knot * 0.7);
-
-    // 踏まれて磨けている。歩く筋だけ艶が出る
-    float worn = smoothstep(0.62, 0.20, abs(p.z + 0.35));
-    col = grime(col, (1.0 - worn) * 0.5, vec3(0.040, 0.028, 0.016), 0.35);
-
-    vec3 n = vec3(0.0, 1.0, 0.0);
-    float sh = jarShadow(p.xz);
-    // 縁側は庇の下だが、庭からの照り返しで明るい。
-    // 屋内だからと落としすぎると、真昼でも夜のような絵になる
-    col *= uSunColor * 0.52 * sh + skyAmbient(n) * 1.8 * sh
-         + lanternLight(p, n) + lanternAmbient(p) * 1.2;
-    // 拭き込まれた板は照る。磨けた筋ほど強い
-    col += ggx(n, -d, uSunDir, mix(0.42, 0.18, worn), vec3(0.035))
-         * uSunColor * PI * 0.35 * sh;
-    col += lanternSpec(p, n, -d, mix(0.42, 0.18, worn), vec3(0.035)) * 0.8;
-
-    // 遠くは霞む
-    col = mix(col, uSkyGround * 0.6, smoothstep(1.2, 4.0, t));
+    if(p.z > edgeZ){ col = engawa(p, d); depth = t; }
+    else {
+      float tg = (gy - uCam.y) / d.y;
+      col = gardenFloor(uCam + d * tg, d); depth = tg;
+    }
   } else {
-    // ---- 奥。障子と、その向こうの庭 ----
-    // 庭は作り込まない。緑をぼかして置くだけ。主役は鉢
     float up = clamp(d.y, 0.0, 1.0);
-    vec3 garden = mix(vec3(0.052, 0.078, 0.034), vec3(0.086, 0.118, 0.052),
-                      fbm(d.xz * 9.0) * 0.7 + 0.3);
-    garden *= uSunColor * 0.30 + skyAmbient(vec3(0.0, 1.0, 0.0)) * 0.9;
-    vec3 sky = mix(uSkyHorizon, uSkyZenith, pow(up, 0.5));
-    col = mix(garden, sky, smoothstep(0.06, 0.34, d.y));
-
-    // 障子。画面の上のほうを覆う。和紙を透かした光
-    float shoji = smoothstep(0.18, 0.40, d.y);
-    vec2 h = d.xz * (1.4 / max(d.y, 0.02));
-    // 桟。縦 6 本・横 4 本
-    float barX = 1.0 - smoothstep(0.0, 0.012, abs(fract(h.x * 4.2) - 0.5) * 0.24);
-    float barY = 1.0 - smoothstep(0.0, 0.012, abs(fract(d.y * 7.0) - 0.5) * 0.14);
-    vec3 paper = vec3(0.240, 0.228, 0.198) * (0.90 + 0.16 * fbm(h * 30.0));
-    paper *= 1.0 - max(barX, barY) * 0.45;
-    paper *= uSunColor * 0.16 + skyAmbient(vec3(0.0, 0.0, 1.0)) * 1.3
-           + lanternAmbient(uCam) * 1.6;
-    col = mix(col, paper, shoji);
+    col = mix(uSkyHorizon, uSkyZenith, pow(up, 0.5));
+    depth = 1e5;
+    // 借景。垣の向こうに雑木林が霞んで並ぶ。
+    // 垣で閉じきると庭が箱になるので、奥行きはここで作る。
+    if(d.z < -1e-4){
+      float tz = (uSkyline - uCam.z) / d.z;
+      vec3 q = uCam + d * tz;
+      float crown = 4.9 + 2.6 * fbm(vec2(q.x * 0.052, 0.0))
+                        + 1.5 * fbm(vec2(q.x * 0.155, 3.0));
+      if(q.y < crown){
+        // 遠景の木立は、空を暗く落として緑を差したものになる。
+        // 葉の色から組むと、周囲光の明るい時刻に空と同じ明るさへ並んで消える。
+        float shade = 0.34 + 0.16 * fbm(q.xy * 0.30);
+        vec3 tc = col * shade + vec3(0.004, 0.009, 0.005) * (uSunColor.g + 0.5);
+        // 梢に近いほど空に溶ける
+        col = mix(col, tc, 1.0 - 0.55 * smoothstep(crown - 2.2, crown, q.y));
+      }
+    }
   }
+
+  // ---- 竹垣。庭の奥を閉じる ----
+  if(abs(d.z) > 1e-5){
+    float t = (uPost.z - uCam.z) / d.z;
+    vec3 p = uCam + d * t;
+    if(t > 0.0 && t < depth && p.y > gy && p.y < gy + uPost.w){
+      col = bambooFence(p, d); depth = t;
+    }
+  }
+
+  // ---- 楓。庭の左手から枝を差し掛ける ----
+  {
+    vec3 base = vec3(uMaple.x, gy, uMaple.y);
+    float TH = uMaple.z, CR = uMaple.w;
+    // 幹。根元から立ち上がって、画面の方へ傾ぐ
+    float t = hitCyl(uCam, d, base, 0.062, TH, n);
+    if(t > 0.0 && t < depth){
+      vec3 p = uCam + d * t;
+      float bark = fbm(vec2(p.y * 22.0, atan(p.z - base.z, p.x - base.x) * 2.2));
+      vec3 bc = mix(vec3(0.062, 0.050, 0.040), vec3(0.108, 0.094, 0.082), bark);
+      col = bc * (uSunColor * max(dot(n, uSunDir), 0.0) * 0.6 + skyAmbient(n) * 1.35
+                + lanternAmbient(p) * 0.4);
+      depth = t;
+    }
+    // 葉叢。並びは world.js の mapleLeaves() が決めている
+    for(int k = 0; k < 5; k++){
+      vec3 c = uLeaf[k].xyz;
+      float r = uLeaf[k].w;
+      vec3 nn; float dens;
+      float tl = hitLeaves(uCam, d, c, r, nn, dens);
+      if(tl > 0.0 && tl < depth){
+        vec3 p = uCam + d * tl;
+        // 青楓。日に透ける葉は黄緑に抜ける
+        vec3 leaf = mix(vec3(0.062, 0.115, 0.038), vec3(0.135, 0.195, 0.058), dens);
+        // 葉は薄いので日を透かす。裏から射すと黄緑に抜ける
+        float through = pow(clamp(dot(d, uSunDir), 0.0, 1.0), 2.2);
+        leaf = mix(leaf, vec3(0.205, 0.255, 0.075), through * 0.60);
+        col = leaf * (uSunColor * (max(dot(nn, uSunDir), 0.0) * 0.85 + 0.30)
+                    + skyAmbient(nn) * 1.9 + lanternAmbient(p) * 0.4 + nightGlow());
+        depth = tl;
+      }
+    }
+  }
+
+  // ---- 刈り込み。ツツジの玉。竹垣の手前に並ぶ ----
+  for(int i = 0; i < 3; i++){
+    vec3 c = vec3(uShrub[i].x, gy + uShrub[i].z * 0.55, uShrub[i].y);
+    float t = hitSphere(uCam, d, c, uShrub[i].z);
+    if(t > 0.0 && t < depth){
+      vec3 p = uCam + d * t;
+      vec3 nn = normalize(p - c);
+      // 刈り込んだ面。葉が細かく詰まっている
+      // fbm は vec2 しか取らない。球の上の位置を角度へ畳んで渡す
+      vec2 sph = vec2(atan(nn.z, nn.x) * 1.6, nn.y * 2.2);
+      float leaf = fbm(sph * 7.0 + uShrub[i].x) * 0.6 + fbm(sph * 22.0) * 0.4;
+      vec3 g = mix(vec3(0.022, 0.044, 0.016), vec3(0.052, 0.092, 0.030), leaf);
+      // 上面ほど日に焼けて明るい
+      g *= 0.72 + 0.46 * smoothstep(-0.2, 1.0, nn.y);
+      col = g * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.1 + skyAmbient(nn) * 1.2
+               + lanternAmbient(p) * 0.4 + nightGlow());
+      depth = t;
+    }
+  }
+
+  // ---- 石灯籠。春日型。竿・中台・火袋・笠・宝珠 ----
+  {
+    vec3 c = vec3(uToro.x, gy, uToro.y);
+    float H = uToro.z;
+    float t;
+    // 竿
+    t = hitCyl(uCam, d, c, 0.052, H * 0.52, n);
+    if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 1.0); depth = t; }
+    // 中台
+    t = hitBox(uCam, d, c + vec3(0.0, H * 0.56, 0.0), vec3(0.085, 0.040, 0.085), n);
+    if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 1.05); depth = t; }
+    // 火袋。夜はここに灯が入る
+    t = hitBox(uCam, d, c + vec3(0.0, H * 0.70, 0.0), vec3(0.070, 0.082, 0.070), n);
+    if(t > 0.0 && t < depth){
+      vec3 p = uCam + d * t;
+      vec3 b = litStone(p, n, d, 1.1);
+      // 火口。四面それぞれの真ん中に開く
+      vec3 lp = p - (c + vec3(0.0, H * 0.70, 0.0));
+      float across = abs(n.x) > 0.5 ? lp.z : lp.x;
+      float win = step(abs(lp.y), 0.046) * step(abs(across), 0.038) * (1.0 - abs(n.y));
+      float lit = clamp(1.0 - uSunColor.r * 1.6, 0.0, 1.0);   // 暗いほど灯る
+      // 灯は窓の面積が小さいので、明るさで立たせる。滲みは後段の bloom が作る
+      b = mix(b, vec3(0.98, 0.62, 0.27) * (0.30 + 3.6 * lit), win * 0.92);
+      // 火口のまわりの石も灯を受けて温かく滲む
+      b += vec3(0.42, 0.24, 0.10) * lit * (1.0 - win)
+         * smoothstep(0.105, 0.040, length(lp.xz) + abs(lp.y) * 0.6);
+      col = b; depth = t;
+    }
+    // 笠。六角の勾配屋根。箱を三段に積んで、軒の出と傾きを出す。
+    // 平たい箱 1 枚だと、笠が薄すぎて道標の板にしか見えない。
+    for(int k = 0; k < 3; k++){
+      float f = float(k);
+      t = hitBox(uCam, d, c + vec3(0.0, H * (0.790 + f * 0.030), 0.0),
+                 vec3(0.158 - f * 0.036, 0.019, 0.158 - f * 0.036), n);
+      if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 0.98 + f * 0.04); depth = t; }
+    }
+    // 宝珠
+    t = hitSphere(uCam, d, c + vec3(0.0, H * 0.905, 0.0), 0.040);
+    if(t > 0.0 && t < depth){
+      vec3 p = uCam + d * t;
+      col = litStone(p, normalize(p - (c + vec3(0.0, H * 0.905, 0.0))), d, 1.08); depth = t;
+    }
+  }
+
+  // ---- 蹲踞。手水鉢と、水を落とす掛樋 ----
+  {
+    vec3 c = vec3(uBasin.x, gy, uBasin.y);
+    float t = hitCyl(uCam, d, c, uBasin.z, uBasin.w, n);
+    if(t > 0.0 && t < depth){
+      vec3 p = uCam + d * t;
+      // 天面は水が溜まっている。縁から 3cm 内側
+      float r = length(p.xz - c.xz);
+      if(n.y > 0.5 && r < uBasin.z - 0.030){
+        // 溜まった水。空を映し、底の石が透ける
+        vec3 refl = envSpec(reflect(d, vec3(0.0, 1.0, 0.0)), 0.05);
+        float F = fresnelSchlick(clamp(-d.y, 0.0, 1.0), 0.02);
+        vec3 bottom = stoneCol(p, 0.55) * (skyAmbient(n) * 0.9 + uSunColor * 0.18);
+        col = mix(bottom, refl, clamp(F * 1.4 + 0.10, 0.0, 0.92));
+        // 掛樋から落ちる雫が立てる輪
+        float ring = sin(length(p.xz - (c.xz + vec2(0.0, 0.06))) * 90.0 - uTime * 5.0);
+        col += vec3(0.05, 0.06, 0.06) * max(ring, 0.0) * 0.25;
+      } else {
+        col = litStone(p, n, d, 0.92);
+      }
+      depth = t;
+    }
+    // 役石。手水鉢の手前に踏む前石、両脇に手燭石と湯桶石。
+    // 鉢だけ置くと、庭に土管が転がっているようにしか見えない。
+    for(int k = 0; k < 3; k++){
+      vec3 rc = c + vec3(k == 0 ? 0.0 : (k == 1 ? -0.44 : 0.40), 0.0,
+                         k == 0 ? 0.42 : 0.06);
+      float rr = k == 0 ? 0.20 : 0.13;
+      float rh = k == 0 ? 0.055 : (k == 1 ? 0.085 : 0.110);
+      float t2 = hitCyl(uCam, d, rc, rr, rh, n);
+      if(t2 > 0.0 && t2 < depth){
+        col = litStone(uCam + d * t2, n, d, 0.86 + float(k) * 0.08); depth = t2;
+      }
+    }
+    // 掛樋。竹を斜めに渡して水を落とす
+    {
+      vec3 bc = c + vec3(-0.31, 0.0, -0.02);
+      float tb = hitCyl(uCam, d, bc, 0.025, 0.66, n);
+      if(tb > 0.0 && tb < depth){
+        vec3 p = uCam + d * tb;
+        vec3 bam = mix(vec3(0.130, 0.112, 0.058), vec3(0.176, 0.160, 0.086),
+                       fbm(vec2(p.y * 40.0, 0.0)));
+        bam *= 0.80 + 0.30 * smoothstep(0.016, 0.0, abs(fract(p.y * 4.0) - 0.5) * 0.25);
+        col = bam * (uSunColor * 0.45 + skyAmbient(n) * 1.2 + lanternAmbient(p) * 0.4);
+        depth = tb;
+      }
+    }
+  }
+
+  // ---- 柱。縁側の端に立って軒を支える ----
+  {
+    float w = uPost.y;
+    float tz = (edgeZ - uCam.z) / (abs(d.z) < 1e-5 ? 1e-5 : d.z);
+    vec3 p = uCam + d * tz;
+    if(tz > 0.0 && tz < depth && abs(p.x - uPost.x) < w && p.y > gy && p.y < uEave.x){
+      float gr = fbm(vec2(p.y * 18.0, p.x * 40.0));
+      vec3 w2 = mix(vec3(0.118, 0.082, 0.048), vec3(0.070, 0.046, 0.026), gr);
+      w2 *= 0.88 + 0.26 * smoothstep(w * 0.55, w, abs(p.x - uPost.x));
+      vec3 nn = vec3(0.0, 0.0, 1.0);
+      col = w2 * (uSunColor * 0.22 + skyAmbient(nn) * 1.5
+                + lanternLight(p, nn) + lanternAmbient(p));
+      col += ggx(nn, -d, uSunDir, 0.30, vec3(0.035)) * uSunColor * PI * 0.3;
+      depth = tz;
+    }
+  }
+
+  // 遠くほど霞む。庭は 1〜4m しかないので、ごく薄く
+  if(depth < 40.0) col = mix(col, uSkyHorizon * 0.55, smoothstep(5.0, 22.0, depth) * 0.6);
   frag = vec4(col, 1.0);
 }`;
 

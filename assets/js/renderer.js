@@ -9,22 +9,22 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610050017';
-import { VS_FULL } from '../shaders/common.js?v=202610050017';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610050017';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610050017';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610050017';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610050017';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610050017';
-import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610050017';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610050017';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610050017';
-import { Ocean } from './ocean.js?v=202610050017';
-import { Ripple } from './ripple.js?v=202610050017';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610050247';
+import { VS_FULL } from '../shaders/common.js?v=202610050247';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610050247';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610050247';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610050247';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610050247';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610050247';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610050247';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610050247';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610050247';
+import { Ocean } from './ocean.js?v=202610050247';
+import { Ripple } from './ripple.js?v=202610050247';
 import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor } from './world.js?v=202610050017';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610050017';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610050017';
+         pushOutOfBowl, bowlPosFor, mapleLeaves } from './world.js?v=202610050247';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610050247';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610050247';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -341,9 +341,10 @@ export class Renderer {
     const [pitch, yaw] = jarView(this.orbit);
     const tanH = Math.tan(FOV_Y / 2);
     // 鉢がちょうど収まる距離。縦画面は横に余裕が無いので引く
-    const need = (JAR.outerR * 1.95) / (tanH * Math.min(aspect, 1.0) * (portrait ? 0.92 : 1.0));
+    const need = (JAR.outerR * 1.12) / (tanH * Math.min(aspect, 1.0) * (portrait ? 0.92 : 1.0));
     const dist = Math.max(need, (JAR.height * 1.5) / tanH);
-    const base = [JAR.pos[0], ROOM.floorY + JAR.height * 0.46, JAR.pos[2]];
+    // 狙う点を鉢の中ほどより少し上に置く。下げると画面が床で埋まる
+    const base = [JAR.pos[0], ROOM.floorY + JAR.height * 0.74, JAR.pos[2]];
     const eye = [
       base[0] + Math.sin(yaw) * Math.cos(pitch) * dist,
       base[1] + Math.sin(pitch) * dist,
@@ -442,6 +443,14 @@ export class Renderer {
      .setFloat('uTanHalf', this.tanH)
      .setFloat('uAspect', this.aspect)
      .setFloat('uFloorY', ROOM.floorY)
+     .set('uEave', [ROOM.eaveY, ROOM.eaveZ, ROOM.edgeZ, ROOM.gardenY])
+     .set('uPost', [ROOM.postX, ROOM.postW, ROOM.fenceZ, ROOM.fenceH])
+     .set('uToro', [ROOM.lantern[0], ROOM.lantern[1], ROOM.lanternH, 0])
+     .set('uBasin', [ROOM.basin[0], ROOM.basin[1], ROOM.basinR, ROOM.basinH])
+     .set('uMaple', ROOM.maple)
+     .vec4Array('uLeaf[0]', new Float32Array(mapleLeaves().flat()), 5)
+     .set('uSkyline', ROOM.skylineZ)
+     .vec3Array('uShrub[0]', new Float32Array(ROOM.shrubs.flat()), 3)
      .setFloat('uTime', time);
     this.full.draw();
   }

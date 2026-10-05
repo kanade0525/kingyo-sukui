@@ -80,8 +80,11 @@ export default {
 
   '店じまいのあとはポイが片付けられている': () => withPage({ hour: 23 }, async (page) => {
     // 時刻を入れても、game.closed が追いつくのは次のコマ。
-    // 混み合っているとそれが 1 秒先になることがある
-    await until(page, 'closed', (c) => c === true, '23 時にしても店じまいにならない');
+    //
+    // SwiftShader は CPU でシェーダを組むので、試験を通しで走らせた
+    // 混み合った状態だと、最初のコマが出るまでに 30 秒を超えることがある。
+    // 既定の 20 秒だと、絵が出る前に待ち切れずに落ちていた
+    await until(page, 'closed', (c) => c === true, '23 時にしても店じまいにならない', 60000);
     await until(page, 'poi', (p) => !p.visible, '店じまいなのにポイが出たまま');
   }),
 

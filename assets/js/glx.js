@@ -78,6 +78,21 @@ export class Program {
     return this;
   }
 
+  /** vec3 の配列。刈り込みの位置のように、3 つ組を並べて渡すとき */
+  vec3Array(name, arr, count) {
+    const l = this.#loc(name);
+    if (l === null) return this;
+    this.gl.uniform3fv(l, count === undefined ? arr : arr.subarray(0, count * 3));
+    return this;
+  }
+
+  vec4Array(name, arr, count) {
+    const l = this.#loc(name);
+    if (l === null) return this;
+    this.gl.uniform4fv(l, count === undefined ? arr : arr.subarray(0, count * 4));
+    return this;
+  }
+
   setInt(name, v) {
     const l = this.#loc(name);
     if (l !== null) this.gl.uniform1i(l, v);

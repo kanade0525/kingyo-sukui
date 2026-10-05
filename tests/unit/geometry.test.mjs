@@ -4,8 +4,8 @@
 // 見下ろす角度を変えると器が舟の中へ寄るので、また当たる。
 // 角度と向きの全ての組み合わせで確かめる。
 
-import { TANK, BOWL, PAD, WEED, LEAF, POI, LANTERN, AIR,
-         tankHalfAt, pushOutOfBowl, bowlPosFor } from '../../assets/js/world.js?v=202610041317';
+import { TANK, BOWL, PAD, WEED, LEAF, POI, LANTERN, AIR, ROOM,
+         tankHalfAt, pushOutOfBowl, bowlPosFor, mapleLeaves } from '../../assets/js/world.js?v=202610041317';
 import { ok, between, near } from '../lib/assert.mjs';
 
 const PITCHES = [[55, '浅め'], [65, '標準'], [87, '真上']];
@@ -127,6 +127,37 @@ export default {
     between(WEED.lenMax * 1000, 7, 11, 'ウキクサの最大（mm）');
     // イロハモミジの葉は 3.5〜6cm
     for (const c of LEAF.spots) between(c.r * 2 * 100, 3.0, 6.5, `楓の葉の差し渡し（cm）`);
+  },
+
+  '庭の作りものが縁側と竹垣の間に収まる': () => {
+    // 縁側の縁より手前に置くと縁側にめり込み、竹垣より奥に置くと垣の裏へ出る
+    const things = [
+      ['石灯籠', ROOM.lantern[0], ROOM.lantern[1]],
+      ['蹲踞', ROOM.basin[0], ROOM.basin[1]],
+      ['楓', ROOM.maple[0], ROOM.maple[1]],
+      ...ROOM.shrubs.map((s, i) => [`刈り込み${i + 1}`, s[0], s[1]]),
+    ];
+    for (const [name, , z] of things) {
+      ok(z < ROOM.edgeZ, `${name} が縁側（z=${ROOM.edgeZ}）より手前`);
+      ok(z > ROOM.fenceZ, `${name} が竹垣（z=${ROOM.fenceZ}）より奥`);
+    }
+    // 借景は竹垣のさらに向こう
+    ok(ROOM.skylineZ < ROOM.fenceZ - 10, '借景が竹垣に近すぎる');
+  },
+
+  '石灯籠が楓の葉叢に隠れない': () => {
+    // 覆われると、昼は形が読めず、夜は火袋の灯が消える。
+    // 灯籠は竿から宝珠まで縦に長いので、柱として扱って水平の隔たりで見る
+    for (const [x, , z, r] of mapleLeaves()) {
+      const gap = Math.hypot(ROOM.lantern[0] - x, ROOM.lantern[1] - z);
+      ok(gap > r + 0.10, `灯籠が葉叢の中（隔たり ${gap.toFixed(2)}m / 半径 ${r.toFixed(2)}m）`);
+    }
+  },
+
+  '楓の葉叢が地面にめり込まない': () => {
+    for (const [, y, , r] of mapleLeaves()) {
+      ok(y - r > ROOM.gardenY, `葉叢が地面（y=${ROOM.gardenY}）より下`);
+    }
   },
 
   '浮き物が舟の真ん中を塞がない': () => {

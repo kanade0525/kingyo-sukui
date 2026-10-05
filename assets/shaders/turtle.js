@@ -6,7 +6,7 @@
 // 真上から見たときの手がかりは、甲羅の鱗板の割れ方と、四肢の漕ぐ動き、
 // それに目の後ろの赤い斑。この三つが揃うと一目でミドリガメになる。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610050017';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610050247';
 
 export const VS_TURTLE = `${HEAD}
 layout(location=0) in vec2 aUv;

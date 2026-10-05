@@ -1,6 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
 
-import { t } from './i18n.js?v=202610050017';
+import { t } from './i18n.js?v=202610050247';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -14,7 +14,7 @@ export class UI {
       loading: $('loading'),
       panel: $('panel'), btnPanel: $('btnPanel'),
       fallback: $('fallback'), fallbackWhy: $('fallbackWhy'),
-      btnTakeHome: $('btnTakeHome'), btnHome: $('btnHome'), btnLamp: $('btnLamp'),
+      btnTakeHome: $('btnTakeHome'), btnHome: $('btnHome'), btnStall: $('btnStall'), btnLamp: $('btnLamp'),
       homebar: $('homebar'), homeCount: $('homeCount'), toast: $('toast'),
     };
 
@@ -198,6 +198,8 @@ export class UI {
     const home = view === 'home';
     this.el.homebar.hidden = !home;
     this.el.btnHome.hidden = home;
+    // 家からの戻り道。これが無いと、ブラウザの戻るしか手が無い
+    this.el.btnStall.hidden = !home;
     if (home) this.el.btnTakeHome.hidden = true;
     if (!home) { this.el.btnLamp.hidden = true; this.lampShown = false; }
     // 水面の設定は家では効かない。「いまは鳴らない」の印と同じ考えで、

@@ -62,6 +62,18 @@ export default {
     eq(errors.length, 0, errors.slice(0, 3).join(' / '));
   }),
 
+  '家から屋台へ戻る道が画面にある': () => withPage({ hour: 13 }, async (page) => {
+    // ブラウザの戻るしか無い、という状態にしない
+    await putInBowl(page, 1);
+    await takeHome(page);
+    eq(await page.evaluate(() => document.getElementById('btnStall').hidden), false,
+       '家に「屋台へ戻る」が出ていない');
+    await page.click('#btnStall');
+    await until(page, 'view', (v) => v === 'stall', 'ボタンを押しても屋台へ戻らない');
+    eq(await page.evaluate(() => document.getElementById('btnStall').hidden), true,
+       '屋台に「屋台へ戻る」が残ったまま');
+  }),
+
   '持ち帰っても屋台は続けられる': () => withPage({ hour: 13 }, async (page) => {
     await page.evaluate(() => { window.__kingyo.game.score = 1234; });
     await putInBowl(page, 2);
@@ -184,9 +196,11 @@ export default {
     eq(await page.evaluate(() => document.getElementById('btnLamp').hidden), true,
        '真昼に明かりのボタンが出ている');
     await setHour(page, 20);
-    await page.waitForTimeout(600);
-    eq(await page.evaluate(() => document.getElementById('btnLamp').hidden), false,
-       '夜なのに明かりのボタンが出ない');
+    // ボタンの出し入れは次のコマで決まる。
+    // 試験を通しで走らせた混み合った状態だと、それが 0.6 秒では来ない
+    await page.waitForFunction(() => !document.getElementById('btnLamp').hidden,
+                               null, { timeout: 30000 })
+      .catch(() => { throw new Error('夜なのに明かりのボタンが出ない'); });
   }),
 
   '器が満杯なら、それ以上は掬えない': () => withPage({ hour: 13 }, async (page) => {

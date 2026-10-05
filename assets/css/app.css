@@ -204,15 +204,15 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 }
 #btnTakeHome:hover{color:#fff;border-color:var(--hi)}
 
-/* 家の鉢へ。ボタンと同じ札にする（a 要素なので形を揃える） */
-#btnHome{
+/* 家の鉢へ／屋台へ戻る。ボタンと同じ札にする（a 要素なので形を揃える） */
+#btnHome,#btnStall{
   font-family:var(--body);font-size:12px;color:var(--ink);text-decoration:none;
   background:rgba(255,255,255,.88);border:1px solid rgba(23,34,43,.30);
   box-shadow:0 1px 3px rgba(23,34,43,.12);
   border-radius:999px;padding:7px 15px;white-space:nowrap;
   -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
 }
-#btnHome:hover{border-color:var(--hi-soft);color:var(--hi-soft)}
+#btnHome:hover,#btnStall:hover{border-color:var(--hi-soft);color:var(--hi-soft)}
 
 /* 家の画面の札。右上の「いまの時刻と天気」と同じ形 */
 #homebar{

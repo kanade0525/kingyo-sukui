@@ -87,10 +87,12 @@ export default {
     // 録音に合わせて層の音量を決め直したので、合成側は比で戻してある
     const both = await page.evaluate(async () => {
       const { s, an, sunFor, buf } = window.__snd;
+      // 合成の音は雑音から組んでいるので、短く測ると回ごとに数 dB ぶれる。
+      // 落ち着くまで長めに待ち、長めに均す
       const read = async () => {
-        await new Promise((r) => setTimeout(r, 4200));
+        await new Promise((r) => setTimeout(r, 6000));
         let acc = 0, n = 0;
-        const end = performance.now() + 2200;
+        const end = performance.now() + 4000;
         while (performance.now() < end) {
           an.getFloatTimeDomainData(buf);
           for (const x of buf) acc += x * x;
