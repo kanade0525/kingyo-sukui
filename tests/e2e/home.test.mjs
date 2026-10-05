@@ -3,7 +3,7 @@
 // 屋台から器へ、器から袋へ、袋から家の鉢へ。端末に残ること、
 // 往復しても壊れないこと、壊れた保存を入れても落ちないこと。
 
-import { launch, open, measure, setHour, peek, until } from '../lib/page.mjs';
+import { launch, open, measure, setHour, setWeather, peek, until, __shot } from '../lib/page.mjs';
 import { ok, eq, between, descending } from '../lib/assert.mjs';
 
 let browser;
@@ -33,6 +33,19 @@ const takeHome = async (page) => {
   await page.waitForTimeout(2400);
 };
 
+/** 枠の中の、青みの強さ（青の平均 ÷ 赤の平均）。 */
+function blueness(img, box) {
+  const { width, height, data } = img;
+  let r = 0, b = 0, n = 0;
+  for (let y = Math.floor(height * box.y0); y < height * box.y1; y++) {
+    for (let x = Math.floor(width * box.x0); x < width * box.x1; x++) {
+      const i = (y * width + x) * 4;
+      r += data[i]; b += data[i + 2]; n++;
+    }
+  }
+  return (b / Math.max(n, 1)) / Math.max(r / Math.max(n, 1), 1);
+}
+
 export default {
   '器が空なら「持ち帰る」が出ない': () => withPage({ hour: 13 }, async (page) => {
     const hidden = await page.evaluate(() => document.getElementById('btnTakeHome').hidden);
@@ -60,6 +73,28 @@ export default {
     const raw = await peek(page, 'stored');
     ok(raw && JSON.parse(raw).fish.length === 4, '保存に残っていない');
     eq(errors.length, 0, errors.slice(0, 3).join(' / '));
+  }),
+
+  '上から覗いても鉢の中が見える': () => withPage({ hour: 13 }, async (page) => {
+    // 中身をガラスの段だけで描いていたら、上から見た鉢が三日月に欠けて、
+    // 真ん中は縁側の板が透けて見えていた
+    await putInBowl(page, 5);
+    await takeHome(page);
+    await page.evaluate(() => { window.__kingyo.renderer.orbit = { x: 0, y: 1 }; });
+    await page.waitForTimeout(900);
+    // 縁側の板は赤茶、鉢の水は青緑。欠けていれば真ん中が板の色で埋まる
+    const img = await __shot(page);
+    const mouth = blueness(img, { x0: 0.46, x1: 0.54, y0: 0.42, y1: 0.54 });
+    const board = blueness(img, { x0: 0.12, x1: 0.26, y0: 0.60, y1: 0.80 });
+    ok(mouth > board * 1.15,
+       `上から覗いた鉢の真ん中が板の色のまま（青み ${mouth.toFixed(2)} / 板 ${board.toFixed(2)}）`);
+  }),
+
+  '雨の日は鉢の水面にも雨粒が落ちる': () => withPage({ hour: 13 }, async (page) => {
+    await putInBowl(page, 1);
+    await takeHome(page);
+    await setWeather(page, 2);
+    await until(page, 'jarRainHits', (n) => n > 0, '雨なのに鉢の水面に粒が落ちない');
   }),
 
   '家から屋台へ戻る道が画面にある': () => withPage({ hour: 13 }, async (page) => {

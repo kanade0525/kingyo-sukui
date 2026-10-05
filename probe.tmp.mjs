@@ -4,8 +4,8 @@
 // 形は頂点シェーダで作る。泳ぎのうねりを毎フレーム CPU で計算して
 // 転送するのは無駄で、しかも法線を作り直す手間が増えるため。
 
-import { Mesh } from './glx.js?v=202610050550';
-import { TANK, POI, BOWL, AIR, JAR, BED, ANACHARIS, jarRadius } from './world.js?v=202610050550';
+import { Mesh } from './glx.js?v=202610050530';
+import { TANK, POI, BOWL, AIR, JAR, jarRadius } from './world.js?v=202610050530';
 
 /** 位置・法線・領域の 3 属性を貯めて Mesh にする小さな入れ物。 */
 class Builder {
@@ -25,11 +25,11 @@ class Builder {
     this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
   build(gl) {
-    return new Mesh(gl, [
+    return (globalThis.__cap = { reg: this.reg.slice(), idx: this.idx.length }, [
       { loc: 0, size: 3, data: new Float32Array(this.pos) },
       { loc: 1, size: 3, data: new Float32Array(this.nrm) },
       { loc: 2, size: 1, data: new Float32Array(this.reg) },
-    ], new Uint32Array(this.idx));
+    ]);
   }
 }
 
@@ -642,8 +642,8 @@ export function jarMesh(gl) {
   // 手で入れた砂は真ん中が高く縁が低い山になるので、そう盛る。
   // （厚さは水草を植えないなら 1〜3cm、植えるなら 4cm が目安）
   {
-    const EDGE = JAR.wall + BED.depth;    // 縁の高さ
-    const CROWN = BED.crown;              // 真ん中の盛り上がり
+    const EDGE = JAR.wall + 0.030;        // 縁の高さ
+    const CROWN = 0.011;                  // 真ん中の盛り上がり
     const rEdge = jarRadius(EDGE / JAR.height) - JAR.wall;
     const RINGS_S = 8;
     const base = b.pos.length / 3;
@@ -670,29 +670,6 @@ export function jarMesh(gl) {
         b.idx.push(a, c, a + 1, a + 1, c, c + 1);
       }
     }
-    // 砂の層の断面。ガラス越しに横から見ると、面だけでは
-    // 砂の下が素通しになって縁側の板が覗く
-    {
-      const SKIRT = 3;
-      const sb = b.pos.length / 3;
-      for (let i = 0; i <= SKIRT; i++) {
-        const y = EDGE - (EDGE - JAR.wall) * (i / SKIRT);
-        const rr = jarRadius(y / JAR.height) - JAR.wall;
-        for (let j = 0; j <= SEG; j++) {
-          const a = (j / SEG) * Math.PI * 2;
-          b.pos.push(Math.cos(a) * rr, y, Math.sin(a) * rr);
-          b.nrm.push(Math.cos(a), 0.25, Math.sin(a));
-          b.reg.push(8);
-        }
-      }
-      for (let i = 0; i < SKIRT; i++) {
-        for (let j = 0; j < SEG; j++) {
-          const a = sb + i * (SEG + 1) + j;
-          const c = a + SEG + 1;
-          b.idx.push(a, c, a + 1, a + 1, c, c + 1);
-        }
-      }
-    }
   }
 
   // --- 水草。アナカリス（オオカナダモ）---
@@ -701,9 +678,15 @@ export function jarMesh(gl) {
   // 3〜6 枚（ふつう 4 枚）が輪生する。鉢に入れるぶんは 10cm 前後に切る。
   // 葉 1 枚を、根元を幅ぶん・先を尖らせた板で表す
   {
-    const bedTop = JAR.wall + BED.depth;
-    const { node: NODE, whorl: WHORL, leafLen: LEAF_L, leafW: LEAF_W, rise: RISE } = ANACHARIS;
-    for (const st of ANACHARIS.strands) {
+    const bedTop = JAR.wall + 0.030;
+    const STRANDS = [
+      { x: -0.040, z: -0.026, h: 0.108, lean: 0.018, phase: 0.0 },
+      { x: 0.034, z: 0.031, h: 0.092, lean: -0.014, phase: 2.1 },
+      { x: 0.010, z: -0.046, h: 0.074, lean: 0.011, phase: 4.0 },
+    ];
+    const NODE = 9, WHORL = 4;
+    const LEAF_L = 0.026, LEAF_W = 0.0036, RISE = 0.42;
+    for (const st of STRANDS) {
       for (let k = 0; k < NODE; k++) {
         const u = (k + 0.5) / NODE;
         const cy = bedTop + u * st.h;

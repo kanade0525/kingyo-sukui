@@ -5,7 +5,8 @@
 // 角度と向きの全ての組み合わせで確かめる。
 
 import { TANK, BOWL, PAD, WEED, LEAF, POI, LANTERN, AIR, ROOM,
-         tankHalfAt, pushOutOfBowl, bowlPosFor, mapleLeaves } from '../../assets/js/world.js?v=202610041317';
+         JAR, BED, tankHalfAt, pushOutOfBowl, bowlPosFor, mapleLeaves,
+         anacharisLeaves, jarRadius } from '../../assets/js/world.js?v=202610041317';
 import { ok, between, near } from '../lib/assert.mjs';
 
 const PITCHES = [[55, '浅め'], [65, '標準'], [87, '真上']];
@@ -127,6 +128,23 @@ export default {
     between(WEED.lenMax * 1000, 7, 11, 'ウキクサの最大（mm）');
     // イロハモミジの葉は 3.5〜6cm
     for (const c of LEAF.spots) between(c.r * 2 * 100, 3.0, 6.5, `楓の葉の差し渡し（cm）`);
+  },
+
+  '底砂の厚さが実物の目安に収まる': () => {
+    // 水草を植えない水槽なら 1〜3cm、植えるなら 4cm が目安
+    between((BED.depth + BED.crown) * 100, 1.0, 4.5, '真ん中の厚さ（cm）');
+    between(BED.depth * 100, 1.0, 4.5, '縁の厚さ（cm）');
+  },
+
+  '水草の葉がガラスを突き抜けない': () => {
+    // 器を貫通した葉を一度やっている。寸法を変えるたびに確かめる
+    for (const [, , , tx, ty, tz] of anacharisLeaves()) {
+      const inner = jarRadius(ty / JAR.height) - JAR.wall;
+      ok(Math.hypot(tx, tz) < inner,
+         `葉の先が鉢の外（${Math.hypot(tx, tz).toFixed(3)}m / 内側 ${inner.toFixed(3)}m）`);
+      ok(ty < JAR.waterY, `葉の先が水面から出ている（y=${ty.toFixed(3)}）`);
+      ok(ty > JAR.wall + BED.depth, `葉の根元が砂に埋まっている（y=${ty.toFixed(3)}）`);
+    }
   },
 
   '庭の作りものが縁側と竹垣の間に収まる': () => {

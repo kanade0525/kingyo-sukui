@@ -11,7 +11,7 @@
 // 水深は 14.5cm しかないので、15cm を超える茎は途中で倒れて水面の下を這う。
 // 真上から見る絵でこれは大事で、まっすぐ立てると茎が点にしか見えない。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610050247';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610050550';
 
 // ---------------------------------------------------------------- 浮き葉
 
@@ -453,6 +453,14 @@ uniform float uCount;
 uniform vec4 uFall;      // x = 高さ, y = 速さ, z = 傾き(tan), w = 風の向き
 uniform float uStreak;
 /**
+ * 着水する面。x = 床の高さ, y = その外（庭）の高さ, z = 境目の z。
+ *
+ * 舟では一面だけなので三つとも 0 でよい。家は縁側と庭で 24cm 違うので、
+ * 一面で済ませると庭の雨が地面の手前で消えるか、板にめり込むかになる。
+ */
+uniform vec3 uLand;
+uniform float uThick;   // 筋の濃さ。見通す雨の層が厚いほど濃い
+/**
  * 1 粒ぶんの状態。x,z = 着水する場所、y = 落ちる進み具合(0..1)、w = 太さの種。
  *
  * もとは番号だけから乱数で出していた。同じ番号がいつも同じ所へ落ちるので、
@@ -461,9 +469,10 @@ uniform float uStreak;
  * 32bit 浮動小数と倍精度で答えが変わるので、同じ式を書いても一致しない。
  * 落ちる場所は JS で決めて、ここへ渡す。
  */
-uniform vec4 uDrop[32];
+uniform vec4 uDrop[192];
 out vec2 vP;
 out float vFade;
+out float vThick;
 
 void main(){
   int di = int(aUvi.z + 0.5);
@@ -479,13 +488,15 @@ void main(){
   float t = dp.y;
 
   // 着水する位置から逆に遡る。こうしておくと、波紋を落とす側と場所が揃う
-  vec3 at = vec3(dp.x, 0.0, dp.z) - fd * (uFall.x * t);
+  float landY = dp.z > uLand.z ? uLand.x : uLand.y;
+  vec3 at = vec3(dp.x, landY, dp.z) - fd * (uFall.x * t);
 
   float rad = 0.0008 + r2 * 0.0006;
   vP = aUvi.xy;
   // 筋は落ちる向きに伸ばす
   vec3 w = at + uRight * aUvi.x * rad + fd * aUvi.y * uStreak * (0.7 + r2 * 0.6);
   vFade = step(i, uCount) * smoothstep(0.0, 0.06, t) * smoothstep(1.0, 0.94, t);
+  vThick = uThick;
   gl_Position = uVP * vec4(w, 1.0);
 }`;
 
@@ -493,13 +504,14 @@ export const FS_RAIN = `${HEAD}
 ${SKYLIB}
 in vec2 vP;
 in float vFade;
+in float vThick;
 out vec4 frag;
 
 void main(){
   if(vFade < 0.01) discard;
   // 縦に細い筋。端ほど薄い
   // 雨粒は水の筒なので、空を透かすだけ。白い棒を描くと作り物に見える
-  float a = (1.0 - abs(vP.x)) * (1.0 - vP.y * vP.y * 0.55) * vFade * 0.26;
+  float a = (1.0 - abs(vP.x)) * (1.0 - vP.y * vP.y * 0.55) * vFade * 0.26 * vThick;
   if(a < 0.015) discard;
   vec3 col = uSkyZenith * 1.3 + uSkyHorizon * 0.55;
   frag = vec4(col * a, a);

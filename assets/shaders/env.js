@@ -13,7 +13,7 @@
 // 提灯も入れない。舟から 50cm しか離れていないので、焼いた 1 点からの
 // 眺めを全画素へ配ると、せっかく位置を合わせた映り込みが消えてしまう。
 
-import { HEAD, NOISE, SKYLIB } from './common.js?v=202610050247';
+import { HEAD, NOISE, SKYLIB } from './common.js?v=202610050550';
 
 /** 面と画面座標から、その方向を出す。 */
 const FACEDIR = `

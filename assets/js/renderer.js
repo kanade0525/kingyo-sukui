@@ -9,22 +9,22 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610050247';
-import { VS_FULL } from '../shaders/common.js?v=202610050247';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610050247';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610050247';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610050247';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610050247';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610050247';
-import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610050247';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610050247';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610050247';
-import { Ocean } from './ocean.js?v=202610050247';
-import { Ripple } from './ripple.js?v=202610050247';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610050550';
+import { VS_FULL } from '../shaders/common.js?v=202610050550';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610050550';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610050550';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610050550';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610050550';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610050550';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610050550';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610050550';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610050550';
+import { Ocean } from './ocean.js?v=202610050550';
+import { Ripple } from './ripple.js?v=202610050550';
 import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor, mapleLeaves } from './world.js?v=202610050247';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610050247';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610050247';
+         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius } from './world.js?v=202610050550';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610050550';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610050550';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -122,7 +122,7 @@ export class Renderer {
       { n: 64, span: JAR.outerR * 2.2, half: [JAR.outerR, JAR.outerR] });
     this.mBubble = bubbleMesh(gl, AIR.bubbles);
     this.mSplash = splashMesh(gl, 36);
-    this.mRain = splashMesh(gl, RAIN.count);
+    this.mRain = splashMesh(gl, Math.max(RAIN.count, RAIN.homeCount));
     this.mGear = gearMesh(gl, -TANK.depth);
     this.stonePos = [AIR.stone[0], -TANK.depth + 0.014, AIR.stone[2]];
     // 金魚の影を焼く絵。画面の大きさとは関係ないので、ここで一度だけ作る。
@@ -383,8 +383,12 @@ export class Renderer {
       const d = JAR.waterY - (f.p[1] - JAR.pos[1]);
       if (d > 0.022 || d < 0) continue;
       this.jarRipple.drop(f.p[0] - JAR.pos[0], f.p[2] - JAR.pos[2],
-                          f.len * 0.8, -0.00022 * (1 - d / 0.022));
+                          f.len * 0.8, -0.00070 * (1 - d / 0.022));
     }
+    // 雨。縁側は軒の外の濡れ縁なので、鉢にも降り込む
+    this.#homeRain(Math.min(time - (this.homeLast ?? time), 1 / 12));
+    this.homeLast = time;
+
     this.jarRipple.update();
 
     gl.disable(gl.CULL_FACE);
@@ -424,12 +428,95 @@ export class Renderer {
     // 曇りガラスになる。手前の面だけを描くので、面の裏は切る
     gl.enable(gl.DEPTH_TEST);
     gl.depthMask(true);
+    // 水面が先。口から覗き込む所にはガラスが無いので、
+    // ここを描かないと鉢の真ん中が抜けて縁側の板が透ける。
+    // 裏からも見えるので面は切らない
+    this.#jarPass(2, time);
     gl.enable(gl.CULL_FACE);
     gl.cullFace(gl.BACK);
     this.#jarPass(1, time);
     gl.disable(gl.CULL_FACE);
 
+    // 雨の筋。奥から手前まで通して降らせるので、深さは見ずに重ねる
+    if (this.weather === 2) {
+      gl.disable(gl.DEPTH_TEST);
+      gl.depthMask(false);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      const rp = this.pRain.use();
+      this.#lights(rp);
+      rp.mat4('uVP', this.vp).set('uCam', this.cam)
+        .set('uRight', this.basis.right)
+        .set('uArea', [ROOM.rain[1], ROOM.rain[2]])
+        .set('uFall', [RAIN.fall, RAIN.speed, RAIN.tilt, RAIN.dir])
+        // 縁側と庭で着水する高さが 24cm 違う
+        .set('uLand', [ROOM.floorY, ROOM.gardenY, ROOM.edgeZ])
+        .setFloat('uStreak', RAIN.streak)
+        // 庭を見通すぶん、視線が通る雨の層が舟より何倍も厚い
+        .setFloat('uThick', 1.6)
+        .setFloat('uCount', RAIN.homeCount)
+        .setFloat('uTime', time);
+      const a = new Float32Array(RAIN.homeCount * 4);
+      this.homeDrops.forEach((d, i) => {
+        a[i * 4] = d.x; a[i * 4 + 1] = d.t; a[i * 4 + 2] = d.z; a[i * 4 + 3] = d.w;
+      });
+      rp.vec4Array('uDrop[0]', a, RAIN.homeCount);
+      this.mRain.draw();
+      gl.disable(gl.BLEND);
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthMask(true);
+    }
+
     this.#finish(time);
+  }
+
+  /**
+   * 家の雨。粒の落ちる場所と進み具合を進める。
+   *
+   * 舟のぶんは game.js が持っているが、家では game.update() を回していない。
+   * 鉢の波紋も同じ雨から落とす。描く筋と輪が別の乱数だと、
+   * 降りが強いのに水面が静か、ということが起きる
+   */
+  #homeRain(dt) {
+    const [cz, hx, hz] = ROOM.rain;
+    if (!this.homeDrops) {
+      this.homeDrops = [];
+      for (let i = 0; i < RAIN.homeCount; i++) {
+        const d = { t: Math.random(), x: 0, z: 0, w: 0, period: 1 };
+        this.#seedHomeDrop(d, cz, hx, hz);
+        d.t = Math.random();
+        this.homeDrops.push(d);
+      }
+      // 鉢に落ちる粒の持ち越し。鉢の水面は 0.018m² しかないので、
+      // 筋とは別に数えないと、何秒かに 1 粒しか立たない
+      this.jarRainAcc = 0;
+      this.jarRainHits = 0;     // 鉢の水面に落ちた粒の数。試験から覗く
+    }
+    if (this.weather !== 2 || dt <= 0) return;
+    for (const d of this.homeDrops) {
+      d.t += dt / d.period;
+      if (d.t < 1) continue;
+      d.t -= Math.floor(d.t);
+      this.#seedHomeDrop(d, cz, hx, hz);
+    }
+    // 鉢の水面に立つ輪。舟と同じ降りの強さ（1m² あたり毎秒 143 粒）から出す
+    const r = jarRadius(JAR.waterY / JAR.height) - JAR.wall;
+    this.jarRainAcc += dt * 143 * Math.PI * r * r;
+    while (this.jarRainAcc >= 1) {
+      this.jarRainAcc -= 1;
+      // 円の中に一様に。半径をそのまま引くと真ん中に寄る
+      const a = Math.random() * Math.PI * 2;
+      const rr = Math.sqrt(Math.random()) * r * 0.93;
+      this.jarRipple.drop(Math.cos(a) * rr, Math.sin(a) * rr, 0.009, 0.0019);
+      this.jarRainHits++;
+    }
+  }
+
+  #seedHomeDrop(d, cz, hx, hz) {
+    d.x = (Math.random() * 2 - 1) * hx;
+    d.z = cz + (Math.random() * 2 - 1) * hz;
+    d.w = Math.random();
+    d.period = RAIN.fall / (RAIN.speed * (0.85 + d.w * 0.30));
   }
 
   /** 縁側と庭。画面いっぱいの 1 枚 */
@@ -450,6 +537,7 @@ export class Renderer {
      .set('uMaple', ROOM.maple)
      .vec4Array('uLeaf[0]', new Float32Array(mapleLeaves().flat()), 5)
      .set('uSkyline', ROOM.skylineZ)
+     .setFloat('uWet', this.weather === 2 ? 1 : 0)
      .vec3Array('uShrub[0]', new Float32Array(ROOM.shrubs.flat()), 3)
      .setFloat('uTime', time);
     this.full.draw();
@@ -460,7 +548,10 @@ export class Renderer {
     const p = this.pGlass.use();
     this.#lights(p);
     p.mat4('uVP', this.vp).set('uCam', this.cam)
-     .tex('uScene', this.fbos.scene.tex[0])
+     // 0 段は scene そのものへ描く段なので、同じ板を読ませてはいけない。
+     // 描き先と読み先が同じだと WebGL がフィードバックと見なして、
+     // 描画そのものを捨てる。砂利も水草も一度も出てこなかったのはこれ
+     .tex('uScene', pass === 0 ? this.fbos.hdr.tex[0] : this.fbos.scene.tex[0])
      .set('uRes', [this.w, this.h])
      .set('uJar', [JAR.outerR, JAR.height, JAR.mouthR, JAR.footR])
      .setFloat('uWall', JAR.wall)
@@ -1013,6 +1104,8 @@ export class Renderer {
           .set('uRight', this.basis.right)
           .set('uArea', [TANK.halfX * 1.02, TANK.halfZ * 1.02])
           .set('uFall', [RAIN.fall, RAIN.speed, RAIN.tilt, RAIN.dir])
+          .set('uLand', [0, 0, 0])
+          .setFloat('uThick', 1)
           .setFloat('uStreak', RAIN.streak)
           .setFloat('uCount', RAIN.count)
           .setFloat('uTime', time);

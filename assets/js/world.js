@@ -282,6 +282,13 @@ export const RAIN = {
   tilt: 0.0,
   dir: 0.0,
   streak: 0.105,    // 1/60 秒で流れる長さ。目には筋として見える
+  /**
+   * 家で降らせる粒の数。
+   *
+   * 舟は 1m×0.6m を見ているので 26 粒で埋まるが、家は 5m 四方を見る。
+   * 同じ数だと、画面にほとんど筋が通らない
+   */
+  homeCount: 170,
 };
 
 /**
@@ -374,6 +381,13 @@ export const ROOM = {
   maple: [-2.38, -2.70, 1.06, 0.60],
   /** 借景。垣の向こうに霞む雑木林までの距離 */
   skylineZ: -26.0,
+  /**
+   * 雨の降る範囲。中心の z と、x・z の半分の広さ。
+   *
+   * 縁側（z が edgeZ より手前）と庭で着水する高さが違う。
+   * 画角に入るのは縁側の手前から竹垣までなので、そこだけ降らせる
+   */
+  rain: [-1.45, 2.5, 2.35],
 
   /** 部屋の明かり。夜に点く。提灯と同じ仕組みで 1 灯 */
   lamp: [0.26, 0.72, 0.30],
@@ -418,6 +432,57 @@ export function mapleLeaves() {
  * 二つを分けておくと、のちに「過密だと水が濁る」を足すときに
  * 数字を新しく発明せずに済む。
  */
+/**
+ * 鉢の底砂。大磯砂。
+ *
+ * 水草を植えない水槽なら 1〜3cm、植えるなら 4cm が目安
+ * （[東京アクアガーデン](https://t-aquagarden.com/column/bottomsand_guide)）。
+ * ここは水草を挿すので厚めに取り、手で入れたときのように真ん中を盛る。
+ */
+export const BED = { depth: 0.030, crown: 0.011 };
+
+/**
+ * 鉢に挿す水草。アナカリス（オオカナダモ）。
+ *
+ * 葉は長さ 1.5〜3.5cm・幅 2〜4.5mm の線形で、茎の同じ節から
+ * 3〜6 枚（ふつう 4 枚）が輪生する（[オオカナダモ](https://ja.wikipedia.org/wiki/オオカナダモ)）。
+ * 茎は水中で何メートルにもなるが、鉢に入れるぶんは 10cm 前後に切る。
+ *
+ * 置き場所をここに出しておくのは、葉の先がガラスを突き抜けていないかを
+ * 絵を描かずに確かめられるようにするため。
+ */
+export const ANACHARIS = {
+  node: 13, whorl: 5,
+  leafLen: 0.022, leafW: 0.0040, rise: 0.45,
+  strands: [
+    { x: -0.040, z: -0.026, h: 0.108, lean: 0.018, phase: 0.0 },
+    { x: 0.034, z: 0.031, h: 0.092, lean: -0.014, phase: 2.1 },
+    { x: 0.010, z: -0.046, h: 0.074, lean: 0.011, phase: 4.0 },
+  ],
+};
+
+/** 葉 1 枚ずつの根元と先。[x, y, z, 先の x, 先の y, 先の z] の列 */
+export function anacharisLeaves() {
+  const A = ANACHARIS;
+  const bedTop = JAR.wall + BED.depth;
+  const out = [];
+  for (const st of A.strands) {
+    for (let k = 0; k < A.node; k++) {
+      const u = (k + 0.5) / A.node;
+      const cy = bedTop + u * st.h;
+      const cx = st.x + st.lean * u * u, cz = st.z + st.lean * 0.6 * u * u;
+      for (let w = 0; w < A.whorl; w++) {
+        const a = st.phase + k * 1.15 + (w / A.whorl) * Math.PI * 2;
+        out.push([cx, cy, cz,
+                  cx + Math.cos(a) * A.leafLen,
+                  cy + A.leafLen * A.rise,
+                  cz + Math.sin(a) * A.leafLen]);
+      }
+    }
+  }
+  return out;
+}
+
 export const HOME = { fit: 3, max: 60 };
 
 /**
