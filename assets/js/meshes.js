@@ -4,8 +4,8 @@
 // 形は頂点シェーダで作る。泳ぎのうねりを毎フレーム CPU で計算して
 // 転送するのは無駄で、しかも法線を作り直す手間が増えるため。
 
-import { Mesh } from './glx.js?v=202610052132';
-import { TANK, POI, BOWL, AIR, JAR, BED, ANACHARIS, jarRadius } from './world.js?v=202610052132';
+import { Mesh } from './glx.js?v=202610052158';
+import { TANK, POI, BOWL, AIR, JAR, BED, ANACHARIS, jarRadius } from './world.js?v=202610052158';
 
 /** 位置・法線・領域の 3 属性を貯めて Mesh にする小さな入れ物。 */
 class Builder {
@@ -636,6 +636,42 @@ export function jarMesh(gl) {
     }
   }
 
+  // --- 口のふち。外側と内側の輪をつなぐ ---
+  //
+  // ここが開いたままだと、ガラスに厚みが一度も見えない。
+  // 見上げる角度では縁の照りが silhouette を作るので、
+  // 無いと鉢が消えて水の塊が宙に浮いて見える。
+  {
+    const rOut = jarRadius(1), rIn = rOut - JAR.wall;
+    const base = b.pos.length / 3;
+    for (let j = 0; j <= SEG; j++) {
+      const a2 = (j / SEG) * Math.PI * 2;
+      const ca = Math.cos(a2), sa = Math.sin(a2);
+      // ふちは少し丸めてある（火造りの口巻き）。法線は上と外の中ほど
+      b.pos.push(ca * rOut, JAR.height, sa * rOut);
+      b.nrm.push(ca * 0.70, 0.71, sa * 0.70); b.reg.push(7);
+      b.pos.push(ca * rIn, JAR.height, sa * rIn);
+      b.nrm.push(-ca * 0.70, 0.71, -sa * 0.70); b.reg.push(7);
+    }
+    for (let j = 0; j < SEG; j++) {
+      const o = base + j * 2;
+      b.idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2);
+    }
+  }
+
+  // --- 底。外側の輪を塞ぐ。ここも開いていると下から覗けてしまう ---
+  {
+    const r = jarRadius(0);
+    const base = b.pos.length / 3;
+    b.pos.push(0, 0, 0); b.nrm.push(0, -1, 0); b.reg.push(7);
+    for (let j = 0; j <= SEG; j++) {
+      const a2 = (j / SEG) * Math.PI * 2;
+      b.pos.push(Math.cos(a2) * r, 0, Math.sin(a2) * r);
+      b.nrm.push(0, -1, 0); b.reg.push(7);
+    }
+    for (let j = 0; j < SEG; j++) b.idx.push(base, base + j + 2, base + j + 1);
+  }
+
   // --- 底砂。大磯砂。水草を植えるので 4cm ほど敷く ---
   //
   // 平らな板 1 枚だと、鉢の底に紙を貼ったようにしか見えない。
@@ -711,26 +747,38 @@ export function jarMesh(gl) {
         for (let w = 0; w < WHORL; w++) {
           const a = st.phase + k * 1.15 + (w / WHORL) * Math.PI * 2;
           const dx = Math.cos(a), dz = Math.sin(a);
-          // 先ほど上を向く。水の中なので葉は立ち気味になる
-          const tx = cx + dx * LEAF_L, ty = cy + LEAF_L * RISE, tz = cz + dz * LEAF_L;
-          // 幅の向き。葉の面は茎の軸と葉の向きが張る面
+          // 先ほど上を向く。水の中なので葉は立ち気味になる。
+          // 一枚の板で張ると、どの葉も同じ平面で同じ明るさになり、
+          // 緑の矢印が刺さっているようにしか見えない。
+          // 二節に分けて先を垂らし、幅の端で法線を振って丸みを出す
+          const rise = RISE * (0.82 + ((k * 7 + w * 3) % 5) * 0.09);
+          const seg = [
+            [cx + dx * LEAF_L * 0.55, cy + LEAF_L * rise * 0.60, cz + dz * LEAF_L * 0.55],
+            [cx + dx * LEAF_L, cy + LEAF_L * rise * 0.95, cz + dz * LEAF_L],
+          ];
           const ax = -dz * LEAF_W * 0.5, az = dx * LEAF_W * 0.5;
-          // 法線。葉の向き × 幅の向きの外積
-          const lx = tx - cx, ly = ty - cy, lz = tz - cz;
-          const nx = ly * az;
-          const ny = lz * ax - lx * az;
-          const nz = -ly * ax;
-          const nn = Math.hypot(nx, ny, nz) || 1;
           const base = b.pos.length / 3;
-          for (const [px, py, pz] of [
-            [cx + ax, cy, cz + az], [cx - ax, cy, cz - az],
-            [tx + ax * 0.15, ty, tz + az * 0.15], [tx - ax * 0.15, ty, tz - az * 0.15],
-          ]) {
-            b.pos.push(px, py, pz);
-            b.nrm.push(nx / nn, ny / nn, nz / nn);
-            b.reg.push(11);
+          const ring = [[cx, cy, cz, 1.0], [seg[0][0], seg[0][1], seg[0][2], 0.72],
+                        [seg[1][0], seg[1][1], seg[1][2], 0.10]];
+          for (const [px, py, pz, wd] of ring) {
+            // 葉の向き
+            const lx = px - cx, ly = py - cy, lz = pz - cz;
+            const nl = Math.hypot(lx, ly, lz) || 1;
+            // 法線は葉の向き × 幅の向き。端は外へ 25% 寝かせて丸みにする
+            const nx = (ly / nl) * az, ny = (lz / nl) * ax - (lx / nl) * az, nz = -(ly / nl) * ax;
+            const nn = Math.hypot(nx, ny, nz) || 1;
+            for (const side of [1, -1]) {
+              b.pos.push(px + ax * wd * side, py, pz + az * wd * side);
+              b.nrm.push((nx / nn) * side + ax * 9.0 * side,
+                         ny / nn,
+                         (nz / nn) * side + az * 9.0 * side);
+              b.reg.push(11);
+            }
           }
-          b.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+          for (let q = 0; q < 2; q++) {
+            const o = base + q * 2;
+            b.idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2);
+          }
         }
       }
     }

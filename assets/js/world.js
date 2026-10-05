@@ -458,8 +458,10 @@ export const BED = { depth: 0.030, crown: 0.011 };
  * 絵を描かずに確かめられるようにするため。
  */
 export const ANACHARIS = {
-  node: 13, whorl: 5,
-  leafLen: 0.022, leafW: 0.0040, rise: 0.45,
+  // 節の間は 4〜5mm しかない。13 節で 10cm だと 7.7mm 間隔になり、
+  // 葉が疎らに刺さった棒にしか見えなかった
+  node: 21, whorl: 5,
+  leafLen: 0.019, leafW: 0.0038, rise: 0.40,
   strands: [
     { x: -0.040, z: -0.026, h: 0.108, lean: 0.018, phase: 0.0 },
     { x: 0.034, z: 0.031, h: 0.092, lean: -0.014, phase: 2.1 },
@@ -479,9 +481,11 @@ export function anacharisLeaves() {
       const cx = st.x + st.lean * u * u, cz = st.z + st.lean * 0.6 * u * u;
       for (let w = 0; w < A.whorl; w++) {
         const a = st.phase + k * 1.15 + (w / A.whorl) * Math.PI * 2;
+        // 先の上がり方は葉ごとに振ってある（meshes.js と同じ式）
+        const rise = A.rise * (0.82 + ((k * 7 + w * 3) % 5) * 0.09);
         out.push([cx, cy, cz,
                   cx + Math.cos(a) * A.leafLen,
-                  cy + A.leafLen * A.rise,
+                  cy + A.leafLen * rise * 0.95,
                   cz + Math.sin(a) * A.leafLen]);
       }
     }

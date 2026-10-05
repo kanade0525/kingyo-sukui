@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610052132';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610052158';
 
 /**
  * 縁側。
@@ -141,17 +141,55 @@ float rainRings(vec2 p, float t){
 }
 
 /** 石の肌。御影石。白い長石と黒い雲母の斑 */
-vec3 stoneCol(vec3 p, float tone){
+/**
+ * 石の肌。御影石。
+ *
+ * 露地の石は据えてから何十年も経っている。斑を振っただけの灰色では、
+ * 据えたばかりの新しい石にしか見えない。古い石をそれらしくするのは
+ * 次の四つで、どれも場所の決まり方が違う。
+ *
+ *   地衣  … 白緑の輪が点々と張り付く。向きに関係なく散る
+ *   苔    … 雨の当たる上面と、日の回らない北側に乗る
+ *   流痕  … 笠や中台の下へ、水の落ちた跡が縦に黒く落ちる
+ *   磨き  … 人の踏む所・触る所だけは苔が付かず、擦れて明るい
+ *
+ * age は据えてからの古さ。飛び石は踏まれるので低く、
+ * 灯籠と蹲踞は高く取る。
+ */
+vec3 stoneCol(vec3 p, vec3 n, float tone, float age){
   float sp = fbm(p.xz * 160.0 + p.y * 90.0);
-  float stain = smoothstep(0.42, 0.78, fbm(p.xz * 6.0 + p.y * 3.0));
   vec3 c = vec3(0.148, 0.146, 0.140) * tone * (0.80 + 0.42 * sp);
-  // 苔と水垢。古い石ほど north 側が緑に寄る
-  return mix(c, c * 0.62 + vec3(0.028, 0.048, 0.022), stain * 0.55);
+
+  // 地衣。乾いた白緑の輪。
+  // 石とほとんど同じ灰で混ぜていたので、付いていても見えていなかった
+  float lich = smoothstep(0.56, 0.72, fbm(p.xz * 46.0 + p.y * 30.0));
+  c = mix(c, vec3(0.215, 0.222, 0.168), lich * 0.55 * age * uWear);
+
+  // 苔。
+  //
+  // 「北側」を -z に取っていたが、カメラが見るのは +z 側の面なので、
+  // 見える所には一切付いていなかった。苔が乗るのは次の三つで、
+  // どれも見る向きに関係なく出る。
+  //   ・雨の溜まる上向きの面（笠や中台の天）
+  //   ・地面から湿りの上がる足元
+  //   ・日の回らない側
+  float up = clamp(n.y, 0.0, 1.0);
+  float damp = smoothstep(0.52, 0.0, p.y - uEave.w);
+  float shade = clamp(-dot(n, normalize(vec3(0.45, 0.60, 0.66))) * 0.5 + 0.5, 0.0, 1.0);
+  float blotch = smoothstep(0.34, 0.70, fbm(p.xz * 13.0 + p.y * 8.0));
+  float moss = clamp(blotch * (up * 0.85 + damp * 0.75 + shade * 0.35) * age * uWear,
+                     0.0, 0.80);
+  c = mix(c, vec3(0.032, 0.066, 0.024) * (0.70 + 0.60 * fbm(p.xz * 95.0)), moss);
+
+  // 流痕。横を向いた面の、上から下へ
+  float run = runStain(vec2(atan(p.z, p.x) * 0.18, -p.y * 2.4), clamp(0.6 - n.y, 0.0, 1.0));
+  c = mix(c, c * 0.60, run * 0.55 * age);
+  return c;
 }
 
 /** 石の陰影。まとめてここで掛ける */
-vec3 litStone(vec3 p, vec3 n, vec3 d, float tone){
-  vec3 c = stoneCol(p, tone);
+vec3 litStone(vec3 p, vec3 n, vec3 d, float tone, float age){
+  vec3 c = stoneCol(p, n, tone, age);
   vec3 lit = c * (uSunColor * max(dot(n, uSunDir), 0.0) * 0.75 + skyAmbient(n) * 1.25
                 + lanternLight(p, n) * 0.8 + lanternAmbient(p) * 0.7)
            + ggx(n, -d, uSunDir, 0.55, vec3(0.03)) * uSunColor * PI * 0.18
@@ -249,7 +287,8 @@ vec3 gardenFloor(vec3 p, vec3 d){
     float rad = 0.168 * (0.84 + 0.18 * sin(ang * 3.0 + h2 * 6.3) + 0.08 * sin(ang * 5.0));
     float L = length(q);
     float inside = smoothstep(rad, rad - 0.010, L);
-    vec3 stone = stoneCol(p, 0.94 + h1 * 0.22) * (1.05 + 0.25 * fbm(q * 120.0));
+    vec3 stone = stoneCol(p, vec3(0.0, 1.0, 0.0), 0.94 + h1 * 0.22, 0.30)
+               * (1.05 + 0.25 * fbm(q * 120.0));
     // 石の縁は苔が這い上がる
     stone = mix(stone, stone * 0.7 + moss * 0.5,
                 smoothstep(rad - 0.038, rad - 0.004, L) * 0.6);
@@ -406,15 +445,15 @@ void main(){
     float t;
     // 竿
     t = hitCyl(uCam, d, c, 0.052, H * 0.52, n);
-    if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 1.0); depth = t; }
+    if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 1.0, 1.0); depth = t; }
     // 中台
     t = hitBox(uCam, d, c + vec3(0.0, H * 0.56, 0.0), vec3(0.085, 0.040, 0.085), n);
-    if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 1.05); depth = t; }
+    if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 1.05, 1.0); depth = t; }
     // 火袋。夜はここに灯が入る
     t = hitBox(uCam, d, c + vec3(0.0, H * 0.70, 0.0), vec3(0.070, 0.082, 0.070), n);
     if(t > 0.0 && t < depth){
       vec3 p = uCam + d * t;
-      vec3 b = litStone(p, n, d, 1.1);
+      vec3 b = litStone(p, n, d, 1.1, 0.85);
       // 火口。四面それぞれの真ん中に開く
       vec3 lp = p - (c + vec3(0.0, H * 0.70, 0.0));
       float across = abs(n.x) > 0.5 ? lp.z : lp.x;
@@ -437,13 +476,13 @@ void main(){
       float f = float(k);
       t = hitBox(uCam, d, c + vec3(0.0, H * (0.790 + f * 0.030), 0.0),
                  vec3(0.158 - f * 0.036, 0.019, 0.158 - f * 0.036), n);
-      if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 0.98 + f * 0.04); depth = t; }
+      if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 0.98 + f * 0.04, 1.0); depth = t; }
     }
     // 宝珠
     t = hitSphere(uCam, d, c + vec3(0.0, H * 0.905, 0.0), 0.040);
     if(t > 0.0 && t < depth){
       vec3 p = uCam + d * t;
-      col = litStone(p, normalize(p - (c + vec3(0.0, H * 0.905, 0.0))), d, 1.08); depth = t;
+      col = litStone(p, normalize(p - (c + vec3(0.0, H * 0.905, 0.0))), d, 1.08, 1.0); depth = t;
     }
   }
 
@@ -459,7 +498,7 @@ void main(){
         // 溜まった水。空を映し、底の石が透ける
         vec3 refl = envSpec(reflect(d, vec3(0.0, 1.0, 0.0)), 0.05);
         float F = fresnelSchlick(clamp(-d.y, 0.0, 1.0), 0.02);
-        vec3 bottom = stoneCol(p, 0.55) * (skyAmbient(n) * 0.9 + uSunColor * 0.18);
+        vec3 bottom = stoneCol(p, n, 0.55, 1.0) * (skyAmbient(n) * 0.9 + uSunColor * 0.18);
         col = mix(bottom, refl, clamp(F * 1.4 + 0.10, 0.0, 0.92));
         // 掛樋から落ちる雫が立てる輪
         float ring = sin(length(p.xz - (c.xz + vec2(0.0, 0.06))) * 90.0 - uTime * 5.0);
@@ -467,7 +506,7 @@ void main(){
         // 雨粒。溜まり水はここがいちばん雨の見える所になる
         col += vec3(0.07, 0.08, 0.08) * rainRings((p.xz - c.xz) / uBasin.z, uTime);
       } else {
-        col = litStone(p, n, d, 0.92);
+        col = litStone(p, n, d, 0.92, n.y > 0.5 ? 0.35 : 1.0);
       }
       depth = t;
     }
@@ -480,7 +519,7 @@ void main(){
       float rh = k == 0 ? 0.055 : (k == 1 ? 0.085 : 0.110);
       float t2 = hitCyl(uCam, d, rc, rr, rh, n);
       if(t2 > 0.0 && t2 < depth){
-        col = litStone(uCam + d * t2, n, d, 0.86 + float(k) * 0.08); depth = t2;
+        col = litStone(uCam + d * t2, n, d, 0.86 + float(k) * 0.08, 0.55); depth = t2;
       }
     }
     // 掛樋。竹を斜めに渡して水を落とす
@@ -607,6 +646,10 @@ void main(){
                             : vec3(0.034, 0.031, 0.027);
     vec3 col = mix(vec3(0.028, 0.025, 0.021), stone, peb);
     col *= 1.0 - cav * 0.55;
+    // 粒の間に溜まる沈殿。餌の食べ残しと糞が茶色く沈む。
+    // 洗いたての砂利しか無い水槽は、作った直後にしか無い
+    col = mix(col, vec3(0.042, 0.032, 0.020),
+              cav * smoothstep(0.30, 0.75, fbm(vW.xz * 40.0)) * 0.55 * uWear);
     // 鉢は四方から光が入る。舟の底のように上からだけではない
     col *= underSun(N) * 0.9 + underAmbient(N) * 1.3 + underLantern(vW, N) * 1.0;
     frag = vec4(col, vDist);
@@ -621,7 +664,13 @@ void main(){
     vec3 nf = dot(N, V) < 0.0 ? -N : N;
     float up = clamp(vW.y / (uWaterY + 0.001), 0.0, 1.0);
     // 新しい葉ほど先が明るい。根元は茶色く枯れ込む
-    vec3 leaf = mix(vec3(0.038, 0.058, 0.026), vec3(0.058, 0.108, 0.034), up);
+    // 下葉は日が届かず枯れ込んで茶色くなる。先の新しい葉ほど青い
+    vec3 leaf = mix(vec3(0.050, 0.042, 0.022), vec3(0.058, 0.108, 0.034),
+                    smoothstep(0.08, 0.55, up));
+    // 古い葉には糸状の藻が絡む
+    leaf = mix(leaf, vec3(0.052, 0.062, 0.028),
+               smoothstep(0.55, 0.85, fbm(vW.xz * 180.0 + vW.y * 90.0))
+             * (1.0 - up) * 0.60 * uWear);
     float back = pow(clamp(dot(-V, uSunDir), 0.0, 1.0), 2.0);
     leaf = mix(leaf, vec3(0.095, 0.155, 0.052), back * 0.5);
     vec3 col = leaf * (underSun(nf) * 0.85 + underAmbient(nf) * 1.35
@@ -736,6 +785,48 @@ void main(){
   // 縁の照り。ガラスは縁がいちばん光る
   col += min(ggx(Nf, V, uSunDir, 0.035, vec3(0.05)) * uSunColor * PI, vec3(0.9));
   col += min(lanternSpec(vW, Nf, V, 0.035, vec3(0.05)) * 1.2, vec3(0.6));
+
+  // 輪郭。面を真横から見ている所ほど光路が長く、縁が明るく縁取られる。
+  //
+  // これが無いと、見上げる角度でガラスがただの素通しになって、
+  // 水の塊が宙に浮いているように見えていた。実物のガラスが
+  // 「そこにある」と分かるのは、この縁取りと口の厚みのおかげ
+  float grazing = pow(1.0 - ndv, 4.0);
+  col += (envSpec(Rr, 0.02) * 0.55 + skyAmbient(Nf) * 0.30) * grazing;
+
+  // ---- 使われた鉢の汚れ ----
+  //
+  // 下ろしたてのガラスは、作り物にしか見えない。鉢を「使っている物」に
+  // するのは、拭き残しではなく水そのものが残した跡のほう。
+  //
+  //   水垢   … 蒸発して水位が下がるたび、その高さに白い輪が残る
+  //   水滴跡 … 外側に跳ねた水が乾いて、硬水の白い斑点になる
+  //   緑膜   … 内側の水面際、光の当たる所に藻が薄く張る
+  //   埃     … 外側の上を向いた面にうっすら積もる
+  {
+    // 水垢の輪。いまの水位のすぐ上に、何本か重なって残る
+    float scale = 0.0;
+    for(int k = 0; k < 3; k++){
+      float h = uWaterY + 0.0035 + float(k) * 0.0052;
+      scale += smoothstep(0.0022, 0.0, abs(vW.y - h)) * (1.0 - float(k) * 0.26);
+    }
+    scale *= 0.55 + 0.45 * fbm(vec2(atan(vW.z, vW.x) * 3.4, vW.y * 60.0));
+    // 乾いた水滴の跡。外側だけ
+    float spot = smoothstep(0.66, 0.84, fbm(vec2(atan(vW.z, vW.x) * 7.0, vW.y * 42.0)))
+               * float(outer);
+    col = mix(col, col * 0.86 + vec3(0.085, 0.088, 0.086),
+              clamp(scale * 0.80 + spot * 0.22, 0.0, 0.75) * uWear);
+
+    // 内側の緑膜。水面から少し下まで、日の当たる側に出る
+    float algae = smoothstep(0.052, 0.004, uWaterY - vW.y) * under
+                * smoothstep(0.35, 0.80, fbm(vec2(atan(vW.z, vW.x) * 5.0, vW.y * 26.0)))
+                * clamp(dot(Nf, uSunDir) * 0.5 + 0.5, 0.0, 1.0);
+    col = mix(col, col * 0.72 + vec3(0.016, 0.040, 0.012), algae * 0.50 * uWear);
+
+    // 埃。外側の上を向いた面
+    col = mix(col, col * 0.90 + vec3(0.030, 0.029, 0.027),
+              dust(Nf, vW.xz * 7.0) * 0.16 * float(outer));
+  }
 
   // ガラスは 1 枚で仕上げる。混ぜない。
   // 中身は uScene から読み直しているので、ここで下地を透かす必要がない
