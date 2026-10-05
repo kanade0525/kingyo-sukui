@@ -9,22 +9,22 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610042356';
-import { VS_FULL } from '../shaders/common.js?v=202610042356';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610042356';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610042356';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610042356';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610042356';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610042356';
-import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610042356';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610042356';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610042356';
-import { Ocean } from './ocean.js?v=202610042356';
-import { Ripple } from './ripple.js?v=202610042356';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610050017';
+import { VS_FULL } from '../shaders/common.js?v=202610050017';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610050017';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610050017';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610050017';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610050017';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610050017';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610050017';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610050017';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610050017';
+import { Ocean } from './ocean.js?v=202610050017';
+import { Ripple } from './ripple.js?v=202610050017';
 import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor } from './world.js?v=202610042356';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610042356';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610042356';
+         pushOutOfBowl, bowlPosFor } from './world.js?v=202610050017';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610050017';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610050017';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -117,6 +117,9 @@ export class Renderer {
     this.mPad = padMesh(gl);
     this.mWeed = weedMesh(gl);
     this.mJar = jarMesh(gl);
+    // 鉢の波紋。舟と同じ升目（3.4mm）で、広さだけ鉢に合わせる
+    this.jarRipple = new Ripple(gl, this.full,
+      { n: 64, span: JAR.outerR * 2.2, half: [JAR.outerR, JAR.outerR] });
     this.mBubble = bubbleMesh(gl, AIR.bubbles);
     this.mSplash = splashMesh(gl, 36);
     this.mRain = splashMesh(gl, RAIN.count);
@@ -373,6 +376,16 @@ export class Renderer {
     if (this.envDirty) this.#bakeEnv();
     this.#homeCamera();
 
+    // 金魚が水面の近くを通ると輪が立つ。
+    // 餌を落とす機能を足すときも、この drop() がそのまま使える
+    for (const f of fish) {
+      const d = JAR.waterY - (f.p[1] - JAR.pos[1]);
+      if (d > 0.022 || d < 0) continue;
+      this.jarRipple.drop(f.p[0] - JAR.pos[0], f.p[2] - JAR.pos[2],
+                          f.len * 0.8, -0.00022 * (1 - d / 0.022));
+    }
+    this.jarRipple.update();
+
     gl.disable(gl.CULL_FACE);
 
     // ---- 鉢の中身。ガラス越しに読み直すので、別の板へ描く ----
@@ -444,6 +457,8 @@ export class Renderer {
      .setFloat('uWall', JAR.wall)
      .setFloat('uWaterY', JAR.waterY)
      .setInt('uPass', pass)
+     .tex('uRip', this.jarRipple.normTex)
+     .setFloat('uRipSpan', this.jarRipple.span)
      .setFloat('uTime', time);
     this.mJar.draw();
   }

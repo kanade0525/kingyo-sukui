@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610042356';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610050017';
 
 /**
  * 縁側。
@@ -160,6 +160,8 @@ uniform float uTime;
  * 像が二重に重なって、曇りガラスのように見える。
  */
 uniform int uPass;
+uniform sampler2D uRip;     // 鉢の波紋の (∂h/∂x, ∂h/∂z, h, ∇²h)
+uniform float uRipSpan;
 out vec4 frag;
 
 void main(){
@@ -199,9 +201,11 @@ void main(){
 
   if(region == 9){
     // ---- 鉢の中の水面。上から覗くと見える ----
-    // ゆるい正弦 2 本。小さい鉢なので大きくは揺れない
+    // ゆるい正弦 2 本に、金魚が立てた波紋を重ねる。
+    // 小さい鉢なので大きくは揺れないが、魚が通ると輪が広がる
     float w = sin(vW.x * 120.0 + uTime * 1.3) * 0.5 + sin(vW.z * 97.0 - uTime * 1.1) * 0.5;
-    vec3 n = normalize(vec3(-w * 0.03, 1.0, -w * 0.024));
+    vec2 rip = texture(uRip, vW.xz / uRipSpan + 0.5).xy;
+    vec3 n = normalize(vec3(-w * 0.03 - rip.x * 1.4, 1.0, -w * 0.024 - rip.y * 1.4));
     float F = fresnelSchlick(clamp(dot(n, V), 0.0, 1.0), 0.02);
     vec3 refl = envSpec(reflect(-V, n), 0.06) + lanternOrbs(reflect(-V, n), vW);
     vec3 body = vec3(0.028, 0.098, 0.122) * (skyAmbient(n) * 1.1 + uSunColor * 0.22

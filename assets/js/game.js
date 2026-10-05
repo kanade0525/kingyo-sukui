@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610042356';
-import { Poi } from './poi.js?v=202610042356';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610042356';
+import { School } from './fish.js?v=202610050017';
+import { Poi } from './poi.js?v=202610050017';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610050017';
 
 /** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
 const h11 = (x) => {
@@ -37,6 +37,8 @@ export class Game {
     // 店じまい。ポイを貸してもらえないので、水面をなでることしかできない
     this.closed = false;
     this.touch = null;
+    // 持ち帰って抜けていく途中の金魚。器の中身としてはもう無い
+    this.leaving = [];
 
     // 雨粒。降っていなくても配列は作っておく。
     // 進み具合をばらしておかないと、降り始めに全部が同時に着水する
@@ -77,17 +79,14 @@ export class Game {
     // 代わりに、水を汲み上げられて上へ抜けていくところだけ見せる。
     // 新しい絵を 1 つも作らずに済む（uLen を縮めるだけ）
     const LEAVE = 0.5;
-    for (let i = this.bowl.length - 1; i >= 0; i--) {
-      const f = this.bowl[i];
-      if (f.leaveAt === null) continue;
-      const t = (this.time - f.leaveAt) / LEAVE;
-      if (t >= 1) { this.bowl.splice(i, 1); continue; }
+    for (let i = this.leaving.length - 1; i >= 0; i--) {
+      const f = this.leaving[i];
+      if ((this.time - f.leaveAt) / LEAVE >= 1) { this.leaving.splice(i, 1); continue; }
       f.p[1] += dt * 0.09;
       f.len *= 1 - dt * 1.9;
     }
 
     for (const f of this.bowl) {
-      if (f.leaveAt !== null) continue;
       f.a += f.spin * dt;
       f.r += Math.sin(this.time * 0.7 + f.phase) * 0.004 * dt;
       f.p[0] = BOWL.pos[0] + Math.cos(f.a) * f.r;
@@ -367,6 +366,11 @@ export class Game {
     });
   }
 
+  /** 描くぶん。器の中身に、抜けていく途中のものを足す */
+  get bowlView() {
+    return this.leaving.length ? this.bowl.concat(this.leaving) : this.bowl;
+  }
+
   /** 器が一杯か。画面に「いっぱいです」を出すのに使う */
   get bowlFull() {
     return this.bowl.length >= MAX_BOWL;
@@ -386,8 +390,14 @@ export class Game {
     const out = this.bowl.map((f) => ({
       turtle: f.turtle, kind: f.kind, len: f.len, seed: f.seed, beat: f.beat,
     }));
-    // すぐには消さない。0.5 秒かけて上へ抜けていく
+    // 器は即座に空にする。
+    //
+    // 絵として 0.5 秒かけて抜けていくが、器の中身としてはもう無い。
+    // 器に残したまま退場させていたら、持ち帰ってすぐ家へ移ったときに
+    // game.update() が止まり、金魚が器に居座ったままになっていた。
     for (const f of this.bowl) f.leaveAt = this.time;
+    this.leaving.push(...this.bowl);
+    this.bowl.length = 0;
     if (this.ripple) this.ripple.drop(BOWL.pos[0], BOWL.pos[2], BOWL.innerR * 1.2, -0.0036);
     this.poi.splash = 1.0;
     this.poi.splashAt = [BOWL.pos[0], BOWL.pos[2]];

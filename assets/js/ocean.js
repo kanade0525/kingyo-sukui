@@ -3,10 +3,10 @@
 // なぜ h0 を CPU で作るか: 波の「種」は風速と風向が変わった時にしか
 // 作り直さないので、毎フレーム走る必要がない。乱数も JS のほうが素直に書ける。
 
-import { Program, makeTex, makeFbo, bindFbo } from './glx.js?v=202610042356';
-import { VS_FULL } from '../shaders/common.js?v=202610042356';
-import { FS_SPECTRUM, FS_BUTTERFLY, FS_ASSEMBLE, FS_NORMAL } from '../shaders/ocean.js?v=202610042356';
-import { PATCH, TANK } from './world.js?v=202610042356';
+import { Program, makeTex, makeFbo, bindFbo } from './glx.js?v=202610050017';
+import { VS_FULL } from '../shaders/common.js?v=202610050017';
+import { FS_SPECTRUM, FS_BUTTERFLY, FS_ASSEMBLE, FS_NORMAL } from '../shaders/ocean.js?v=202610050017';
+import { PATCH, TANK } from './world.js?v=202610050017';
 
 const G = 9.80665;
 

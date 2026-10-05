@@ -57,23 +57,28 @@ export default {
     await pg.waitForTimeout(900);
   },
 
-  '雨粒が舟じゅうに散る': async () => {
-    // 落ちる場所を番号から出していたので、同じ 26 か所に落ち続けていた
+  '雨粒は落ちるたびに場所を引き直す': async () => {
+    // 落ちる場所を粒の通し番号から出していたので、同じ 26 か所に
+    // 落ち続けていた。瞬間の散らばりを数えると、混み合ったときに
+    // 標本が足りなくなって揺れる。「同じ粒が別の場所へ落ち直したか」で見る
     const pg = await page();
     await setWeather(pg, 2);
     await setHour(pg, 13);
-    const seen = new Set();
-    for (let i = 0; i < 6; i++) {
-      for (const d of await peek(pg, 'rainDrops')) {
-        // 5cm 四方の升目に落として、何升に落ちたかを数える
-        seen.add(`${Math.round(d.x / 0.05)},${Math.round(d.z / 0.05)}`);
-      }
-      await pg.waitForTimeout(400);
+    const seen = new Map();          // 粒の番号 → 見た場所の集合
+    const deadline = Date.now() + 20000;
+    let moved = 0;
+    while (Date.now() < deadline && moved < 18) {
+      const drops = await peek(pg, 'rainDrops');
+      drops.forEach((d, i) => {
+        const key = `${Math.round(d.x / 0.01)},${Math.round(d.z / 0.01)}`;
+        if (!seen.has(i)) seen.set(i, new Set());
+        seen.get(i).add(key);
+      });
+      moved = [...seen.values()].filter((set) => set.size > 1).length;
+      await pg.waitForTimeout(250);
     }
-    // 26 粒 × 6 回 = 156 標本。重なるので、見える通り数はこれより減る。
-    // 場所が番号で固定だった頃は 26 通りで頭打ちだった。
-    // 細かい確かめは単体の試験（tests/unit/water）でやっている
-    ok(seen.size > 40, `雨粒が ${seen.size} 通りの場所にしか落ちない`);
+    ok(moved >= 18,
+       `落ち直して場所が変わった粒が ${moved} 個しかない。番号で固定されている`);
     await setWeather(pg, 0);
   },
 
