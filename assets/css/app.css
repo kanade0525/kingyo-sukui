@@ -214,6 +214,24 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 }
 #btnHome:hover,#btnStall:hover{border-color:var(--hi-soft);color:var(--hi-soft)}
 
+/* 家の鉢の見え方。右端に寄りと向きの操作を縦に並べる。
+   地図の縮尺ボタンと同じ置き方で、親指の届く所に出す */
+#viewpad{
+  /* 画面の真ん中に置くと鉢の上に重なる。下の並びの一段上へ逃がす */
+  position:fixed;right:14px;bottom:76px;z-index:3;
+  display:flex;flex-direction:column;gap:9px;
+}
+#viewpad button{
+  width:40px;height:40px;padding:0;border-radius:999px;
+  font-size:17px;line-height:1;display:grid;place-items:center;
+}
+#viewpad button:last-child{font-size:12px}
+@media (max-width:520px){
+  #viewpad{right:10px;bottom:70px;gap:8px}
+  #viewpad button{width:36px;height:36px;font-size:16px}
+  #viewpad button:last-child{font-size:11px}
+}
+
 /* 家の画面の札。右上の「いまの時刻と天気」と同じ形 */
 #homebar{
   position:fixed;z-index:4;

@@ -28,7 +28,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@400;700&family=Shippori+Mincho+B1:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="assets/css/app.css?v=202610050644">
+<link rel="stylesheet" href="assets/css/app.css?v=202610052132">
 </head>
 <body>
 
@@ -61,6 +61,13 @@
     <button id="btnSound" aria-pressed="true" data-t-aria="soundToggle"><span id="soundMark">♪</span></button>
     <button id="btnPanel" aria-expanded="false" aria-controls="panel" data-t="settings">設定</button>
   </div>
+</div>
+
+<!-- 家の鉢の見え方。寄りと向き。屋台では引っ込む -->
+<div id="viewpad" hidden>
+  <button id="btnZoomIn" data-t-aria="zoomIn">＋</button>
+  <button id="btnZoomOut" data-t-aria="zoomOut">−</button>
+  <button id="btnViewReset" data-t="viewReset" data-t-aria="viewResetAria">正面</button>
 </div>
 
 <!-- 家の画面の札。鉢に何匹いるか。屋台では引っ込む -->
@@ -166,6 +173,6 @@
 </div>
 
 
-<script type="module" src="assets/js/main.js?v=202610050644"></script>
+<script type="module" src="assets/js/main.js?v=202610052132"></script>
 </body>
 </html>

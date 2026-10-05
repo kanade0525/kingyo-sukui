@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610050644';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610052132';
 
 /**
  * 縁側。

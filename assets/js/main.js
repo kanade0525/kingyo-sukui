@@ -4,16 +4,16 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610050644';
-import { Game } from './game.js?v=202610050644';
-import { UI } from './ui.js?v=202610050644';
-import { localHour, fetchWeather, sunFor } from './sky.js?v=202610050644';
-import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610050644';
-import { Sound, layerWants } from './sound.js?v=202610050644';
-import { POI } from './world.js?v=202610050644';
-import { nearestCity } from './place.js?v=202610050644';
-import { Home } from './home.js?v=202610050644';
-import { HOME, MAX_BOWL } from './world.js?v=202610050644';
+import { Renderer } from './renderer.js?v=202610052132';
+import { Game } from './game.js?v=202610052132';
+import { UI } from './ui.js?v=202610052132';
+import { localHour, fetchWeather, sunFor } from './sky.js?v=202610052132';
+import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610052132';
+import { Sound, layerWants } from './sound.js?v=202610052132';
+import { POI } from './world.js?v=202610052132';
+import { nearestCity } from './place.js?v=202610052132';
+import { Home } from './home.js?v=202610052132';
+import { HOME, MAX_BOWL, ZOOM } from './world.js?v=202610052132';
 
 // 言葉をいちばん先に差し替える。覆いの題字も見えてしまうので
 applyI18n();
@@ -54,6 +54,8 @@ const ui = new UI({
   now() { manualHour = false; manualWeather = false; applyNow(true); },
   takeHome() { takeHome(); },
   lamp(on) { renderer?.setLamp(on); },
+  zoom(dir) { renderer?.zoomBy(dir > 0 ? ZOOM.step : 1 / ZOOM.step); },
+  viewReset() { if (renderer) { renderer.zoom = 1; renderer.orbit = { x: 0, y: 0 }; } },
   jumpTo(key) { jumpToLayer(key); },
   amp(v) { renderer?.setAmp(v); },
   wind(v) { renderer?.setWind(v); },
@@ -207,11 +209,18 @@ function takeHome() {
 }
 
 /** 画面を切り替える */
+let viewHintShown = false;
+
 function setView(next) {
   if (view === next) return;
   view = next;
   ui.setView(view);
   if (renderer) renderer.setView(view);
+  // なぞる・つまむは画面に書いていないと気付かれない。最初の一度だけ出す
+  if (view === 'home' && !viewHintShown) {
+    viewHintShown = true;
+    ui.toast(t('viewHint'), 4200);
+  }
 }
 
 window.addEventListener('hashchange', () => {
@@ -257,6 +266,8 @@ if (new URLSearchParams(location.search).has('test')) {
     },
     get stored() { try { return localStorage.getItem('kingyo.home'); } catch { return null; } },
     get bowlFull() { return game.bowlFull; },
+    /** 家の鉢への寄り。1.0 がちょうど収まる位置 */
+    get zoom() { return renderer?.zoom ?? 1; },
     /** 家の鉢の水面に落ちた雨粒の数 */
     get jarRainHits() { return renderer?.jarRainHits ?? 0; },
     /** 画面の座標を、水面の上のワールド座標へ直す */
@@ -310,21 +321,50 @@ function aimAt(e) {
  */
 let drag = null;
 
+/**
+ * つまんでいる指。家でだけ二本まで数える。
+ *
+ * 一本なら回す、二本触れたら寄る。屋台は一本しか使わないので、
+ * これまでどおり pointerId 一つで足りる
+ */
+const touches = new Map();
+let pinch = null;
+
+const spread = () => {
+  const [a, b] = [...touches.values()];
+  return Math.hypot(a.x - b.x, a.y - b.y);
+};
+
 canvas.addEventListener('pointerdown', (e) => {
   sound.unlock();
+  if (view === 'home') {
+    canvas.setPointerCapture(e.pointerId);
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) {
+      // つまみ始め。この時の指の間隔と寄りを覚えておく
+      pinch = { d0: spread(), z0: renderer.zoom };
+      drag = null;
+    } else if (touches.size === 1) {
+      drag = { x: e.clientX, y: e.clientY, ox: renderer.orbit.x, oy: renderer.orbit.y };
+    }
+    return;
+  }
   if (pointerId !== null) return;
   pointerId = e.pointerId;
   canvas.setPointerCapture(e.pointerId);
-  if (view === 'home') {
-    drag = { x: e.clientX, y: e.clientY, ox: renderer.orbit.x, oy: renderer.orbit.y };
-    return;
-  }
   aimAt(e);
   game.press(true);
 });
 
 canvas.addEventListener('pointermove', (e) => {
   if (view === 'home') {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && touches.size === 2) {
+      // 指を広げるほど近づく。間隔の比をそのまま寄りの比にする
+      const d = spread();
+      if (d > 4) renderer.setZoom(pinch.z0 * (pinch.d0 / d));
+      return;
+    }
     if (!drag) return;
     const r = canvas.getBoundingClientRect();
     // 画面の 7 割をなぞると端まで回る。全幅にすると鈍く感じる
@@ -337,9 +377,24 @@ canvas.addEventListener('pointermove', (e) => {
   aimAt(e);
 });
 
+// 車輪でも寄れる。机の上ではこちらが普通
+canvas.addEventListener('wheel', (e) => {
+  if (view !== 'home') return;
+  e.preventDefault();
+  renderer.zoomBy(e.deltaY > 0 ? 1.12 : 1 / 1.12);
+}, { passive: false });
+
 const clamp1 = (v) => (v < -1 ? -1 : v > 1 ? 1 : v);
 
 const release = (e) => {
+  if (touches.delete(e.pointerId)) {
+    // つまみを解いたあと、残った指で回し始めないように持ち直す
+    pinch = null;
+    const left = [...touches.entries()][0];
+    drag = left
+      ? { x: left[1].x, y: left[1].y, ox: renderer.orbit.x, oy: renderer.orbit.y }
+      : null;
+  }
   if (pointerId !== e.pointerId) return;
   pointerId = null;
   drag = null;
@@ -349,7 +404,10 @@ canvas.addEventListener('pointerup', release);
 canvas.addEventListener('pointercancel', release);
 
 // 指を離さずにタブを離れた時に押しっぱなしで固まらないように
-window.addEventListener('blur', () => { pointerId = null; game.press(false); });
+window.addEventListener('blur', () => {
+  pointerId = null; game.press(false);
+  touches.clear(); pinch = null; drag = null;
+});
 
 window.addEventListener('resize', () => renderer?.resize());
 

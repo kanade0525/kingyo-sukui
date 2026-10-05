@@ -507,6 +507,42 @@ export const HOME = { fit: 3, max: 60 };
 // 縁側に座れば上も向けるので、少しだけ上を許す（負は見上げ）
 export const ORBIT = { yaw: 60, pitchMin: -10, pitchMax: 62, pitch0: 7 };
 
+/**
+ * 家のカメラ。鉢が画面に収まる、いちばん近い距離を返す。
+ *
+ * もとは「鉢の高さの 1.5 倍を縦に収める」で距離を決めていた。
+ * それだと必要な距離の 2 倍以上まで引いていて、鉢が小さいままだった。
+ * 鉢を包む球が画角にちょうど入る距離を出して、余白ぶんだけ掛ける。
+ *
+ * 画角は縦と横で狭いほうが効く。縦画面では横がぐっと狭くなるので、
+ * そのぶん引くことになる。
+ *
+ * 寄り（zoom）は 1.0 がちょうど収まる位置。小さいほど近づく。
+ * 近づきすぎるとガラスが near 面を割るので、包む球の 1.35 倍で止める。
+ *
+ * @param fovY  縦の画角 [rad]
+ * @param aspect 横 ÷ 縦
+ * @param zoom  寄り。ZOOM.min〜ZOOM.max
+ * @param margin 余白。1.0 でぴったり
+ */
+export const ZOOM = { min: 0.46, max: 2.6, step: 1.22 };
+
+export function jarCameraFor(fovY, aspect, zoom = 1, margin = 1.14) {
+  // 鉢を包む球。中心は高さの半ば、半径はいちばん遠い縁まで
+  const cy = JAR.height * 0.5;
+  const R = Math.max(
+    Math.hypot(JAR.outerR, 0),                       // 胴のいちばん張り出す所
+    Math.hypot(JAR.mouthR, JAR.height - cy),         // 口の縁
+    Math.hypot(JAR.footR, cy),                       // 底の縁
+  );
+  const halfV = fovY / 2;
+  const halfH = Math.atan(Math.tan(halfV) * aspect);
+  const half = Math.min(halfV, halfH);
+  const fit = (margin * R) / Math.sin(half);
+  const z = Math.min(Math.max(zoom, ZOOM.min), ZOOM.max);
+  return { dist: Math.max(fit * z, R * 1.35), aimY: cy, radius: R, fit };
+}
+
 export function jarView(orbit = { x: 0, y: 0 }) {
   const DEG = Math.PI / 180;
   const x = Math.min(Math.max(orbit.x ?? 0, -1), 1);

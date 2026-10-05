@@ -6,7 +6,7 @@
 
 import { TANK, BOWL, PAD, WEED, LEAF, POI, LANTERN, AIR, ROOM,
          JAR, BED, tankHalfAt, pushOutOfBowl, bowlPosFor, mapleLeaves,
-         anacharisLeaves, jarRadius } from '../../assets/js/world.js?v=202610041317';
+         anacharisLeaves, jarRadius, jarCameraFor } from '../../assets/js/world.js?v=202610041317';
 import { ok, between, near } from '../lib/assert.mjs';
 
 const PITCHES = [[55, '浅め'], [65, '標準'], [87, '真上']];
@@ -128,6 +128,26 @@ export default {
     between(WEED.lenMax * 1000, 7, 11, 'ウキクサの最大（mm）');
     // イロハモミジの葉は 3.5〜6cm
     for (const c of LEAF.spots) between(c.r * 2 * 100, 3.0, 6.5, `楓の葉の差し渡し（cm）`);
+  },
+
+  '鉢がどの画面でも収まり、小さくなりすぎない': () => {
+    // もとは「鉢の高さの 1.5 倍を縦に収める」で距離を決めていて、
+    // 必要な距離の 2 倍以上まで引いていた。鉢が小さいままだったのはこれ
+    const FOV = 46 * Math.PI / 180;
+    for (const [aspect, name] of [[2.2, '横に長い'], [1.778, '16:9'], [1.0, '正方'],
+                                  [0.56, '9:16'], [0.42, '細い縦']]) {
+      const { dist, radius } = jarCameraFor(FOV, aspect);
+      const halfV = FOV / 2;
+      const halfH = Math.atan(Math.tan(halfV) * aspect);
+      // 画面に入っていること
+      const seen = Math.asin(radius / dist);
+      ok(seen < Math.min(halfV, halfH), `${name} で鉢が画面からはみ出す`);
+      // 小さくなりすぎないこと。狭いほうの画角の 7 割は占める
+      ok(seen > Math.min(halfV, halfH) * 0.70,
+         `${name} で鉢が小さい（画角の ${(seen / Math.min(halfV, halfH) * 100).toFixed(0)}%）`);
+      // 手前の面が near 面（2cm）より向こうにあること
+      ok(dist - radius > 0.02, `${name} で鉢が近すぎて切れる`);
+    }
   },
 
   '底砂の厚さが実物の目安に収まる': () => {

@@ -1,6 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
 
-import { t } from './i18n.js?v=202610050644';
+import { t } from './i18n.js?v=202610052132';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -16,6 +16,8 @@ export class UI {
       fallback: $('fallback'), fallbackWhy: $('fallbackWhy'),
       btnTakeHome: $('btnTakeHome'), btnHome: $('btnHome'), btnStall: $('btnStall'), btnLamp: $('btnLamp'),
       homebar: $('homebar'), homeCount: $('homeCount'), toast: $('toast'),
+      viewpad: $('viewpad'),
+      btnZoomIn: $('btnZoomIn'), btnZoomOut: $('btnZoomOut'), btnViewReset: $('btnViewReset'),
     };
 
 
@@ -26,6 +28,12 @@ export class UI {
     window.addEventListener('orientationchange', () => setTimeout(refit, 250));
 
     this.el.btnTakeHome.addEventListener('click', () => handlers.takeHome());
+
+    // 寄りと向き。押すたび一段ずつ動かす。
+    // なぞる・つまむだけだと、触れると分かる手掛かりが画面に無い
+    this.el.btnZoomIn.addEventListener('click', () => handlers.zoom(-1));
+    this.el.btnZoomOut.addEventListener('click', () => handlers.zoom(1));
+    this.el.btnViewReset.addEventListener('click', () => handlers.viewReset());
 
     this.el.btnLamp.addEventListener('click', () => {
       const on = this.el.btnLamp.getAttribute('aria-pressed') !== 'true';
@@ -200,6 +208,8 @@ export class UI {
     this.el.btnHome.hidden = home;
     // 家からの戻り道。これが無いと、ブラウザの戻るしか手が無い
     this.el.btnStall.hidden = !home;
+    // 寄りと向きの操作。屋台では使わない
+    this.el.viewpad.hidden = !home;
     if (home) this.el.btnTakeHome.hidden = true;
     if (!home) { this.el.btnLamp.hidden = true; this.lampShown = false; }
     // 水面の設定は家では効かない。「いまは鳴らない」の印と同じ考えで、

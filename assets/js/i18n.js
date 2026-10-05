@@ -13,6 +13,11 @@ const DICT = {
   ja: {
     title: '金魚掬い',
     lampAria: '部屋の明かりの入切',
+    zoomIn: '寄る',
+    zoomOut: '引く',
+    viewReset: '正面',
+    viewResetAria: '向きと寄りを戻す',
+    viewHint: 'なぞると回り、二本指でつまむと寄ります',
     takeHome: '持ち帰る（{n}匹）',
     goHome: '家の鉢',
     backToStall: '屋台へ戻る',
@@ -78,6 +83,11 @@ const DICT = {
   en: {
     title: 'Goldfish Scooping',
     lampAria: 'Room light on/off',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    viewReset: 'Front',
+    viewResetAria: 'Reset the angle and zoom',
+    viewHint: 'Drag to turn, pinch to zoom',
     takeHome: 'Take home ({n})',
     goHome: 'The bowl at home',
     backToStall: 'Back to the stall',

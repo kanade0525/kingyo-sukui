@@ -75,6 +75,50 @@ export default {
     eq(errors.length, 0, errors.slice(0, 3).join(' / '));
   }),
 
+  '寄りと向きを画面のボタンで変えられる': () => withPage({ hour: 13 }, async (page) => {
+    // なぞる・つまむだけでは、触れると分かる手掛かりが画面に無い
+    await putInBowl(page, 2);
+    await takeHome(page);
+    eq(await page.evaluate(() => document.getElementById('viewpad').hidden), false,
+       '家に寄りの操作が出ていない');
+    const fit = await peek(page, 'zoom');
+    await page.click('#btnZoomIn');
+    await page.click('#btnZoomIn');
+    const near = await peek(page, 'zoom');
+    ok(near < fit, `寄るボタンで近づかない（${fit} → ${near}）`);
+    await page.click('#btnZoomOut');
+    await page.click('#btnZoomOut');
+    await page.click('#btnZoomOut');
+    ok((await peek(page, 'zoom')) > near, '引くボタンで遠ざからない');
+    // 向きも動かしてから、正面で両方戻る
+    await page.evaluate(() => { window.__kingyo.renderer.orbit = { x: 0.8, y: 0.6 }; });
+    await page.click('#btnViewReset');
+    eq(await peek(page, 'zoom'), 1, '正面で寄りが戻らない');
+    const o = await page.evaluate(() => window.__kingyo.renderer.orbit);
+    eq(o.x, 0, '正面で向きが戻らない');
+    eq(o.y, 0, '正面で向きが戻らない');
+    // 屋台へ帰れば引っ込む
+    await page.click('#btnStall');
+    await until(page, 'view', (v) => v === 'stall', '屋台へ戻れない');
+    eq(await page.evaluate(() => document.getElementById('viewpad').hidden), true,
+       '屋台に寄りの操作が残っている');
+  }),
+
+  '寄りには限りがあり、押し続けても壊れない': () => withPage({ hour: 13 }, async (page) => {
+    await putInBowl(page, 1);
+    await takeHome(page);
+    for (let i = 0; i < 14; i++) await page.click('#btnZoomIn');
+    const near = await peek(page, 'zoom');
+    ok(near >= 0.46 - 1e-6, `寄りすぎて鉢を突き抜ける（${near}）`);
+    const m1 = await measure(page);
+    ok(m1.mean > 0 && m1.detail > 0, '寄りきった所で絵が壊れている');
+    for (let i = 0; i < 24; i++) await page.click('#btnZoomOut');
+    const far = await peek(page, 'zoom');
+    ok(far <= 2.6 + 1e-6, `引きすぎる（${far}）`);
+    const m2 = await measure(page);
+    ok(m2.mean > 0 && m2.detail > 0, '引ききった所で絵が壊れている');
+  }),
+
   '上から覗いても鉢の中が見える': () => withPage({ hour: 13 }, async (page) => {
     // 中身をガラスの段だけで描いていたら、上から見た鉢が三日月に欠けて、
     // 真ん中は縁側の板が透けて見えていた

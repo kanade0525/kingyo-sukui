@@ -9,22 +9,22 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610050644';
-import { VS_FULL } from '../shaders/common.js?v=202610050644';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610050644';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610050644';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610050644';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610050644';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610050644';
-import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610050644';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610050644';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610050644';
-import { Ocean } from './ocean.js?v=202610050644';
-import { Ripple } from './ripple.js?v=202610050644';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610052132';
+import { VS_FULL } from '../shaders/common.js?v=202610052132';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610052132';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610052132';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610052132';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610052132';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610052132';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610052132';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610052132';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610052132';
+import { Ocean } from './ocean.js?v=202610052132';
+import { Ripple } from './ripple.js?v=202610052132';
 import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius } from './world.js?v=202610050644';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610050644';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610050644';
+         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202610052132';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610052132';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610052132';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -92,6 +92,8 @@ export class Renderer {
     this.envFb = gl.createFramebuffer();
     this.envDirty = true;
     this.scene = 'stall';
+    // 家の鉢への寄り。1.0 がちょうど収まる位置で、小さいほど近づく
+    this.zoom = 1;
     // 家の鉢を回した量（-1〜1）。指でなぞると動く
     this.orbit = { x: 0, y: 0 };
     this.lampOn = true;
@@ -340,11 +342,9 @@ export class Renderer {
     this.portrait = portrait;
     const [pitch, yaw] = jarView(this.orbit);
     const tanH = Math.tan(FOV_Y / 2);
-    // 鉢がちょうど収まる距離。縦画面は横に余裕が無いので引く
-    const need = (JAR.outerR * 1.12) / (tanH * Math.min(aspect, 1.0) * (portrait ? 0.92 : 1.0));
-    const dist = Math.max(need, (JAR.height * 1.5) / tanH);
-    // 狙う点を鉢の中ほどより少し上に置く。下げると画面が床で埋まる
-    const base = [JAR.pos[0], ROOM.floorY + JAR.height * 0.74, JAR.pos[2]];
+    // 鉢を包む球が画角にちょうど入る距離。式は world.js に置いてある
+    const { dist, aimY } = jarCameraFor(FOV_Y, aspect, this.zoom);
+    const base = [JAR.pos[0], ROOM.floorY + aimY, JAR.pos[2]];
     const eye = [
       base[0] + Math.sin(yaw) * Math.cos(pitch) * dist,
       base[1] + Math.sin(pitch) * dist,
@@ -517,6 +517,20 @@ export class Renderer {
     d.z = cz + (Math.random() * 2 - 1) * hz;
     d.w = Math.random();
     d.period = RAIN.fall / (RAIN.speed * (0.85 + d.w * 0.30));
+  }
+
+  /**
+   * 家の鉢への寄りを掛け算で動かす。
+   *
+   * 足し算で動かすと、近いときは大きく、遠いときは小さくしか動かない。
+   * 見た目の変わり方を一定にするには掛け算で動かす
+   */
+  zoomBy(f) { return this.setZoom(this.zoom * f); }
+
+  setZoom(z) {
+    // 家のカメラは毎コマ組み直しているので、ここで触るのは値だけでよい
+    this.zoom = Math.min(Math.max(z, ZOOM.min), ZOOM.max);
+    return this.zoom;
   }
 
   /** 縁側と庭。画面いっぱいの 1 枚 */
