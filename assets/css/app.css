@@ -14,9 +14,19 @@
   --hi-soft:#ef7a3c;
   --beni:#c42f1c;       /* 紅 */
 
-  /* 見出し。解星デコール（Kaisei Decol）は、少しクセのあるフォルムで
+  /* 書体は一つだけ。
+   *
+   * 見出しに解星デコール、本文にゴシックを当てていたので、画面の中に
+   * 書体が三つ並んでいた。昭和の縁日という題材に対して、字だけが
+   * ばらばらに現代の顔をしていた。
+   *
+   * しっぽり明朝 B1 は古い活字の匂いを残したオールドスタイル明朝で、
+   * 小さい字でも痩せないように作られている。見出しは太さで差をつける。
+   *
+   * 元の覚え書き（解星デコール）: 少しクセのあるフォルムで
      昭和レトロ・大正ロマンの雰囲気が出る明朝。縁日の看板の字に近い */
-  --disp:"Kaisei Decol","Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+  --disp:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+  --disp-w:700;
   /* 本文。
    *
    * ゴシックを当てていたので、時刻や署名の明朝と混在して、
@@ -41,7 +51,7 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-a
 body.playing canvas#scene{cursor:none}
 
 #fallback{position:fixed;inset:0;display:grid;place-content:center;padding:32px;text-align:center;background:var(--sumi)}
-#fallback h2{font-family:var(--disp);font-weight:700;letter-spacing:.08em;margin:0 0 12px}
+#fallback h2{font-family:var(--disp);font-weight:var(--disp-w);letter-spacing:.08em;margin:0 0 12px}
 
 /* ---------- 下の帯 ---------- */
 #botbar{
@@ -58,7 +68,7 @@ body.playing canvas#scene{cursor:none}
    縁取りを足しても下地の明暗に負ける。ほかのボタンと同じ札にすれば、
    下地が何色でも読める。小さくしてあるので主張はしない */
 #by{
-  font-family:var(--disp);font-size:11px;letter-spacing:.14em;
+  font-family:var(--disp);font-weight:var(--disp-w);font-size:11px;letter-spacing:.14em;
   color:var(--ink);text-decoration:none;
   background:rgba(255,255,255,.88);border:1px solid rgba(23,34,43,.30);
   box-shadow:0 1px 3px rgba(23,34,43,.12);
@@ -105,7 +115,7 @@ button:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
 }
 #panel::-webkit-scrollbar{width:6px}
 #panel::-webkit-scrollbar-thumb{background:rgba(23,34,43,.22);border-radius:3px}
-#panel h3{margin:2px 0 -2px;font-family:var(--disp);font-size:12px;font-weight:500;letter-spacing:.14em;color:var(--hi)}
+#panel h3{margin:2px 0 -2px;font-family:var(--disp);font-size:12px;font-weight:var(--disp-w);letter-spacing:.14em;color:var(--hi)}
 .row{display:flex;flex-direction:column;gap:6px}
 .rl{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px;color:var(--ink-dim)}
 .rl span:last-child{color:var(--ink);font-variant-numeric:tabular-nums}
@@ -125,7 +135,7 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 #loading.done{opacity:0;pointer-events:none}
 .card{width:min(560px,100%);text-align:center}
 .card h1{
-  margin:0 0 28px;font-family:var(--disp);font-weight:700;
+  margin:0 0 28px;font-family:var(--disp);font-weight:var(--disp-w);
   font-size:clamp(40px,10vw,76px);letter-spacing:.22em;text-wrap:balance;
   text-shadow:0 1px 0 rgba(255,255,255,.75), 0 3px 26px rgba(255,255,255,.95);
 }
@@ -184,9 +194,9 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 }
 #nowWhat.manual{background:rgba(23,34,43,.42)}
 
-#nowPlace{font-family:var(--disp);font-size:13px;letter-spacing:.10em;color:var(--ink)}
+#nowPlace{font-family:var(--disp);font-weight:var(--disp-w);font-size:13px;letter-spacing:.10em;color:var(--ink)}
 #nowSky{font-size:11px;color:var(--ink-dim)}
-#nowTime{font-family:var(--disp);font-size:17px;letter-spacing:.06em;color:var(--hi)}
+#nowTime{font-family:var(--disp);font-weight:var(--disp-w);font-size:17px;letter-spacing:.06em;color:var(--hi)}
 #nowTime.manual{color:var(--ink-dim)}
 
 
@@ -249,7 +259,7 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
   background:rgba(255,255,255,.80);border:1px solid rgba(23,34,43,.18);
   box-shadow:0 1px 3px rgba(23,34,43,.12);
   -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-  font-family:var(--disp);font-size:13px;letter-spacing:.10em;color:var(--ink);
+  font-family:var(--disp);font-weight:var(--disp-w);font-size:13px;letter-spacing:.10em;color:var(--ink);
   font-variant-numeric:tabular-nums;pointer-events:none;
 }
 

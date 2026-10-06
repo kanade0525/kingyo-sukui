@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610060015';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610060114';
 
 /**
  * 縁側。
@@ -32,6 +32,9 @@ uniform vec4 uPost;       // 柱の x, 幅, 竹垣の z, 竹垣の高さ
 uniform vec4 uToro;       // 灯籠の x, z, 高さ, 未使用
 uniform vec4 uBasin;      // 蹲踞の x, z, 半径, 高さ
 uniform vec3 uShrub[3];   // 刈り込みの x, z, 半径
+uniform vec4 uGrass[7];   // 下草の x, z, 横の半径, 高さ
+uniform vec4 uRock[2];    // 景石の x, z, 半径, 地上に出る高さ
+uniform float uPostX2;    // もう一本の柱
 uniform vec4 uMaple;      // 楓の x, z, 幹の高さ, 葉叢の半径
 uniform vec4 uLeaf[5];    // 葉叢ひと塊の x, y, z, 半径
 uniform float uSkyline;   // 借景の木立までの z
@@ -244,13 +247,44 @@ float hitLeaves(vec3 ro, vec3 rd, vec3 c, float r, out vec3 nn, out float dens){
   if(t <= 0.0) return -1.0;
   vec3 v = (ro + rd * t - c) / r;
   float f = fbm(v.xy * 4.2 + v.z * 2.4) * 0.60 + fbm(v.xz * 10.5 + v.y * 4.6) * 0.40;
-  // 縁ほど薄く。玉に刈り込んだ輪郭を崩して、枝先の透けを作る
-  f -= smoothstep(0.42, 1.0, length(v)) * 0.36;
-  if(f < 0.16) return -1.0;                    // 葉の無い所。向こうが透ける
+  // 縁ほど薄く。玉に刈り込んだ輪郭を崩して、枝先の透けを作る。
+  //
+  // 削りすぎて葉叢がスカスカになっていた。楓は枝が込み合っていて、
+  // 中ほどは向こうが見えない。透けるのは枝先だけ
+  f -= smoothstep(0.62, 1.0, length(v)) * 0.44;
+  if(f < 0.02) return -1.0;                    // 葉の無い所。向こうが透ける
   nn = normalize(v + vec3(fbm(v.xy * 13.0) - 0.5,
                           fbm(v.yz * 13.0) - 0.5,
                           fbm(v.xz * 13.0) - 0.5) * 0.9);
   dens = f;
+  return t;
+}
+
+/**
+ * 下草の株。平たい楕円体を、葉の筋で刻む。
+ *
+ * ヤブランもシダも、根元から細い葉が放射状に立つ。
+ * 玉のまま置くと刈り込みと見分けが付かないので、
+ * 縦に強く引き伸ばした雑音で縁を刻んで、葉の筋を作る。
+ */
+float hitClump(vec3 ro, vec3 rd, vec3 c, vec3 rad, out vec3 nn, out float up){
+  vec3 o = (ro - c) / rad, dd = rd / rad;
+  float a = dot(dd, dd), b = dot(o, dd), cc = dot(o, o) - 1.0;
+  float h = b * b - a * cc;
+  if(h < 0.0) return -1.0;
+  float t = (-b - sqrt(h)) / a;
+  if(t <= 0.0) return -1.0;
+  vec3 v = o + dd * t;
+  float ang = atan(v.z, v.x);
+  // 葉は細長い。横方向に細かく、縦には伸ばして刻む。
+  // 等方の雑音で削ると、刈り込みの玉と見分けが付かない
+  float f = fbm(vec2(ang * 11.0, v.y * 0.7)) * 0.50
+          + fbm(vec2(ang * 34.0, v.y * 1.6)) * 0.50;
+  // 葉先ほど疎らで、株の肩から上が透ける
+  f -= smoothstep(0.05, 1.0, v.y) * 0.42;
+  if(f < 0.44) return -1.0;
+  nn = normalize(v / rad);
+  up = clamp(v.y * 0.5 + 0.5, 0.0, 1.0);
   return t;
 }
 
@@ -334,6 +368,29 @@ vec3 gardenFloor(vec3 p, vec3 d){
   }
 
   vec3 n = vec3(0.0, 1.0, 0.0);
+  // 木漏れ日。楓の下は、葉の隙間から落ちた光がまだらに散る
+  float under = 1.0 - smoothstep(0.55, 1.45, length(p.xz - (uMaple.xy + vec2(0.55, 0.35))));
+  float dap = smoothstep(0.34, 0.70, fbm(p.xz * 3.6 + 21.0) * 0.65
+                                   + fbm(p.xz * 11.0 + 5.0) * 0.35);
+  float sunMask = 1.0 - under * (1.0 - dap) * 0.62;
+
+  // 落ち葉。楓の下に溜まる。掃いても次の日には落ちている
+  {
+    vec2 lq = p.xz - uMaple.xy;
+    float near = 1.0 - smoothstep(0.5, 1.9, length(lq - vec2(0.55, 0.35)));
+    vec2 cell = floor(lq * 7.0);
+    vec2 inCell = fract(lq * 7.0) - 0.5 - (hash22(cell) - 0.5) * 0.55;
+    float ang2 = hash12(cell + 3.0) * 6.2831853;
+    // 葉は掌状で平たい。向きを振った小さな板として置く
+    vec2 r2 = vec2(inCell.x * cos(ang2) - inCell.y * sin(ang2),
+                   inCell.x * sin(ang2) + inCell.y * cos(ang2));
+    float leaf = smoothstep(0.30, 0.16, length(r2 * vec2(1.0, 1.9)));
+    leaf *= step(0.42, hash12(cell + 11.0)) * near;
+    vec3 fallen = mix(vec3(0.088, 0.062, 0.028), vec3(0.135, 0.070, 0.030),
+                      hash12(cell + 7.0));
+    col = mix(col, fallen, leaf * 0.85);
+  }
+
   // 接地影。
   //
   // 物の足元が地面と同じ明るさだと、どれだけ正しい高さに置いても
@@ -349,8 +406,8 @@ vec3 gardenFloor(vec3 p, vec3 d){
   occ += (1.0 - smoothstep(0.10, 0.30, length(p.xz - uMaple.xy))) * 0.8;
   col *= 1.0 - clamp(occ, 0.0, 1.0) * 0.55;
 
-  vec3 lit = col * (uSunColor * max(dot(n, uSunDir), 0.0) * 0.85 + skyAmbient(n) * 1.55
-                  + lanternAmbient(p) * 0.5 + nightGlow());
+  vec3 lit = col * (uSunColor * max(dot(n, uSunDir), 0.0) * 0.85 * sunMask
+                  + skyAmbient(n) * 1.55 + lanternAmbient(p) * 0.5 + nightGlow());
   return wetten(lit, n, d, 0.70);
 }
 
@@ -418,24 +475,31 @@ void main(){
       vec3 q = uCam + d * tz;
       float crown = 4.9 + 2.6 * fbm(vec2(q.x * 0.052, 0.0))
                         + 1.5 * fbm(vec2(q.x * 0.155, 3.0));
+      // 霞み方は天気で決まる。
+      //
+      // 晴れの日も曇りと同じだけ白く霞ませていたので、
+      // いい天気なのに山がぼやけた眺めになっていた。
+      // 乾いた晴れの日は遠くまで見通せて、尾根は青く濃く沈む。
+      // 曇りと雨は水気が多いので、その日こそ白く霞む
+      float mist = smoothstep(0.30, 0.95, uCloud.x);
+
       // 奥の尾根。ひと重ねだと切り紙を立てたようにしか見えないので、
-      // 遠い尾根を先に敷いて、その手前に近い木立を重ねる。
-      // 遠いほど空に溶けて淡く、近いほど濃く、輪郭も細かい
+      // 遠い尾根を先に敷いて、その手前に近い木立を重ねる
       float far = 7.6 + 3.4 * fbm(vec2(q.x * 0.028 + 40.0, 0.0));
       if(q.y < far){
-        vec3 fc = col * (0.62 + 0.10 * fbm(q.xy * 0.14))
-                + vec3(0.002, 0.004, 0.003) * (uSunColor.g + 0.5);
-        col = mix(col, fc, 1.0 - 0.55 * smoothstep(far - 2.6, far, q.y));
+        float fs = mix(0.44, 0.66, mist) + 0.10 * fbm(q.xy * 0.14);
+        vec3 fc = col * fs + vec3(0.004, 0.006, 0.011) * (uSunColor.g + 0.5) * (1.0 - mist);
+        col = mix(col, fc, 1.0 - mix(0.18, 0.55, mist) * smoothstep(far - 2.6, far, q.y));
       }
       if(q.y < crown){
         // 遠景の木立は、空を暗く落として緑を差したものになる。
-        // 葉の色から組むと、周囲光の明るい時刻に空と同じ明るさへ並んで消える。
-        float shade = 0.34 + 0.16 * fbm(q.xy * 0.30);
+        // 葉の色から組むと、周囲光の明るい時刻に空と同じ明るさへ並んで消える
+        float shade = mix(0.19, 0.38, mist) + 0.14 * fbm(q.xy * 0.30);
         // 梢の一本ずつ。まとめて塊にすると、霞んだ壁になる
         float tops = smoothstep(0.42, 0.72, fbm(vec2(q.x * 0.52, q.y * 0.30)));
-        vec3 tc = col * (shade + 0.10 * tops) + vec3(0.004, 0.009, 0.005) * (uSunColor.g + 0.5);
-        // 梢に近いほど空に溶ける
-        col = mix(col, tc, 1.0 - 0.55 * smoothstep(crown - 2.2, crown, q.y));
+        vec3 tc = col * (shade + 0.10 * tops)
+                + vec3(0.006, 0.013, 0.007) * (uSunColor.g + 0.5) * (1.0 - mist * 0.7);
+        col = mix(col, tc, 1.0 - mix(0.15, 0.55, mist) * smoothstep(crown - 2.2, crown, q.y));
       }
     }
   }
@@ -463,6 +527,41 @@ void main(){
           col = bambooFence(p, d, p.z, vec3(k == 0 ? 1.0 : -1.0, 0.0, 0.0)); depth = t;
         }
       }
+    }
+  }
+
+  // ---- 景石。庭に据えた石 ----
+  for(int i = 0; i < 2; i++){
+    vec3 rc = vec3(uRock[i].x, gy + uRock[i].w - uRock[i].z, uRock[i].y);
+    float t = hitSphere(uCam, d, rc, uRock[i].z);
+    if(t > 0.0 && t < depth){
+      vec3 p = uCam + d * t;
+      vec3 nn = normalize(p - rc);
+      // 丸い玉では川原の石になる。割れ肌の平らな面を混ぜて、山石に寄せる
+      float facet = fbm(vec2(atan(nn.z, nn.x) * 2.6, nn.y * 2.2));
+      nn = normalize(nn + vec3(facet - 0.5, 0.0, fbm(nn.xz * 3.4) - 0.5) * 0.45);
+      col = litStone(p, nn, d, 0.88 + facet * 0.24, 1.0);
+      depth = t;
+    }
+  }
+
+  // ---- 下草。垣の足元と石の際に残る株 ----
+  for(int i = 0; i < 7; i++){
+    vec3 gc = vec3(uGrass[i].x, gy + uGrass[i].w * 0.55, uGrass[i].y);
+    vec3 nn; float up;
+    float t = hitClump(uCam, d, gc, vec3(uGrass[i].z, uGrass[i].w, uGrass[i].z * 0.82),
+                       nn, up);
+    if(t > 0.0 && t < depth){
+      vec3 p = uCam + d * t;
+      // 葉は細長いので、一枚の中でも明暗が走る
+      float blade = fbm(vec2(atan(p.z - gc.z, p.x - gc.x) * 26.0, p.y * 40.0));
+      vec3 g = mix(vec3(0.026, 0.052, 0.020), vec3(0.058, 0.105, 0.034), blade);
+      // 根元は日が届かず暗い。先は黄ばむ
+      g *= 0.55 + 0.65 * up;
+      g = mix(g, vec3(0.072, 0.072, 0.034), smoothstep(0.78, 1.0, up) * 0.35 * uWear);
+      col = wetten(g * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.0 + skyAmbient(nn) * 1.25
+                      + lanternAmbient(p) * 0.4 + nightGlow()), nn, d, 0.75);
+      depth = t;
     }
   }
 
@@ -691,6 +790,34 @@ void main(){
         col = litStone(uCam + d * t2, n, d, 0.86 + float(k) * 0.08, 0.55); depth = t2;
       }
     }
+    // 柄杓。手水鉢の縁に、竹の柄を渡して掛けてある。
+    // 蹲踞は手を清める所なので、これが無いとただの水盤になる
+    {
+      vec3 bn;
+      vec3 ha = c + vec3(-0.055, uBasin.w + 0.022, 0.175);
+      vec3 hb = c + vec3(0.070, uBasin.w + 0.040, -0.120);
+      float t2 = hitSeg(uCam, d, ha, hb, 0.0075, bn);
+      if(t2 > 0.0 && t2 < depth){
+        vec3 p = uCam + d * t2;
+        vec3 bam = mix(vec3(0.150, 0.132, 0.072), vec3(0.200, 0.182, 0.100),
+                       fbm(vec2(p.y * 70.0, 0.0)));
+        col = bam * (uSunColor * max(dot(bn, uSunDir), 0.0) * 0.7 + skyAmbient(bn) * 1.3
+                   + lanternAmbient(p) * 0.4 + nightGlow());
+        depth = t2;
+      }
+      // 合。伏せて掛けてあるので、椀が下を向く
+      vec3 cup = c + vec3(-0.095, uBasin.w + 0.012, 0.248);
+      float t3 = hitSphere(uCam, d, cup, 0.040);
+      if(t3 > 0.0 && t3 < depth){
+        vec3 p = uCam + d * t3;
+        vec3 nn2 = normalize(p - cup);
+        vec3 bam = vec3(0.170, 0.150, 0.082) * (0.85 + 0.30 * fbm(p.xz * 90.0));
+        col = bam * (uSunColor * max(dot(nn2, uSunDir), 0.0) * 0.7 + skyAmbient(nn2) * 1.3
+                   + lanternAmbient(p) * 0.4 + nightGlow());
+        depth = t3;
+      }
+    }
+
     // 掛樋。竹を斜めに渡して水を落とす
     {
       vec3 bc = c + vec3(-0.31, 0.0, -0.02);
@@ -711,10 +838,12 @@ void main(){
     float w = uPost.y;
     float tz = (edgeZ - uCam.z) / (abs(d.z) < 1e-5 ? 1e-5 : d.z);
     vec3 p = uCam + d * tz;
-    if(tz > 0.0 && tz < depth && abs(p.x - uPost.x) < w && p.y > gy && p.y < uEave.x){
+    // 二本のうち近いほうを見る
+    float px = abs(p.x - uPost.x) < abs(p.x - uPostX2) ? uPost.x : uPostX2;
+    if(tz > 0.0 && tz < depth && abs(p.x - px) < w && p.y > gy && p.y < uEave.x){
       float gr = fbm(vec2(p.y * 18.0, p.x * 40.0));
       vec3 w2 = mix(vec3(0.118, 0.082, 0.048), vec3(0.070, 0.046, 0.026), gr);
-      w2 *= 0.88 + 0.26 * smoothstep(w * 0.55, w, abs(p.x - uPost.x));
+      w2 *= 0.88 + 0.26 * smoothstep(w * 0.55, w, abs(p.x - px));
       vec3 nn = vec3(0.0, 0.0, 1.0);
       col = w2 * (uSunColor * 0.22 + skyAmbient(nn) * 1.5
                 + lanternLight(p, nn) + lanternAmbient(p));

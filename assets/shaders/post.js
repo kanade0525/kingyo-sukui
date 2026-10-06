@@ -3,7 +3,7 @@
 // 太陽のきらめきは輝度 1 を大きく超える。そのまま出すとただの白い点に
 // なるので、明るい所を 1/4 解像度に落としてぼかし、足してからトーンマップする。
 
-import { HEAD, TONEMAP, NOISE } from './common.js?v=202610060015';
+import { HEAD, TONEMAP, NOISE } from './common.js?v=202610060114';
 
 /** NaN と Inf を落とす。1 画素でもぼかしに入ると、塊になって画面に残る。 */
 const SANE = `
