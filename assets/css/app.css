@@ -17,14 +17,21 @@
   /* 見出し。解星デコール（Kaisei Decol）は、少しクセのあるフォルムで
      昭和レトロ・大正ロマンの雰囲気が出る明朝。縁日の看板の字に近い */
   --disp:"Kaisei Decol","Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
-  --body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  /* 本文。
+   *
+   * ゴシックを当てていたので、時刻や署名の明朝と混在して、
+   * 画面の中で書体が二つに割れていた。縁日と露地の絵に合わせて明朝で揃える。
+   * しっぽり明朝 B1 は、小さい字でも痩せないように作られた明朝なので、
+   * 12px の札やボタンでも読める */
+  --body:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+  --body-w:500;
 }
 
 *{box-sizing:border-box}
 html,body{height:100%}
 body{
   margin:0;background:var(--sumi);color:var(--ink);
-  font-family:var(--body);overflow:hidden;
+  font-family:var(--body);font-weight:var(--body-w);overflow:hidden;
   -webkit-text-size-adjust:100%;
   padding-top:env(safe-area-inset-top,0px);
   padding-bottom:env(safe-area-inset-bottom,0px);
@@ -65,7 +72,7 @@ body.playing canvas#scene{cursor:none}
 #fps{color:var(--ink);font-variant-numeric:tabular-nums}
 
 button{
-  font-family:var(--body);font-size:12px;color:var(--ink);
+  font-family:var(--body);font-weight:var(--body-w);font-size:12px;color:var(--ink);
   background:rgba(255,255,255,.88);border:1px solid rgba(23,34,43,.30);
   box-shadow:0 1px 3px rgba(23,34,43,.12);
   border-radius:999px;padding:7px 15px;cursor:pointer;white-space:nowrap;
@@ -206,7 +213,8 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 
 /* 家の鉢へ／屋台へ戻る。ボタンと同じ札にする（a 要素なので形を揃える） */
 #btnHome,#btnStall{
-  font-family:var(--body);font-size:12px;color:var(--ink);text-decoration:none;
+  font-family:var(--body);font-weight:var(--body-w);font-size:12px;color:var(--ink);
+  text-decoration:none;
   background:rgba(255,255,255,.88);border:1px solid rgba(23,34,43,.30);
   box-shadow:0 1px 3px rgba(23,34,43,.12);
   border-radius:999px;padding:7px 15px;white-space:nowrap;

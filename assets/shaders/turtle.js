@@ -6,7 +6,7 @@
 // 真上から見たときの手がかりは、甲羅の鱗板の割れ方と、四肢の漕ぐ動き、
 // それに目の後ろの赤い斑。この三つが揃うと一目でミドリガメになる。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610052307';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610060015';
 
 export const VS_TURTLE = `${HEAD}
 layout(location=0) in vec2 aUv;
@@ -33,7 +33,8 @@ float shellR(float th){
   float c = cos(th), s2 = sin(th);
   float a = 0.52, bb = 0.41;
   float r = 1.0 / sqrt((c * c) / (a * a) + (s2 * s2) / (bb * bb));
-  return r * (1.0 - 0.055 * c);
+  // 前の縁は切れ上がっている。首の出る所
+  return r * (1.0 - 0.055 * c) * (1.0 - 0.10 * max(c, 0.0));
 }
 
 /** 四肢の付け根の角度。前脚は斜め前、後脚は斜め後ろ。 */
@@ -46,23 +47,40 @@ float limbAngle(int i){
 
 vec3 shapeOf(float u, float v, int part){
   if(part == 0 || part == 1){
-    // 甲羅の上面と、腹側。中心 v=0、縁 v=1
+    // 背甲と腹甲。中心 v=0、縁 v=1。
+    //
+    // 背甲の縁を y=+0.029、腹甲の縁を y=0 に置いていたので、
+    // 甲羅のまわりに 3mm ほどの隙間が一周していた。カメの甲羅は
+    // 背甲と腹甲が橋でつながった閉じた箱で、開いているのは
+    // 頭と四肢と尾の出る所だけ。縁の高さを揃えて閉じる。
+    //
+    // 高さも足りていなかった。甲長に対する甲高は 0.19 しかなく、
+    // 皿を伏せたような形になっていた。子ガメで 0.38 前後ある
     float th = u * TAU;
     float rr = v;
     float R = shellR(th);
-    float dome = 0.165 * sqrt(max(1.0 - rr * rr * 0.97, 0.0));
-    float y = part == 0 ? dome : -0.050 * sqrt(max(1.0 - rr * rr, 0.0));
+    float dome = 0.325 * pow(max(1.0 - rr * rr, 0.0), 0.72);
+    float belly = -0.070 * (1.0 - rr * rr);
+    float y = part == 0 ? dome : belly;
     return vec3(cos(th) * R * rr, y, sin(th) * R * rr);
   }
 
   if(part == 6){
-    // 頭と首。前へ伸びる丸い棒
+    // 頭と首。
+    //
+    // 太さの変わらない筒を前へ伸ばし、先を塞いでいなかったので、
+    // 横から見ると切り口の空いた管が甲羅から突き出していた。
+    // 首は細く、頭でふくらみ、鼻先ですぼまって閉じる。
+    // 甲羅から出るので、付け根は甲羅の中に埋める
     float s = u, ang = v * TAU;
-    // 首は細く、頭でふくらむ
-    float rr = 0.055 + 0.055 * smoothstep(0.35, 1.0, s);
-    float reach = 0.40 + 0.30 * s;
-    float lift = 0.010 + 0.022 * s;
-    return vec3(reach, lift + cos(ang) * rr * 0.88, sin(ang) * rr * 1.02);
+    float swell = smoothstep(0.30, 0.66, s);          // 頭のふくらみ
+    float snout = 1.0 - smoothstep(0.78, 1.0, s) * 0.92;  // 鼻先ですぼまる
+    float rr = mix(0.058, 0.096, swell) * snout;
+    float reach = 0.30 + 0.46 * s;
+    // 低く前へ出す。持ち上げると背甲を突き抜ける
+    float lift = 0.012 + 0.052 * smoothstep(0.0, 0.75, s);
+    // 顎のほうが平たい。真円の棒は蛇に見える
+    return vec3(reach, lift + cos(ang) * rr * 0.78, sin(ang) * rr * 1.04);
   }
 
   if(part == 7){
@@ -76,7 +94,7 @@ vec3 shapeOf(float u, float v, int part){
   int li = part - 2;
   float th = limbAngle(li);
   float R = shellR(th) * 0.86;
-  vec3 root = vec3(cos(th) * R, -0.015, sin(th) * R);
+  vec3 root = vec3(cos(th) * R, -0.028, sin(th) * R);
   // 漕ぐ。前脚と後脚で位相をずらす
   float swing = sin(uTime * uBeat + uPhase + float(li) * 1.7) * 0.38;
   float sweep = (li < 2 ? -0.30 : 0.26) + swing * 0.55;   // 後ろへ寝かせる
@@ -106,7 +124,8 @@ void main(){
   vec3 n = cross(pu - p, pv - p);
   float nl = length(n);
   n = nl > 1e-7 ? n / nl : vec3(0.0, 1.0, 0.0);
-  if(part == 0 && n.y < 0.0) n = -n;          // 甲羅は常に上向き
+  if(part == 0 && n.y < 0.0) n = -n;          // 背甲は常に上向き
+  if(part == 1 && n.y > 0.0) n = -n;          // 腹甲は常に下向き
   // 頭・首・尾は筒。(u,v) の取り方の都合で法線が内向きに出るので返す
   if(part == 6 || part == 7) n = -n;
 
@@ -187,10 +206,14 @@ void main(){
   float gloss = 0.30;
 
   if(vPart == 0){
-    // 甲羅。濃い苔色に、黄緑の筋が放射状に入る
+    // 背甲。
+    //
+    // 「ミドリガメ」と呼ばれるのは、幼体の背甲が明るい緑だから。
+    // 大人になるとくすんだ暗い色に変わる。ここに居るのは甲長 3cm の
+    // 子ガメなので、暗い苔色ではなく、はっきりした緑に黄色の模様が入る
     float th = u * 6.2831853, rr = v;
-    vec3 dark  = vec3(0.052, 0.068, 0.036);
-    vec3 olive = vec3(0.115, 0.135, 0.062);
+    vec3 dark  = vec3(0.058, 0.118, 0.042);
+    vec3 olive = vec3(0.135, 0.225, 0.070);
     float plate;
     float seam = scuteSeam(th, rr, plate);
     float mottle = fbm(vec2(th * 2.4 + uSeed * 9.0, rr * 3.2));
@@ -201,40 +224,68 @@ void main(){
     // 中心から全体へ放射するのではなく、板の中で閉じている
     vec2 lp = vec2(cos(th), sin(th)) * rr * 9.0;
     float swirl = 0.5 + 0.5 * sin(length(fract(lp) - 0.5) * 26.0 + plate);
-    base = mix(base, vec3(0.150, 0.168, 0.072), swirl * 0.28 * (1.0 - seam));
+    // 筋は黄緑。真っ黄色で入れると、横から見たとき鉢の下半分が
+    // 淡く抜けて、甲羅ではなく笠を伏せたように見える
+    base = mix(base, vec3(0.185, 0.230, 0.078), swirl * 0.34 * (1.0 - seam));
     // 板の中の成長輪。縁ほど詰む
     base *= 0.94 + 0.10 * sin(rr * 46.0 + plate * 2.0);
     // 継ぎ目は溝なので暗い
     base *= 1.0 - seam * 0.62;
-    // 縁甲板は黄色みが強い
-    base = mix(base, vec3(0.150, 0.145, 0.058), smoothstep(0.76, 0.95, rr) * 0.7);
+    // 縁甲板。
+    //
+    // 外周の 24% を明るい黄色で広く塗っていたので、横から見ると
+    // ドームの下に黄色い皿が付いているようにしか見えず、
+    // カメではなく空飛ぶ円盤になっていた。実物の黄色は縁の細い
+    // 一周ぶんで、そこに黒い筋が割って入る
+    // 半径で細く切っても直らない。甲羅は縁で急に落ちるので、
+    // 半径のたった 5% が、横から見た高さの 29% を占めるため。
+    // 色のほうを甲羅に寄せて、模様は黒い割りの筋で出す
+    base = mix(base, vec3(0.148, 0.192, 0.060), smoothstep(0.88, 1.0, rr) * 0.60);
+    base = mix(base, vec3(0.026, 0.032, 0.016),
+               smoothstep(0.86, 1.0, rr)
+             * smoothstep(0.50, 0.82, abs(fract(th / 6.2831853 * 12.0) - 0.5) * 2.0) * 0.70);
     gloss = 0.46;
   } else if(vPart == 1){
-    // 腹側。黄色い
-    base = vec3(0.260, 0.235, 0.105) * (0.88 + 0.22 * fbm(vUv * 9.0));
+    // 腹甲。黄色の地に、板ごとに黒い斑が一つずつ乗る
+    float th = u * 6.2831853, rr = v;
+    base = vec3(0.420, 0.370, 0.125) * (0.90 + 0.18 * fbm(vUv * 9.0));
+    float px = cos(th) * rr, pz = sin(th) * rr;
+    float cell = abs(fract(px * 2.4) - 0.5) + abs(fract(pz * 2.2) - 0.5);
+    base = mix(base, vec3(0.045, 0.040, 0.024), smoothstep(0.52, 0.22, cell) * 0.72);
     gloss = 0.22;
   } else if(vPart == 6){
-    // 頭と首。暗い緑に黄色の縦縞、目の後ろに赤い斑
+    // 頭と首。暗い緑に細い黄色の縞が何本も走り、目の後ろに赤いライン。
+    // この赤が「アカミミガメ」の名の由来で、いちばんの目印になる
     float ang = v * 6.2831853;
-    base = vec3(0.105, 0.130, 0.072);
-    float stripe = 0.5 + 0.5 * sin(ang * 6.0 + u * 1.2);
-    base = mix(base, vec3(0.330, 0.310, 0.110), smoothstep(0.50, 0.92, stripe) * 0.9);
-    // 目
-    float eye = min(length(vec2((u - 0.72) * 1.7, v - 0.21)),
-                    length(vec2((u - 0.72) * 1.7, v - 0.79)));
-    base = mix(base, vec3(0.020, 0.018, 0.012), 1.0 - smoothstep(0.034, 0.044, eye));
-    // 耳のうしろの赤。ミドリガメの目印
-    float red = min(length(vec2((u - 0.47) * 1.5, v - 0.19)),
-                    length(vec2((u - 0.47) * 1.5, v - 0.81)));
-    base = mix(base, vec3(0.330, 0.075, 0.045), (1.0 - smoothstep(0.050, 0.085, red)) * 0.9);
+    base = vec3(0.060, 0.098, 0.048);
+    // 縞は首から頭へ前後に走る。輪切りではない
+    float stripe = 0.5 + 0.5 * sin(ang * 9.0 + sin(u * 2.4) * 0.8);
+    base = mix(base, vec3(0.330, 0.320, 0.100), smoothstep(0.62, 0.95, stripe) * 0.85);
+    // 鼻先と顎は黄色が勝つ
+    base = mix(base, vec3(0.270, 0.255, 0.105), smoothstep(0.84, 1.0, u) * 0.5);
+    // 目。頭のふくらみの上のほう、左右に一つずつ
+    float eye = min(length(vec2((u - 0.78) * 1.8, v - 0.17)),
+                    length(vec2((u - 0.78) * 1.8, v - 0.83)));
+    base = mix(base, vec3(0.230, 0.200, 0.070), 1.0 - smoothstep(0.040, 0.052, eye));
+    base = mix(base, vec3(0.014, 0.013, 0.010), 1.0 - smoothstep(0.022, 0.030, eye));
+    // 耳のうしろの赤いライン。斑ではなく、後ろへ長く伸びる
+    float red = min(length(vec2((u - 0.58) * 0.85, (v - 0.15) * 2.6)),
+                    length(vec2((u - 0.58) * 0.85, (v - 0.85) * 2.6)));
+    base = mix(base, vec3(0.430, 0.085, 0.040), (1.0 - smoothstep(0.045, 0.080, red)) * 0.92);
     gloss = 0.35;
   } else if(vPart == 7){
-    base = vec3(0.110, 0.132, 0.068);
+    // 尾。頭と同じ暗緑に黄色の縞
+    base = vec3(0.062, 0.100, 0.050);
+    base = mix(base, vec3(0.280, 0.265, 0.090),
+               smoothstep(0.62, 0.95, 0.5 + 0.5 * sin(v * 6.2831853 * 6.0)) * 0.7);
   } else {
     // 四肢。甲羅より明るい緑に、細かい鱗
     float sc = 0.5 + 0.5 * sin(u * 34.0) * sin(v * 22.0);
-    base = mix(vec3(0.115, 0.140, 0.072), vec3(0.195, 0.210, 0.100), sc);
+    base = mix(vec3(0.062, 0.102, 0.050), vec3(0.105, 0.155, 0.062), sc);
     base *= 0.85 + 0.25 * fbm(vec2(u * 10.0, v * 6.0));
+    // 四肢にも細い黄色の縞が前後に走る
+    base = mix(base, vec3(0.300, 0.285, 0.095),
+               smoothstep(0.66, 0.94, 0.5 + 0.5 * sin(v * 6.2831853 * 3.0 + u * 2.0)) * 0.6);
     // 水掻きの縁は薄い
     base = mix(base, base * 1.4 + 0.015, smoothstep(0.65, 1.0, u) * 0.5);
     gloss = 0.28;
@@ -250,7 +301,9 @@ void main(){
 
   vec3 lit = underSun(N) * caus + underAmbient(N) + underLantern(vW, N);
   float up = N.y * 0.5 + 0.5;
-  vec3 col = base * lit * (0.80 + 0.30 * up);
+  // 上下の差。甲羅は背が日を受け、腹側は影になる。
+  // 差が 1.4 倍しか無いと、丸みのある甲羅ではなく平たい板に見える
+  vec3 col = base * lit * (0.62 + 0.52 * up);
   // 濡れた甲羅はよく照る
   col += ggx(N, V, underSunDir(), gloss, vec3(0.040)) * uSunColor * PI * 0.35;
   col += base * pow(1.0 - ndv, 4.0) * 0.10 * lit;

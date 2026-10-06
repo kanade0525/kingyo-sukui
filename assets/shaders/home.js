@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610052307';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610060015';
 
 /**
  * 縁側。
@@ -334,6 +334,21 @@ vec3 gardenFloor(vec3 p, vec3 d){
   }
 
   vec3 n = vec3(0.0, 1.0, 0.0);
+  // 接地影。
+  //
+  // 物の足元が地面と同じ明るさだと、どれだけ正しい高さに置いても
+  // 宙に浮いて見える。置いてある物の真下は空が隠れて暗い
+  float occ = 0.0;
+  occ += 1.0 - smoothstep(0.06, 0.20, length(p.xz - uToro.xy));
+  occ += (1.0 - smoothstep(0.16, 0.38, length(p.xz - uBasin.xy))) * 0.85;
+  occ += (1.0 - smoothstep(0.08, 0.26, length(p.xz - (uBasin.xy + vec2(-0.31, -0.02))))) * 0.7;
+  for(int i = 0; i < 3; i++){
+    occ += (1.0 - smoothstep(uShrub[i].z * 0.55, uShrub[i].z * 1.25,
+                             length(p.xz - uShrub[i].xy))) * 0.9;
+  }
+  occ += (1.0 - smoothstep(0.10, 0.30, length(p.xz - uMaple.xy))) * 0.8;
+  col *= 1.0 - clamp(occ, 0.0, 1.0) * 0.55;
+
   vec3 lit = col * (uSunColor * max(dot(n, uSunDir), 0.0) * 0.85 + skyAmbient(n) * 1.55
                   + lanternAmbient(p) * 0.5 + nightGlow());
   return wetten(lit, n, d, 0.70);
@@ -575,24 +590,39 @@ void main(){
     }
   }
 
-  // ---- 石灯籠。春日型。竿・中台・火袋・笠・宝珠 ----
+  // ---- 石灯籠。春日型。基礎・竿・中台・火袋・笠・宝珠 ----
+  //
+  // 部材をそれぞれの高さに置いていたので、竿と中台の間に 1.1cm、
+  // 中台と火袋の間に 5.7cm の隙間が開いて、全部が宙に浮いていた。
+  // 石灯籠は積んである物なので、上の面と下の面が必ず接している。
+  // 下から順に高さを積み上げて決める。
   {
     vec3 c = vec3(uToro.x, gy, uToro.y);
     float H = uToro.z;
     float t;
+    float yBase = 0.0,            hBase = H * 0.095;   // 基礎
+    float ySao  = yBase + hBase,  hSao  = H * 0.420;   // 竿
+    float yMid  = ySao + hSao,    hMid  = H * 0.075;   // 中台
+    float yHi   = yMid + hMid,    hHi   = H * 0.180;   // 火袋
+    float yKasa = yHi + hHi,      hKasa = H * 0.115;   // 笠
+    // 基礎。据わりを出すために太く低く
+    t = hitCyl(uCam, d, c + vec3(0.0, yBase, 0.0), 0.098, hBase, n);
+    if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 0.96, 1.0); depth = t; }
     // 竿
-    t = hitCyl(uCam, d, c, 0.052, H * 0.52, n);
+    t = hitCyl(uCam, d, c + vec3(0.0, ySao, 0.0), 0.052, hSao, n);
     if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 1.0, 1.0); depth = t; }
     // 中台
-    t = hitBox(uCam, d, c + vec3(0.0, H * 0.56, 0.0), vec3(0.085, 0.040, 0.085), n);
+    t = hitBox(uCam, d, c + vec3(0.0, yMid + hMid * 0.5, 0.0),
+               vec3(0.085, hMid * 0.5, 0.085), n);
     if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 1.05, 1.0); depth = t; }
     // 火袋。夜はここに灯が入る
-    t = hitBox(uCam, d, c + vec3(0.0, H * 0.70, 0.0), vec3(0.070, 0.082, 0.070), n);
+    vec3 hiC = c + vec3(0.0, yHi + hHi * 0.5, 0.0);
+    t = hitBox(uCam, d, hiC, vec3(0.070, hHi * 0.5, 0.070), n);
     if(t > 0.0 && t < depth){
       vec3 p = uCam + d * t;
       vec3 b = litStone(p, n, d, 1.1, 0.85);
       // 火口。四面それぞれの真ん中に開く
-      vec3 lp = p - (c + vec3(0.0, H * 0.70, 0.0));
+      vec3 lp = p - hiC;
       float across = abs(n.x) > 0.5 ? lp.z : lp.x;
       float win = step(abs(lp.y), 0.046) * step(abs(across), 0.038) * (1.0 - abs(n.y));
       // 日が沈んでから灯る。明るさで測ると、雨や曇りの昼間にも点いてしまう
@@ -611,15 +641,17 @@ void main(){
     // 平たい箱 1 枚だと、笠が薄すぎて道標の板にしか見えない。
     for(int k = 0; k < 3; k++){
       float f = float(k);
-      t = hitBox(uCam, d, c + vec3(0.0, H * (0.790 + f * 0.030), 0.0),
-                 vec3(0.158 - f * 0.036, 0.019, 0.158 - f * 0.036), n);
+      float hs = hKasa / 3.0;
+      t = hitBox(uCam, d, c + vec3(0.0, yKasa + hs * (f + 0.5), 0.0),
+                 vec3(0.158 - f * 0.036, hs * 0.5, 0.158 - f * 0.036), n);
       if(t > 0.0 && t < depth){ col = litStone(uCam + d * t, n, d, 0.98 + f * 0.04, 1.0); depth = t; }
     }
-    // 宝珠
-    t = hitSphere(uCam, d, c + vec3(0.0, H * 0.905, 0.0), 0.040);
+    // 宝珠。笠の天に載る
+    vec3 hoC = c + vec3(0.0, yKasa + hKasa + 0.028, 0.0);
+    t = hitSphere(uCam, d, hoC, 0.038);
     if(t > 0.0 && t < depth){
       vec3 p = uCam + d * t;
-      col = litStone(p, normalize(p - (c + vec3(0.0, H * 0.905, 0.0))), d, 1.08, 1.0); depth = t;
+      col = litStone(p, normalize(p - hoC), d, 1.08, 1.0); depth = t;
     }
   }
 
