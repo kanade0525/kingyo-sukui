@@ -329,8 +329,13 @@ vec4 cloudLook(vec3 d){
   if(uCloud.x < 0.001 || d.y < 0.010) return vec4(0.0);
   vec2 p = d.xz * (1.0 / max(d.y, 0.010)) * 0.90 + uCloud.zw;
   float n = cloudFbm(p * 0.34);
-  // 覆う量。多いほど低い所まで雲になる
-  float cover = smoothstep(0.98 - uCloud.x * 0.90, 1.30 - uCloud.x * 0.90, n + 0.30);
+  // 覆う量。
+  //
+  // 閾値の取り方が緩く、晴れの日でも空の 8 割が雲になっていた。
+  // 晴れた夏の空は、青地に積雲がぽつぽつ浮くだけ。
+  // 雑音の平均は 0.5 前後なので、晴れはそれより高い所だけを雲にする
+  float thr = mix(0.88, 0.24, uCloud.x);
+  float cover = smoothstep(thr, thr + 0.13, n);
   // 地平の際は霞に溶ける
   cover *= smoothstep(0.010, 0.085, d.y);
   if(cover < 0.002) return vec4(0.0);

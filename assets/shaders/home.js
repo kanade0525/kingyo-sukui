@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610060114';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610060217';
 
 /**
  * 縁側。
@@ -301,7 +301,9 @@ vec3 engawa(vec3 p, vec3 d){
   float id = hash12(vec2(board, 3.0));
   float grain = fbm(vec2(p.x * 26.0, p.z * 2.2) + id * 40.0);
   float ring = fbm(vec2(p.x * 95.0, p.z * 5.0) + id * 11.0);
-  vec3 col = mix(vec3(0.172, 0.118, 0.068), vec3(0.098, 0.062, 0.034),
+  // 杉の縁甲板。日に焼けて飴色になった古い板。
+  // 反射率を暗く取りすぎていたので、真上から日が当たっても沈んでいた
+  vec3 col = mix(vec3(0.248, 0.168, 0.092), vec3(0.142, 0.090, 0.048),
                  grain * 0.75 + ring * 0.25);
   col *= 0.86 + 0.28 * id;
   col *= 1.0 - seam * 0.55;
@@ -315,12 +317,51 @@ vec3 engawa(vec3 p, vec3 d){
   float dapple = smoothstep(0.30, 0.66, fbm(p.xz * 2.9 + 7.0) * 0.7
                                       + fbm(p.xz * 8.5 + 2.0) * 0.3);
   sh *= 1.0 - (1.0 - dapple) * 0.42 * smoothstep(0.55, -0.30, p.z);
-  vec3 lit = col * (uSunColor * 0.46 * sh + skyAmbient(n) * 1.7 * sh
+  // 直射を 0.46 の決め打ちで入れていた。軒を外した濡れ縁なので、
+  // 日は真上から板に当たる。向きどおりに受けさせる
+  vec3 lit = col * (uSunColor * max(dot(n, uSunDir), 0.0) * 1.05 * sh
+                  + skyAmbient(n) * 1.25 * sh
                   + lanternLight(p, n) + lanternAmbient(p) * 1.2);
   lit += ggx(n, -d, uSunDir, mix(0.42, 0.18, worn), vec3(0.035)) * uSunColor * PI * 0.32 * sh;
   lit += lanternSpec(p, n, -d, mix(0.42, 0.18, worn), vec3(0.035)) * 0.8;
   // 濡れ縁。軒の外なので雨は吹き込む。板は黒く沈んで照り返す
   return wetten(lit, n, d, 0.30);
+}
+
+/**
+ * 庭に落ちる日影。
+ *
+ * 接地影（足元の暗がり）しか無かったので、どれだけ明るくしても
+ * 「曇りの日を明るく撮った絵」にしかならなかった。
+ * カンカン照りが分かるのは明るさではなく、落ちる影の濃さと輪郭のほう。
+ * 太陽へ向けて撃ち返して、庭の物に当たるかを見る。
+ */
+float gardenShade(vec3 p){
+  vec3 ro = p + vec3(0.0, 0.004, 0.0);
+  float s = 1.0;
+  vec3 nn;
+  float gy = uEave.w;
+  for(int i = 0; i < 3; i++){
+    vec3 c = vec3(uShrub[i].x, gy + uShrub[i].z * 0.55, uShrub[i].y);
+    if(hitSphere(ro, uSunDir, c, uShrub[i].z) > 0.0) s = 0.0;
+  }
+  for(int i = 0; i < 2; i++){
+    vec3 rc = vec3(uRock[i].x, gy + uRock[i].w - uRock[i].z, uRock[i].y);
+    if(hitSphere(ro, uSunDir, rc, uRock[i].z) > 0.0) s = 0.0;
+  }
+  for(int i = 0; i < 7; i++){
+    vec3 gc = vec3(uGrass[i].x, gy + uGrass[i].w * 0.55, uGrass[i].y);
+    if(hitSphere(ro, uSunDir, gc, uGrass[i].z * 0.8) > 0.0) s = min(s, 0.35);
+  }
+  // 葉叢は隙間から光が漏れるので、落ちるのは薄い影
+  for(int i = 0; i < 5; i++){
+    if(hitSphere(ro, uSunDir, uLeaf[i].xyz, uLeaf[i].w) > 0.0) s = min(s, 0.30);
+  }
+  // 灯籠と蹲踞は太い塊。円柱で代える
+  if(hitCyl(ro, uSunDir, vec3(uToro.x, gy, uToro.y), 0.10, uToro.z, nn) > 0.0) s = 0.0;
+  if(hitCyl(ro, uSunDir, vec3(uBasin.x, gy, uBasin.y), uBasin.z, uBasin.w * 1.6, nn) > 0.0) s = 0.0;
+  if(hitCyl(ro, uSunDir, vec3(uMaple.x, gy, uMaple.y), 0.075, uMaple.z, nn) > 0.0) s = 0.0;
+  return s;
 }
 
 /**
@@ -334,10 +375,12 @@ vec3 gardenFloor(vec3 p, vec3 d){
   // 杉苔。細かい毛の寄り集まり
   float mossN = fbm(p.xz * 34.0) * 0.55 + fbm(p.xz * 110.0) * 0.45;
   float spread = fbm(p.xz * 2.4 + 5.0);
-  vec3 moss = mix(vec3(0.030, 0.058, 0.020), vec3(0.056, 0.098, 0.034), mossN);
+  // 反射率 0.03〜0.056 は、ほとんど黒に近い。日向の杉苔はもっと明るい。
+  // 直射が真上から当たる面なので、ここが暗いと庭ぜんぶが沈む
+  vec3 moss = mix(vec3(0.072, 0.128, 0.046), vec3(0.125, 0.205, 0.072), mossN);
   moss *= 0.80 + 0.40 * spread;
   // 土が覗く所
-  vec3 soil = mix(vec3(0.052, 0.040, 0.028), vec3(0.082, 0.066, 0.046), fbm(p.xz * 9.0));
+  vec3 soil = mix(vec3(0.098, 0.076, 0.052), vec3(0.155, 0.125, 0.086), fbm(p.xz * 9.0));
   vec3 col = mix(soil, moss, smoothstep(0.24, 0.52, spread));
 
   // 飛び石。蹲踞の前から灯籠の足元へ、手前を横切って渡る。
@@ -406,8 +449,12 @@ vec3 gardenFloor(vec3 p, vec3 d){
   occ += (1.0 - smoothstep(0.10, 0.30, length(p.xz - uMaple.xy))) * 0.8;
   col *= 1.0 - clamp(occ, 0.0, 1.0) * 0.55;
 
-  vec3 lit = col * (uSunColor * max(dot(n, uSunDir), 0.0) * 0.85 * sunMask
-                  + skyAmbient(n) * 1.55 + lanternAmbient(p) * 0.5 + nightGlow());
+  // 直射を 0.85 に絞って環境光を 1.55 も入れていたので、
+  // 日向と日陰の差が付かず、平らに沈んだ曇りの絵になっていた。
+  // 真夏の庭は「明るい」のではなく「差が大きい」
+  float sh = gardenShade(p);
+  vec3 lit = col * (uSunColor * max(dot(n, uSunDir), 0.0) * 1.35 * sunMask * sh
+                  + skyAmbient(n) * 1.05 + lanternAmbient(p) * 0.5 + nightGlow());
   return wetten(lit, n, d, 0.70);
 }
 
@@ -423,7 +470,9 @@ vec3 bambooFence(vec3 p, vec3 d, float along, vec3 n){
   float id = hash12(vec2(i, 2.0));
   // 竹の丸み
   float round_ = sin(u * 3.14159);
-  vec3 bam = mix(vec3(0.118, 0.098, 0.052), vec3(0.168, 0.148, 0.080), id);
+  // 日に晒されて枯れた竹は、新しい青竹よりずっと明るい。
+  // 暗く取っていたので、真夏の日向でも灰色のままだった
+  vec3 bam = mix(vec3(0.255, 0.218, 0.118), vec3(0.360, 0.312, 0.170), id);
   bam *= 0.55 + 0.55 * round_;
   // 節。1 本ごとに高さが違う
   float node = 0.0;
@@ -440,12 +489,34 @@ vec3 bambooFence(vec3 p, vec3 d, float along, vec3 n){
   // 古びて灰色に褪せる。下ほど苔が付く
   bam = mix(bam, bam * 0.70 + vec3(0.030, 0.034, 0.026),
             smoothstep(0.55, 0.0, p.y - uEave.w) * 0.5);
-  return wetten(bam * (uSunColor * 0.42 + skyAmbient(n) * 1.6
+  // 庭は逆光なので、こちらを向いた垣の面に直射は当たらない。
+  // それでも明るいのは、開けた空から回り込む光と、
+  // 焼けた地面が返す照り返しのため
+  vec3 bounce = vec3(0.145, 0.165, 0.090) * uSunColor * 0.26;
+  return wetten(bam * (uSunColor * max(dot(n, uSunDir), 0.0) * 1.15
+                     + skyAmbient(n) * 1.55 + bounce
                      + lanternAmbient(p) * 0.4 + nightGlow()), n, d, 0.45);
 }
 
 void main(){
   vec3 d = normalize(uFwd + uRight * (vNdc.x * uTanHalf * uAspect) + uUp * (vNdc.y * uTanHalf));
+
+  // 陽炎。
+  //
+  // 焼けた地面のすぐ上は空気が膨らんで、向こうの景色が揺れる。
+  // 真夏の晴れた日にいちばん効く手掛かりで、これが無いと
+  // 「明るいだけの日」にしかならない。曇りと雨の日は起きない
+  float heat = (1.0 - smoothstep(0.25, 0.80, uCloud.x))
+             * clamp(uSunDir.y * 2.2 - 0.55, 0.0, 1.0);
+  if(heat > 0.01){
+    // 地平すれすれを見ている所ほど、長く熱い空気を通る
+    float k = heat * smoothstep(0.14, -0.05, d.y) * 0.0055;
+    if(k > 0.00002){
+      d += uRight * (fbm(vec2(vNdc.x * 8.0, vNdc.y * 30.0 - uTime * 1.6)) - 0.5) * k
+         + uUp    * (fbm(vec2(vNdc.x * 6.0 + 9.0, vNdc.y * 24.0 - uTime * 1.3)) - 0.5) * k * 2.2;
+      d = normalize(d);
+    }
+  }
   float edgeZ = uEave.z, gy = uEave.w;
 
   vec3 col;
@@ -555,12 +626,16 @@ void main(){
       vec3 p = uCam + d * t;
       // 葉は細長いので、一枚の中でも明暗が走る
       float blade = fbm(vec2(atan(p.z - gc.z, p.x - gc.x) * 26.0, p.y * 40.0));
-      vec3 g = mix(vec3(0.026, 0.052, 0.020), vec3(0.058, 0.105, 0.034), blade);
+      vec3 g = mix(vec3(0.058, 0.108, 0.042), vec3(0.125, 0.195, 0.070), blade);
       // 根元は日が届かず暗い。先は黄ばむ
       g *= 0.55 + 0.65 * up;
       g = mix(g, vec3(0.072, 0.072, 0.034), smoothstep(0.78, 1.0, up) * 0.35 * uWear);
+      // 細い葉は、裏から日が射すといちばんよく透ける
+      float thru = pow(clamp(dot(-d, uSunDir), 0.0, 1.0), 2.0)
+                 * clamp(-dot(nn, uSunDir) * 0.5 + 0.6, 0.0, 1.0);
       col = wetten(g * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.0 + skyAmbient(nn) * 1.25
-                      + lanternAmbient(p) * 0.4 + nightGlow()), nn, d, 0.75);
+                      + lanternAmbient(p) * 0.4 + nightGlow())
+                 + vec3(0.110, 0.165, 0.048) * uSunColor * thru * 0.75, nn, d, 0.75);
       depth = t;
     }
   }
@@ -640,8 +715,10 @@ void main(){
         // 青楓。日に透ける葉は黄緑に抜ける
         vec3 leaf = mix(vec3(0.062, 0.115, 0.038), vec3(0.135, 0.195, 0.058), dens);
         // 葉は薄いので日を透かす。裏から射すと黄緑に抜ける
-        float through = pow(clamp(dot(d, uSunDir), 0.0, 1.0), 2.2);
-        leaf = mix(leaf, vec3(0.205, 0.255, 0.075), through * 0.60);
+        // 逆光で透ける分。符号が逆で、カメラが太陽を背にしたときに
+        // 光っていた。透けるのは太陽を見込んだときのほう
+        float through = pow(clamp(dot(-d, uSunDir), 0.0, 1.0), 2.0);
+        leaf = mix(leaf, vec3(0.265, 0.300, 0.090), through * 0.70);
         col = leaf * (uSunColor * (max(dot(nn, uSunDir), 0.0) * 0.85 + 0.30)
                     + skyAmbient(nn) * 1.9 + lanternAmbient(p) * 0.4 + nightGlow());
         depth = tl;
@@ -660,7 +737,9 @@ void main(){
       // fbm は vec2 しか取らない。球の上の位置を角度へ畳んで渡す
       vec2 sph = vec2(atan(nn.z, nn.x) * 1.6, nn.y * 2.2);
       float leaf = fbm(sph * 7.0 + uShrub[i].x) * 0.6 + fbm(sph * 22.0) * 0.4;
-      vec3 g = mix(vec3(0.022, 0.044, 0.016), vec3(0.052, 0.092, 0.030), leaf);
+      // 反射率が苔と同じくらい暗く、日向でも黒い塊だった。
+      // ツツジの葉は厚くて照りがあり、夏は中くらいの緑に見える
+      vec3 g = mix(vec3(0.055, 0.105, 0.038), vec3(0.118, 0.195, 0.068), leaf);
 
       // 刈り跡。
       //
@@ -683,8 +762,16 @@ void main(){
 
       // 上面ほど日に焼けて明るい
       g *= 0.72 + 0.46 * smoothstep(-0.2, 1.0, nn.y);
+      // 透過光。
+      //
+      // 縁側は南を向くので、庭はいつも逆光になる。こちらを向いた面は
+      // 日が当たらないが、葉は薄いので裏から透けて黄緑に光る。
+      // これが真夏の庭の見え方を決めている
+      float thru = pow(clamp(dot(-d, uSunDir), 0.0, 1.0), 2.4)
+                 * clamp(-dot(nn, uSunDir) * 0.5 + 0.6, 0.0, 1.0);
       col = g * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.1 + skyAmbient(nn) * 1.2
-               + lanternAmbient(p) * 0.4 + nightGlow());
+               + lanternAmbient(p) * 0.4 + nightGlow())
+          + vec3(0.085, 0.145, 0.040) * uSunColor * thru * 0.55;
       depth = t;
     }
   }
@@ -854,6 +941,16 @@ void main(){
 
   // 遠くほど霞む。庭は 1〜4m しかないので、ごく薄く
   if(depth < 40.0) col = mix(col, uSkyHorizon * 0.55, smoothstep(5.0, 22.0, depth) * 0.6);
+
+  // 逆光のかぶり。
+  //
+  // 縁側は南を向くので、昼はいつも日を見込むことになる。
+  // 空気そのものが光って、太陽の近くほど白くかぶり、影の黒も浮く。
+  // これが無いと、どれだけ明るくしても「よく晴れた涼しい日」にしか見えない
+  float toSun = max(dot(d, uSunDir), 0.0);
+  float glare = (0.055 * pow(toSun, 5.0) + 0.016 * pow(toSun, 1.6))
+              * uHaze * (1.0 - smoothstep(0.25, 0.80, uCloud.x));
+  col += uSunColor * glare;
   frag = vec4(col, 1.0);
 }`;
 
