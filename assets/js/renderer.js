@@ -9,22 +9,22 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610060314';
-import { VS_FULL } from '../shaders/common.js?v=202610060314';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610060314';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610060314';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610060314';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610060314';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610060314';
-import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610060314';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610060314';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610060314';
-import { Ocean } from './ocean.js?v=202610060314';
-import { Ripple } from './ripple.js?v=202610060314';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610062214';
+import { VS_FULL } from '../shaders/common.js?v=202610062214';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610062214';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610062214';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610062214';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610062214';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610062214';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610062214';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610062214';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610062214';
+import { Ocean } from './ocean.js?v=202610062214';
+import { Ripple } from './ripple.js?v=202610062214';
 import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202610060314';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610060314';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610060314';
+         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202610062214';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610062214';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610062214';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -556,6 +556,10 @@ export class Renderer {
      .vec4Array('uGrass[0]', new Float32Array(ROOM.grass.flat()), ROOM.grass.length)
      .vec4Array('uRock[0]', new Float32Array(ROOM.rocks.flat()), ROOM.rocks.length)
      .setFloat('uPostX2', ROOM.postX2)
+     .set('uKayari', ROOM.kayari)
+     .set('uUchiwa', ROOM.uchiwa)
+     .set('uKutsunugi', ROOM.kutsunugi)
+     .setFloat('uBoardEdge', ROOM.boardEdge)
      .setFloat('uTime', time);
     this.full.draw();
   }

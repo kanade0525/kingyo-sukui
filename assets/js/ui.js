@@ -1,6 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
 
-import { t } from './i18n.js?v=202610060314';
+import { t } from './i18n.js?v=202610062214';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -17,6 +17,9 @@ export class UI {
       btnTakeHome: $('btnTakeHome'), btnHome: $('btnHome'), btnStall: $('btnStall'), btnLamp: $('btnLamp'),
       homebar: $('homebar'), homeCount: $('homeCount'), toast: $('toast'),
       viewpad: $('viewpad'),
+      btnWx: $('btnWx'), wxMark: $('wxMark'),
+      btnClock: $('btnClock'), timebar: $('timebar'),
+      timeRange: $('timeRange'), timeNow: $('timeNow'),
       btnZoomIn: $('btnZoomIn'), btnZoomOut: $('btnZoomOut'), btnViewReset: $('btnViewReset'),
     };
 
@@ -35,6 +38,30 @@ export class UI {
     this.el.btnZoomOut.addEventListener('click', () => handlers.zoom(1));
     this.el.btnViewReset.addEventListener('click', () => handlers.viewReset());
 
+    // 天気と時刻。
+    //
+    // 設定は開発用の覗き窓なので、いずれ畳む。遊ぶ人が触りたいのは
+    // 音の入切と、この二つだけ。下の並びに出しておく。
+    this.el.btnWx.addEventListener('click', () => {
+      // 晴れ → 曇り → 雨 → 現在地 の順に回す
+      const next = this.wxShown === null ? 0
+                 : this.wxShown >= 2 ? null : this.wxShown + 1;
+      if (next === null) handlers.now(); else handlers.weather(next);
+    });
+
+    this.el.btnClock.addEventListener('click', () => {
+      const open = this.el.timebar.hidden;
+      this.el.timebar.hidden = !open;
+      this.el.btnClock.setAttribute('aria-expanded', String(open));
+    });
+
+    this.el.timeRange.addEventListener('input', () => {
+      const v = Number(this.el.timeRange.value);
+      $('hour').value = String(v);              // 設定側のつまみも合わせる
+      this.showTime(v);
+      handlers.hour(v, false);
+    });
+
     this.el.btnLamp.addEventListener('click', () => {
       const on = this.el.btnLamp.getAttribute('aria-pressed') !== 'true';
       this.el.btnLamp.setAttribute('aria-pressed', String(on));
@@ -51,6 +78,9 @@ export class UI {
     });
 
     this.#range('hour', 'hourOut', (v, fromCode) => {
+      // つまみが二つあるので、どちらを動かしても両方に出す
+      this.el.timeRange.value = String(v);
+      this.showTime(v);
       handlers.hour(v, fromCode);
       const h = Math.floor(v);
       return `${String(h).padStart(2, '0')}:${String(Math.round((v - h) * 60)).padStart(2, '0')}`;
@@ -153,14 +183,30 @@ export class UI {
     const ev = new Event('input');
     ev.fromCode = true;
     el.dispatchEvent(ev);
+    // 下の帯のつまみと文字も合わせる
+    this.el.timeRange.value = String(h);
+    this.showTime(h);
+  }
+
+  /** 下の帯の時刻表示。00:00 の形で書く */
+  showTime(h) {
+    const m = Math.round((h % 1) * 60);
+    const hh = (Math.floor(h) + (m === 60 ? 1 : 0)) % 24;
+    this.el.timeNow.textContent =
+      `${String(hh).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   }
 
   /** 天気の選択を外から切り替える。note は出どころ（現在地／手動）。 */
-  setWeather(w, note) {
+  setWeather(w, note, auto = false) {
     for (const b of $('segWx').querySelectorAll('button')) {
       b.setAttribute('aria-pressed', String(Number(b.dataset.w) === w));
     }
     if (note) this.el.wxNote.textContent = note;
+    // 下の並びの札。手で決めているあいだはその天気、
+    // 現在地に任せているあいだは「今」と出す
+    this.wxShown = auto ? null : w;
+    this.el.wxMark.textContent = auto ? t('wxMarkAuto')
+      : w === 0 ? t('wxMarkClear') : w === 1 ? t('wxMarkCloudy') : t('wxMarkRain');
   }
 
   /**

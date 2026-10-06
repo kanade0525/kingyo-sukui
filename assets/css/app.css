@@ -34,7 +34,8 @@
    * しっぽり明朝 B1 は、小さい字でも痩せないように作られた明朝なので、
    * 12px の札やボタンでも読める */
   --body:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
-  --body-w:500;
+  /* 覆いの題字と同じ太さに揃える。字が二通りに見えないように */
+  --body-w:700;
 }
 
 *{box-sizing:border-box}
@@ -57,7 +58,7 @@ body.playing canvas#scene{cursor:none}
 #botbar{
   position:fixed;left:0;right:0;bottom:0;z-index:2;
   padding:24px 16px calc(12px + env(safe-area-inset-bottom,0px));
-  display:flex;align-items:flex-end;gap:12px;
+  display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;
   /* 文字を読ませるための白い霧を敷いていたが、文言を外したので要らない。
      夜の画面では、これが下端に白い帯として残って目立つ */
   pointer-events:none;
@@ -78,7 +79,18 @@ body.playing canvas#scene{cursor:none}
 #by:hover,#by:focus-visible{border-color:var(--hi-soft);color:var(--hi-soft)}
 #by:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
 
-#tools{margin-left:auto;display:flex;align-items:center;gap:10px;flex:0 0 auto}
+/* 下の並び。
+   天気と時刻を足したぶん、スマホでは 1 行に収まらず、
+   いちばん右の「設定」が画面の外へ出ていた。折り返させる */
+#tools{
+  margin-left:auto;display:flex;align-items:center;justify-content:flex-end;
+  flex-wrap:wrap;gap:8px;flex:1 1 auto;min-width:0;
+}
+@media (max-width:520px){
+  #tools{gap:6px}
+  #tools button,#btnHome,#btnStall{padding:6px 11px;font-size:11px}
+  #by{font-size:10px;letter-spacing:.10em}
+}
 #fps{color:var(--ink);font-variant-numeric:tabular-nums}
 
 button{
@@ -231,6 +243,24 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
   -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
 }
 #btnHome:hover,#btnStall:hover{border-color:var(--hi-soft);color:var(--hi-soft)}
+
+/* 時刻のつまみ。下の並びのすぐ上に、細い帯で出す。
+   設定（開発用の覗き窓）を開かなくても、天気と時刻だけは動かせるようにする */
+#timebar{
+  flex:1 0 100%;order:-1;margin:0 0 10px;pointer-events:auto;
+  display:flex;align-items:center;gap:12px;
+  background:rgba(255,255,255,.90);border:1px solid rgba(23,34,43,.22);
+  box-shadow:0 2px 10px rgba(23,34,43,.14);
+  border-radius:999px;padding:9px 18px;
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+}
+#timebar input[type=range]{flex:1 1 auto;margin:0}
+#timeNow{
+  font-family:var(--disp);font-weight:var(--disp-w);font-size:14px;
+  letter-spacing:.06em;color:var(--hi);
+  font-variant-numeric:tabular-nums;flex:0 0 auto;min-width:4.2em;text-align:right;
+}
+@media (max-width:520px){ #timebar{padding:8px 14px;margin-bottom:8px} }
 
 /* 家の鉢の見え方。右端に寄りと向きの操作を縦に並べる。
    地図の縮尺ボタンと同じ置き方で、親指の届く所に出す */

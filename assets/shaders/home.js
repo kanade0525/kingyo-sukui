@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610060314';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610062214';
 
 /**
  * 縁側。
@@ -35,6 +35,10 @@ uniform vec3 uShrub[3];   // 刈り込みの x, z, 半径
 uniform vec4 uGrass[7];   // 下草の x, z, 横の半径, 高さ
 uniform vec4 uRock[2];    // 景石の x, z, 半径, 地上に出る高さ
 uniform float uPostX2;    // もう一本の柱
+uniform vec2 uKayari;     // 蚊遣りの置き場所
+uniform vec2 uUchiwa;     // 団扇の置き場所
+uniform vec2 uKutsunugi;  // 沓脱石の置き場所
+uniform float uBoardEdge; // 縁甲板の厚み
 uniform vec4 uMaple;      // 楓の x, z, 幹の高さ, 葉叢の半径
 uniform vec4 uLeaf[5];    // 葉叢ひと塊の x, y, z, 半径
 uniform float uSkyline;   // 借景の木立までの z
@@ -311,6 +315,71 @@ vec3 engawa(vec3 p, vec3 d){
   col = mix(col, col * 0.42, knot * 0.7);
   float worn = smoothstep(0.62, 0.20, abs(p.z + 0.18));
   col = grime(col, (1.0 - worn) * 0.5, vec3(0.040, 0.028, 0.016), 0.35);
+  // ---- 置いてあるもの ----
+  //
+  // 板が広いだけの縁側は、拭き上げた展示室にしか見えない。
+  // 夏の縁側には必ず何か置いてある。
+  // どれも厚みが 2cm 前後しかないので、形は板の上へ貼って出す。
+
+  // 団扇。平柄。面を伏せて置いてある
+  {
+    vec2 q = p.xz - uUchiwa;
+    // 柄の向き。縁側と斜めに置く
+    float ca = 0.82, sa = 0.57;
+    vec2 r = vec2(q.x * ca - q.y * sa, q.x * sa + q.y * ca);
+    // 面は直径 24cm の丸。少し縦長
+    float face = smoothstep(0.122, 0.112, length(r * vec2(1.0, 1.12)));
+    // 柄は面から 12cm 出る。平らな竹
+    float grip = smoothstep(0.011, 0.008, abs(r.y))
+               * smoothstep(0.228, 0.218, r.x) * smoothstep(0.03, 0.05, r.x);
+    if(face + grip > 0.004){
+      // 骨が放射に通る。地は白、縁に細い藍の輪
+      float rib = 0.5 + 0.5 * sin(atan(r.y, r.x) * 24.0);
+      vec3 paper = mix(vec3(0.425, 0.400, 0.355), vec3(0.470, 0.448, 0.400), rib);
+      // 縁は竹を細く回して紙で包んである。太い輪にすると皿に見える
+      paper = mix(paper, vec3(0.098, 0.118, 0.182),
+                  smoothstep(0.1105, 0.1145, length(r * vec2(1.0, 1.12))));
+      // 中ほどに藍の判
+      paper = mix(paper, vec3(0.120, 0.145, 0.215),
+                  smoothstep(0.055, 0.048, length(r * vec2(1.0, 1.12) - vec2(0.0, 0.01)))
+                * 0.55);
+      vec3 bamboo = vec3(0.195, 0.172, 0.098);
+      col = mix(col, mix(bamboo, paper, face), clamp(face + grip, 0.0, 1.0));
+      // 紙は板より上にあるので、縁に影が落ちる
+      col *= 1.0 - smoothstep(0.138, 0.122, length(r * vec2(1.0, 1.12)))
+                 * (1.0 - face) * 0.45;
+    }
+  }
+
+  // 蚊遣り。線香皿に渦巻を一本
+  {
+    vec2 q = p.xz - uKayari;
+    float dish = length(q);
+    if(dish < 0.095){
+      // 皿。直径 17cm の薄い陶器
+      vec3 clay = vec3(0.158, 0.132, 0.108) * (0.90 + 0.22 * fbm(q * 140.0));
+      // 渦巻。直径 12cm、一本で 75cm ある線香を巻いてある
+      float ang = atan(q.y, q.x);
+      // 線香は幅 3mm ほどで、同じだけ間を空けて巻いてある。
+      // 直径 12cm に 10 巻き前後。粗く巻くと渦巻ではなく的になる
+      float spiral = fract(dish * 160.0 - ang / 6.2831853);
+      float coil = smoothstep(0.62, 0.40, abs(spiral - 0.5) * 2.0)
+                 * smoothstep(0.061, 0.057, dish) * smoothstep(0.008, 0.012, dish);
+      vec3 incense = vec3(0.108, 0.078, 0.050);
+      // 先端だけ燃えている。燃えた側は白い灰
+      float burn = smoothstep(0.058, 0.052, dish);
+      incense = mix(vec3(0.225, 0.218, 0.208), incense, burn);
+      vec3 c2 = mix(clay, incense, coil);
+      // 皿の縁は立ち上がっている
+      c2 *= 1.0 - smoothstep(0.078, 0.088, dish) * 0.35;
+      col = mix(col, c2, smoothstep(0.090, 0.084, dish));
+      // 火。渦の外端で赤く熾る
+      vec2 tip = uKayari + vec2(0.0585, 0.0);
+      col += vec3(0.95, 0.30, 0.06)
+           * smoothstep(0.006, 0.0, length(p.xz - tip)) * 1.6;
+    }
+  }
+
   vec3 n = vec3(0.0, 1.0, 0.0);
   float sh = jarShadow(p.xz);
   // 木漏れ日。左手の楓の影が板に落ちる。奥ほど濃い
@@ -517,8 +586,10 @@ void main(){
       col = gardenFloor(uCam + d * tg, d); depth = tg;
     }
   } else {
+    // 縁側から見えるのは地平に近い空だけ（仰角で 17° ほど）なので、
+    // 0.5 乗だと天頂の青がほとんど混ざらず、白っぽい空にしかならない
     float up = clamp(d.y, 0.0, 1.0);
-    col = mix(uSkyHorizon, uSkyZenith, pow(up, 0.5));
+    col = mix(uSkyHorizon, uSkyZenith, pow(up, 0.32));
     depth = 1e5;
     // 雲。天気が画面に出るのはここがいちばん大きい
     vec4 cl = cloudLook(d);
@@ -917,6 +988,71 @@ void main(){
     }
   }
 
+  // ---- 縁甲板の木口。
+  //
+  // 床を面 1 枚で終わらせていたので、縁側が「厚みの無い板きれ」
+  // だった。濡れ縁の板は 30mm ある。端から下へ、その厚みを見せる ----
+  if(abs(d.z) > 1e-5){
+    float t = (edgeZ - uCam.z) / d.z;
+    vec3 p = uCam + d * t;
+    if(t > 0.0 && t < depth && p.y < uFloorY && p.y > uFloorY - uBoardEdge){
+      // 木口は繊維の切り口なので、面より荒くて暗い
+      float grain = fbm(vec2(p.x * 120.0, (uFloorY - p.y) * 60.0));
+      vec3 w = mix(vec3(0.138, 0.090, 0.050), vec3(0.082, 0.050, 0.028), grain);
+      // 板と板の継ぎ目が、ここでも縦に走る
+      float seam = 1.0 - smoothstep(0.0, 0.004,
+                     min(fract(p.x / 0.105), 1.0 - fract(p.x / 0.105)) * 0.105);
+      w *= 1.0 - seam * 0.5;
+      vec3 nn = vec3(0.0, 0.0, 1.0);
+      col = wetten(w * (uSunColor * max(dot(nn, uSunDir), 0.0) * 0.55
+                      + skyAmbient(nn) * 0.95 + lanternAmbient(p) * 0.8 + nightGlow()),
+                   nn, d, 0.35);
+      depth = t;
+    }
+  }
+
+  // ---- 沓脱石と下駄。縁側から庭へ下りる所 ----
+  {
+    vec3 kc = vec3(uKutsunugi.x, gy, uKutsunugi.y);
+    float hK = 0.090;                     // 天端は床から 15cm 下
+    float t = hitBox(uCam, d, kc + vec3(0.0, hK * 0.5, 0.0), vec3(0.30, hK * 0.5, 0.165), n);
+    if(t > 0.0 && t < depth){
+      col = litStone(uCam + d * t, n, d, 0.92, 0.45);
+      depth = t;
+    }
+    // 下駄。長さ 24cm・幅 10cm。歯が二枚
+    for(int k = 0; k < 2; k++){
+      float sx = k == 0 ? -0.075 : 0.075;
+      vec3 gc = kc + vec3(sx, hK, 0.015);
+      float t2 = hitBox(uCam, d, gc + vec3(0.0, 0.052, 0.0),
+                        vec3(0.050, 0.009, 0.118), n);
+      if(t2 > 0.0 && t2 < depth){
+        vec3 p = uCam + d * t2;
+        float grain = fbm(vec2(p.z * 90.0, p.x * 30.0));
+        vec3 w = mix(vec3(0.225, 0.182, 0.120), vec3(0.150, 0.115, 0.072), grain);
+        // 鼻緒。黒い布が二本
+        float strap = smoothstep(0.016, 0.009, abs(abs(p.z - gc.z) - 0.040))
+                    * step(abs(p.x - gc.x), 0.042) * step(0.055, n.y);
+        w = mix(w, vec3(0.038, 0.032, 0.034), strap);
+        col = wetten(w * (uSunColor * max(dot(n, uSunDir), 0.0) * 0.9
+                        + skyAmbient(n) * 1.1 + nightGlow()), n, d, 0.40);
+        depth = t2;
+      }
+      // 歯
+      for(int e = 0; e < 2; e++){
+        float sz = e == 0 ? -0.052 : 0.052;
+        float t3 = hitBox(uCam, d, gc + vec3(0.0, 0.021, sz),
+                          vec3(0.046, 0.021, 0.010), n);
+        if(t3 > 0.0 && t3 < depth){
+          col = vec3(0.132, 0.100, 0.062)
+              * (uSunColor * max(dot(n, uSunDir), 0.0) * 0.7 + skyAmbient(n) * 1.0
+               + nightGlow());
+          depth = t3;
+        }
+      }
+    }
+  }
+
   // ---- 柱。縁側の端に立って軒を支える ----
   {
     float w = uPost.y;
@@ -938,6 +1074,34 @@ void main(){
 
   // 遠くほど霞む。庭は 1〜4m しかないので、ごく薄く
   if(depth < 40.0) col = mix(col, uSkyHorizon * 0.55, smoothstep(5.0, 22.0, depth) * 0.6);
+
+  // 線香の煙。
+  //
+  // 真っ直ぐ立つのは最初の 10cm ほどで、そこから先はよれて散る。
+  // 蚊遣りを置いても煙が出ていなければ、ただの皿が置いてあるだけになる
+  {
+    float add = 0.0;
+    for(int k = 0; k < 16; k++){
+      float f = float(k) / 15.0;
+      // 上へ行くほど大きく振れ、太く薄くなる
+      float yaw2 = uTime * 0.55 + f * 6.0;
+      vec2 sway = vec2(sin(yaw2), cos(yaw2 * 0.83)) * f * f * 0.085;
+      vec3 c = vec3(uKayari.x + 0.0585 + sway.x, uFloorY + 0.018 + f * 0.40,
+                    uKayari.y + sway.y);
+      float t = dot(c - uCam, d);
+      if(t < 0.02 || t > depth) continue;
+      float m = length(uCam + d * t - c);
+      // 玉を 11 個しか置いていないのに半径 4mm では、
+      // 光線がどの玉にもかすらず、煙が一度も出ていなかった
+      float r = 0.013 + f * 0.055;
+      add += smoothstep(r, 0.0, m) * (1.0 - f * 0.72) * 0.22;
+    }
+    if(add > 0.002){
+      vec3 smoke = vec3(0.60, 0.585, 0.565)
+                 * (skyAmbient(vec3(0.0, 1.0, 0.0)) * 1.25 + uSunColor * 0.16);
+      col = mix(col, smoke, clamp(add, 0.0, 0.50));
+    }
+  }
 
   // 逆光のかぶり。
   //

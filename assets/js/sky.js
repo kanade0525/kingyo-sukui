@@ -144,11 +144,27 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR, when = new Dat
     (0.18 + 0.78 * ext * ext) * strength,
   ];
 
-  // 空。夕方は地平が橙に寄り、天頂は藍のまま残る
+  // 空。夕方は地平が橙に寄り、天頂は藍のまま残る。
+  //
+  // 天頂を [0.105, 0.205, 0.470] で取っていた。青ではあるが、
+  // 緑が強すぎて「水色」に見える。真夏の晴れた空はもっと青が深い
   const dim = (0.22 + 0.78 * ext) * dull;
-  let zenith = [0.105 * dim, 0.205 * dim, 0.470 * (0.30 + 0.70 * ext) * dull];
-  let horizon = scale3(mix3([0.66, 0.34, 0.17], [0.560, 0.635, 0.745], ext),
+  let zenith = [0.048 * dim, 0.132 * dim, 0.520 * (0.30 + 0.70 * ext) * dull];
+  let horizon = scale3(mix3([0.66, 0.34, 0.17], [0.545, 0.635, 0.780], ext),
                        dull * (0.10 + 0.90 * daylight) + 0.02);
+
+  // 曇りと雨は、暗いだけでなく色が抜ける。
+  //
+  // 比率をそのままで暗くしていたので、どの天気も「明るさの違う青空」
+  // だった。曇りの空が曇りに見えるのは、青が抜けて灰色になるから
+  const flat = (c, k) => {
+    const l = c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
+    return [mix(l, c[0], k), mix(l, c[1], k), mix(l, c[2], k)];
+  };
+  const keep = weather === WEATHER.CLEAR ? 1.0
+             : weather === WEATHER.CLOUDY ? 0.22 : 0.13;
+  zenith = flat(zenith, keep);
+  horizon = flat(horizon, Math.min(keep + 0.18, 1.0));
   // 夜空。晴れた夜は藍、曇りや雨の夜は街明かりを雲が返すのでかえって明るい
   // 夜空。晴れた夜は藍、曇りや雨の夜は街明かりを雲が返すのでかえって明るい。
   // 店がしまって提灯が落ちると、残る光はこれだけになる。月と町の明かりで

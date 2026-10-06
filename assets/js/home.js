@@ -8,7 +8,7 @@
 // 泳ぎの値（角度・半径・位相）は屋台のお椀を基準に作られていて、鉢へ
 // 持っていくと鉢の外を泳ぐ。毎回ここで引き直すほうが小さく、壊れにくい。
 
-import { FISH_KINDS, JAR, HOME, bedTopAt, jarInnerAt } from './world.js?v=202610060314';
+import { FISH_KINDS, JAR, HOME, bedTopAt, jarInnerAt } from './world.js?v=202610062214';
 
 /**
  * 保存の版。

@@ -27,6 +27,37 @@ const PHONES = [
 ];
 
 export default {
+  '設定を開かなくても天気と時刻を変えられる': () => withPage({}, async (page) => {
+    // 設定は開発用の覗き窓なので、いずれ畳む。遊ぶ人が触るのは
+    // 音の入切と、この二つだけ
+    await page.click('#btnWx');
+    await page.waitForTimeout(600);
+    const w1 = await page.evaluate(() => window.__kingyo.renderer.weather);
+    await page.click('#btnWx');
+    await page.waitForTimeout(600);
+    const w2 = await page.evaluate(() => window.__kingyo.renderer.weather);
+    ok(w1 !== w2, `天気のボタンで天気が変わらない（${w1} → ${w2}）`);
+
+    // 時刻の帯。押すまでは出ていない
+    eq(await page.evaluate(() => document.getElementById('timebar').hidden), true,
+       '時刻の帯が最初から出ている');
+    await page.click('#btnClock');
+    eq(await page.evaluate(() => document.getElementById('timebar').hidden), false,
+       '時刻の帯が開かない');
+    await page.evaluate(() => {
+      const el = document.getElementById('timeRange');
+      el.value = '19.5';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.waitForTimeout(700);
+    eq(await page.evaluate(() => window.__kingyo.renderer.hour), 19.5, '時刻が変わらない');
+    // 設定側のつまみも合っている。二つ出しているので、ずれると混乱する
+    eq(await page.evaluate(() => document.getElementById('hour').value), '19.5',
+       '設定のつまみとずれている');
+    eq(await page.evaluate(() => document.getElementById('timeNow').textContent), '19:30',
+       '時刻の表示が合っていない');
+  }),
+
   'スマホで設定が画面に収まる': async () => {
     for (const [name, viewport] of PHONES) {
       await withPage({ viewport, mobile: true }, async (page) => {

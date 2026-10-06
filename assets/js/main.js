@@ -4,16 +4,16 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610060314';
-import { Game } from './game.js?v=202610060314';
-import { UI } from './ui.js?v=202610060314';
-import { localHour, fetchWeather, sunFor } from './sky.js?v=202610060314';
-import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610060314';
-import { Sound, layerWants } from './sound.js?v=202610060314';
-import { POI } from './world.js?v=202610060314';
-import { nearestCity } from './place.js?v=202610060314';
-import { Home } from './home.js?v=202610060314';
-import { HOME, MAX_BOWL, ZOOM } from './world.js?v=202610060314';
+import { Renderer } from './renderer.js?v=202610062214';
+import { Game } from './game.js?v=202610062214';
+import { UI } from './ui.js?v=202610062214';
+import { localHour, fetchWeather, sunFor } from './sky.js?v=202610062214';
+import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610062214';
+import { Sound, layerWants } from './sound.js?v=202610062214';
+import { POI } from './world.js?v=202610062214';
+import { nearestCity } from './place.js?v=202610062214';
+import { Home } from './home.js?v=202610062214';
+import { HOME, MAX_BOWL, ZOOM } from './world.js?v=202610062214';
 
 // 言葉をいちばん先に差し替える。覆いの題字も見えてしまうので
 applyI18n();
@@ -46,6 +46,8 @@ const ui = new UI({
     manualWeather = true;
     renderer?.setWeather(w);
     game.rain = w === 2 ? 1 : 0;
+    // 設定の帯と、下の並びの札の両方を合わせる
+    ui.setWeather(w, t('manual'));
     showNow();
   },
   audio(on) { sound.setEnabled(on); if (on) sound.unlock(); },
@@ -93,11 +95,11 @@ function applyNow(ask) {
   const h = localHour();
   renderer.setHour(h);
   ui.setHour(h);
-  ui.setWeather(renderer.weather, t('locating'));
+  ui.setWeather(renderer.weather, t('locating'), true);
   showNow();
   fetchWeather().then((r) => {
     if (r === null) {
-      ui.setWeather(renderer.weather, t('noLocation'));
+      ui.setWeather(renderer.weather, t('noLocation'), true);
       showNow();
       return;
     }
@@ -105,7 +107,7 @@ function applyNow(ask) {
     if (!manualWeather) {
       renderer.setWeather(r.weather);
       game.rain = r.weather === 2 ? 1 : 0;
-      ui.setWeather(r.weather, `${t('here')} · ${WEATHER_LABEL[r.weather]}`);
+      ui.setWeather(r.weather, `${t('here')} · ${WEATHER_LABEL[r.weather]}`, !manualWeather);
     }
     showNow();
   });
