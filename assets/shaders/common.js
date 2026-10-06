@@ -320,6 +320,53 @@ float cloudFbm(vec2 p){
 }
 
 /**
+ * 入道雲。
+ *
+ * 夏のいちばん暑い日に、地平の向こうで立ち上がる積乱雲。
+ * 平らな雲の層をいくら描いても、快晴の夏空にはならない。
+ * 空が「夏」になるのはこれが立っているときで、晴れた日にだけ出る。
+ *
+ * 遠くに立つ塊なので、見る向き（方位と仰角）の上で形を決める。
+ * 下は平らに切れ、上へもこもこと盛り上がり、
+ * 日を受ける頭は白く、底は自分の影で青灰に沈む。
+ */
+vec4 cumulus(vec3 d){
+  // 快晴の日だけ。曇りと雨の空には、この形は出ない
+  float amount = 1.0 - smoothstep(0.30, 0.70, uCloud.x);
+  if(amount < 0.002 || d.y < 0.002) return vec4(0.0);
+  float az = atan(d.z, d.x) * 1.15 + uCloud.z * 0.05;
+  float el = d.y * 2.6;
+
+  // 塊ごとの頭の高さ。方位に沿っていくつか並ぶ
+  // 頭の高さ。
+  //
+  // 入道雲は、そのへんの雲より桁違いに高く立ち上がるのが要。
+  // 低く揃えると、地平に白い綿が並んでいるだけになる。
+  // 乗（べき）で振って、ほとんどは低く、いくつかだけ高く立てる
+  float body = cloudFbm(vec2(az * 0.75, 3.0));
+  float top = 0.20 + 2.30 * pow(body, 1.9);
+  float h = el / max(top, 0.01);
+  if(h > 1.0) return vec4(0.0);
+
+  // もこもこ。上ほど細かく割れる
+  float puff = cloudFbm(vec2(az * 3.4, el * 2.2)) * 0.55
+             + cloudFbm(vec2(az * 9.0, el * 6.0)) * 0.45;
+  // 裾は広く、頭へ向かってすぼまる
+  float width = 1.0 - h * h * 0.52;
+  float dens = smoothstep(0.56 - width * 0.26, 0.70 - width * 0.26, puff);
+  // 雲底は平ら。地平すれすれは霞に溶ける
+  dens *= smoothstep(0.0, 0.10, el);
+  if(dens < 0.004) return vec4(0.0);
+
+  // 日を受ける頭は白く飛び、底は影で沈む
+  // 頭は日を正面から受けて白く飛ぶ。底は自分の影で青灰に沈む
+  vec3 head = uSkyHorizon * 2.15 + uSunColor * 0.070;
+  vec3 foot = uSkyHorizon * 0.52;
+  vec3 col = mix(foot, head, smoothstep(0.05, 0.58, h) * (0.45 + 0.55 * puff));
+  return vec4(col, dens * amount);
+}
+
+/**
  * 見上げた先の雲。rgb と、覆っている度合い w を返す。
  *
  * 高さ 1200m の面に貼る。地平へ近づくほど面を斜めに見ることになるので、
@@ -476,6 +523,8 @@ vec3 skyColor(vec3 d, vec3 from){
   // 雲は空の手前
   vec4 cl = cloudLook(d);
   c = mix(c, cl.rgb, cl.w);
+  vec4 cb = cumulus(d);
+  c = mix(c, cb.rgb, cb.w);
   // 天幕は空の手前。提灯はさらに手前に吊るしてある
   vec4 tent = tentLook(d);
   return mix(c, tent.rgb, tent.w) + orb;

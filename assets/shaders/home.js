@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610060217';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610060314';
 
 /**
  * 縁側。
@@ -501,22 +501,6 @@ vec3 bambooFence(vec3 p, vec3 d, float along, vec3 n){
 void main(){
   vec3 d = normalize(uFwd + uRight * (vNdc.x * uTanHalf * uAspect) + uUp * (vNdc.y * uTanHalf));
 
-  // 陽炎。
-  //
-  // 焼けた地面のすぐ上は空気が膨らんで、向こうの景色が揺れる。
-  // 真夏の晴れた日にいちばん効く手掛かりで、これが無いと
-  // 「明るいだけの日」にしかならない。曇りと雨の日は起きない
-  float heat = (1.0 - smoothstep(0.25, 0.80, uCloud.x))
-             * clamp(uSunDir.y * 2.2 - 0.55, 0.0, 1.0);
-  if(heat > 0.01){
-    // 地平すれすれを見ている所ほど、長く熱い空気を通る
-    float k = heat * smoothstep(0.14, -0.05, d.y) * 0.0055;
-    if(k > 0.00002){
-      d += uRight * (fbm(vec2(vNdc.x * 8.0, vNdc.y * 30.0 - uTime * 1.6)) - 0.5) * k
-         + uUp    * (fbm(vec2(vNdc.x * 6.0 + 9.0, vNdc.y * 24.0 - uTime * 1.3)) - 0.5) * k * 2.2;
-      d = normalize(d);
-    }
-  }
   float edgeZ = uEave.z, gy = uEave.w;
 
   vec3 col;
@@ -539,13 +523,21 @@ void main(){
     // 雲。天気が画面に出るのはここがいちばん大きい
     vec4 cl = cloudLook(d);
     col = mix(col, cl.rgb, cl.w);
+    // 入道雲。快晴の夏空に立ち上がる
+    vec4 cb = cumulus(d);
+    col = mix(col, cb.rgb, cb.w);
     // 借景。垣の向こうに雑木林が霞んで並ぶ。
     // 垣で閉じきると庭が箱になるので、奥行きはここで作る。
     if(d.z < -1e-4){
       float tz = (uSkyline - uCam.z) / d.z;
       vec3 q = uCam + d * tz;
-      float crown = 4.9 + 2.6 * fbm(vec2(q.x * 0.052, 0.0))
-                        + 1.5 * fbm(vec2(q.x * 0.155, 3.0));
+      // 山の高さ。
+      //
+      // 頂が仰角 18.6° まで届いていて、画面の上端（16°）を越えていた。
+      // 空の帯が一筋も残らず、快晴でも入道雲でも出しようがない。
+      // 頂を 13° までに抑えて、上に空を通す
+      float crown = 3.5 + 1.8 * fbm(vec2(q.x * 0.052, 0.0))
+                        + 1.0 * fbm(vec2(q.x * 0.155, 3.0));
       // 霞み方は天気で決まる。
       //
       // 晴れの日も曇りと同じだけ白く霞ませていたので、
@@ -556,21 +548,26 @@ void main(){
 
       // 奥の尾根。ひと重ねだと切り紙を立てたようにしか見えないので、
       // 遠い尾根を先に敷いて、その手前に近い木立を重ねる
-      float far = 7.6 + 3.4 * fbm(vec2(q.x * 0.028 + 40.0, 0.0));
+      float far = 5.2 + 2.3 * fbm(vec2(q.x * 0.028 + 40.0, 0.0));
       if(q.y < far){
         float fs = mix(0.44, 0.66, mist) + 0.10 * fbm(q.xy * 0.14);
         vec3 fc = col * fs + vec3(0.004, 0.006, 0.011) * (uSunColor.g + 0.5) * (1.0 - mist);
         col = mix(col, fc, 1.0 - mix(0.18, 0.55, mist) * smoothstep(far - 2.6, far, q.y));
       }
       if(q.y < crown){
-        // 遠景の木立は、空を暗く落として緑を差したものになる。
-        // 葉の色から組むと、周囲光の明るい時刻に空と同じ明るさへ並んで消える
+        // 手前の山は青々としている。
+        //
+        // 空を暗く落としただけの灰色にしていたので、晴れていても
+        // 山が灰色の壁になっていた。夏の低い山は近いうちは緑が勝つ。
+        // 空に溶けて青く沈むのは、もっと遠いか、水気の多い日
         float shade = mix(0.19, 0.38, mist) + 0.14 * fbm(q.xy * 0.30);
-        // 梢の一本ずつ。まとめて塊にすると、霞んだ壁になる
         float tops = smoothstep(0.42, 0.72, fbm(vec2(q.x * 0.52, q.y * 0.30)));
-        vec3 tc = col * (shade + 0.10 * tops)
-                + vec3(0.006, 0.013, 0.007) * (uSunColor.g + 0.5) * (1.0 - mist * 0.7);
-        col = mix(col, tc, 1.0 - mix(0.15, 0.55, mist) * smoothstep(crown - 2.2, crown, q.y));
+        vec3 green = vec3(0.052, 0.098, 0.034) * (0.75 + 0.55 * tops)
+                   * (uSunColor * 0.42 + skyAmbient(vec3(0.0, 1.0, 0.0)) * 0.9);
+        vec3 hazy = col * (shade + 0.10 * tops);
+        // 晴れた日は緑のまま、霞む日は空の色へ寄る
+        vec3 tc = mix(green, hazy, mist * 0.85 + 0.15);
+        col = mix(col, tc, 1.0 - mix(0.10, 0.55, mist) * smoothstep(crown - 2.2, crown, q.y));
       }
     }
   }

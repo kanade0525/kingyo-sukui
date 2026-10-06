@@ -155,6 +155,8 @@ export class Sound {
     this.opened = false;
     this.master = null;
     this.layers = null;
+    this.place = 'stall';
+    this.lastSun = null;
     this.want = { pump: 1, cicada: 0, dusk: 0, furin: 0,
                   festival: 0, crowd: 0, insect: 0, rain: 0 };
     // 画面から動かせる係数。1 が既定
@@ -307,8 +309,27 @@ export class Sound {
    * daylight 1 = 昼、lanternOn 1 = 提灯が点いている、closed 1 = 店じまい。
    */
   setScene(sun) {
-    this.want = layerWants(sun);
+    this.lastSun = sun;
+    const w = layerWants(sun);
+    // 家では屋台の音は鳴らない。
+    //
+    // エアポンプは舟に沈めてある物なので、家まで聞こえる道理がない。
+    // 人のざわめきも同じ。祭囃子だけは、縁側まで遠く流れてくる。
+    // 蝉も風鈴も虫も雨も、家にも同じように鳴っている
+    if (this.place === 'home') {
+      w.pump = 0;
+      w.crowd = 0;
+      w.festival = (w.festival ?? 0) * 0.30;
+    }
+    this.want = w;
     this.apply();
+  }
+
+  /** いま居る場所。屋台と家で、鳴ってよい音が違う */
+  setPlace(place) {
+    if (this.place === place) return;
+    this.place = place;
+    if (this.lastSun) this.setScene(this.lastSun);
   }
 
   apply() {

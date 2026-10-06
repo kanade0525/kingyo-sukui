@@ -119,6 +119,22 @@ export default {
     ok(m2.mean > 0 && m2.detail > 0, '引ききった所で絵が壊れている');
   }),
 
+  '家では屋台の音が鳴らない': () => withPage({ hour: 20 }, async (page) => {
+    // エアポンプは舟に沈めてある物なので、家まで聞こえる道理がない
+    await putInBowl(page, 1);
+    const at = await peek(page, 'layers');
+    ok(at.pump > 0.5, `屋台でポンプが鳴っていない（${at.pump}）`);
+    await takeHome(page);
+    const home = await peek(page, 'layers');
+    eq(home.pump, 0, `家でポンプが鳴っている（${home.pump}）`);
+    eq(home.crowd, 0, `家で人のざわめきが鳴っている（${home.crowd}）`);
+    // 祭囃子は遠くから流れてくるので、小さく残す
+    ok(home.festival > 0 && home.festival < at.festival,
+       `祭囃子が遠くなっていない（屋台 ${at.festival} / 家 ${home.festival}）`);
+    // 虫も蝉も、家にも同じように鳴っている
+    eq(home.insect, at.insect, '虫の音が家で変わっている');
+  }),
+
   '上から覗いても鉢の中が見える': () => withPage({ hour: 13 }, async (page) => {
     // 中身をガラスの段だけで描いていたら、上から見た鉢が三日月に欠けて、
     // 真ん中は縁側の板が透けて見えていた

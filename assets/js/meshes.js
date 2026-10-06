@@ -4,8 +4,8 @@
 // 形は頂点シェーダで作る。泳ぎのうねりを毎フレーム CPU で計算して
 // 転送するのは無駄で、しかも法線を作り直す手間が増えるため。
 
-import { Mesh } from './glx.js?v=202610060217';
-import { TANK, POI, BOWL, AIR, JAR, BED, ANACHARIS, jarRadius } from './world.js?v=202610060217';
+import { Mesh } from './glx.js?v=202610060314';
+import { TANK, POI, BOWL, AIR, JAR, BED, ANACHARIS, jarRadius } from './world.js?v=202610060314';
 
 /** 位置・法線・領域の 3 属性を貯めて Mesh にする小さな入れ物。 */
 class Builder {
