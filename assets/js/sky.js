@@ -124,10 +124,11 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR, when = new Dat
   else if (hour < DAWN) closed = 1;
   // 提灯。暗くなると灯り、しまうと落ちる。
   //
-  // night * 1.3 だと、日の入り直後（night 0.5）で既に 65% 点いていた。
-  // そのせいで 17 時半と 21 時の画面の明るさがほぼ同じ（50 対 49）に
-  // なっていた。実際は、空がまだ明るいうちの提灯は効かない。
-  // 暗くなってから効きはじめるように、立ち上がりを遅らせる
+  // 立ち上がりを 0.82 まで遅らせたら、日の入り直後（提灯がまだ点かず、
+  // 空の明かりも尽きかけた時間）に谷ができて、そこだけ真夜中より
+  // 暗くなった。実際の縁日は、暗くなる前に提灯を点ける。
+  // 八月で考えていたが、絵が使うのはその日の日付。
+  // 十月の 17 時半は日没直後で、まさにこの谷に落ちていた
   const lanternOn = clamp01((night - 0.22) * 1.85) * (1 - closed);
 
   // 天気。曇りと雨は直射が雲で散る
@@ -185,7 +186,16 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR, when = new Dat
   const skyNight = weather === WEATHER.CLEAR
     ? [0.0030, 0.0042, 0.0085]
     : [0.0105, 0.0085, 0.0075];
-  const moon = 0.072 * closed;
+  // 月は、店が開いているかどうかと関係なく出ている。
+  // closed を掛けていたので、21 時の空（0.007）より
+  // 22 時の空（0.149）のほうが 20 倍明るいという逆転が起きていた。
+  //
+  // ただし night で出すと、薄明のうちから満月ぶんが乗って、
+  // 今度は 17 時半より 19 時のほうが明るくなった。
+  // 月が効くのは、空の明かりが尽きてから。高度 -10°〜-18° で立ち上げる
+  // -10° から立ち上げたら、今度は 19 時半（薄明の底）だけが
+  // 20 時半より暗くなった。薄明が尽きる手前から重ねて、谷を作らない
+  const moon = 0.072 * clamp01((-sunUp - 0.050) / 0.250);
   skyNight[0] += moon * 0.82; skyNight[1] += moon * 0.90; skyNight[2] += moon;
   zenith = mix3(zenith, skyNight, night);
   horizon = mix3(horizon, scale3(skyNight, 2.4), night);
@@ -195,9 +205,19 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR, when = new Dat
   // 月の無い夜より二桁明るい。これが無いと、日の入り直後が
   // 夜と同じ暗さになる。高度 -2° を頂点に、+6° から -10° で消える。
   const deg = elev / DEG;
-  const twi = clamp01(1 - Math.pow(Math.abs(deg + 2) / 8, 1.4));
-  horizon = [horizon[0] + 0.115 * twi, horizon[1] + 0.072 * twi, horizon[2] + 0.055 * twi];
-  zenith = [zenith[0] + 0.020 * twi, zenith[1] + 0.028 * twi, zenith[2] + 0.052 * twi];
+  // 焼けと、青い時間を分ける。
+  //
+  // ひとつの山で橙を足していたので、日の入りから夜までが
+  // ぜんぶ同じ橙になり、18・19・20・21 時がどれも同じ絵だった。
+  // 空が焼けるのは日の入りの前後だけで、そのあとに来るのは深い青。
+  const burn = clamp01(1 - Math.pow(Math.abs(deg + 1.0) / 4.5, 1.6));
+  const blue = clamp01(1 - Math.pow(Math.abs(deg + 6.5) / 7.0, 1.3));
+  horizon = [horizon[0] + 0.205 * burn + 0.030 * blue,
+             horizon[1] + 0.110 * burn + 0.062 * blue,
+             horizon[2] + 0.058 * burn + 0.175 * blue];
+  zenith = [zenith[0] + 0.012 * burn + 0.016 * blue,
+            zenith[1] + 0.021 * burn + 0.042 * blue,
+            zenith[2] + 0.048 * burn + 0.165 * blue];
 
   // 地平線より下。明るい地面からの跳ね返りなので、思ったより明るい
   const ground = scale3([0.300 * dim, 0.285 * dim, 0.255 * dim], 1 - night * 0.92);
@@ -261,7 +281,12 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR, when = new Dat
     // 曇りと雨で落とした明るさを、ここで 1.64 倍まで持ち上げ直していた。
     // それでは絵が同じ明るさに揃ってしまい、天気が画面に出てこない。
     // 戻すのは 1.46 倍までに留める（遊べる明るさは残す）
-    exposure: (0.62 + 0.45 * (1 - ext) + night * 0.14 * (1 - closed))
+    // 暗くなったぶんの戻し方を、昼と夜で分ける。
+    //
+    // 一つの式で戻していたので、夕暮れ（まだ日が出ている）と
+    // 夜（提灯だけ）が同じ明るさに揃っていた。日のあるうちは目が
+    // よく順応するので戻しを効かせ、日が沈んだら戻さない
+    exposure: (0.62 + 0.30 * (1 - ext) * daylight + night * 0.06 * (1 - closed))
             * (1 + (1 - dull) * 0.82 * daylight) * (1 - closed * 0.20),
   };
 }

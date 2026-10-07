@@ -9,22 +9,22 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610070355';
-import { VS_FULL } from '../shaders/common.js?v=202610070355';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610070355';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610070355';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610070355';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610070355';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610070355';
-import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610070355';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610070355';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610070355';
-import { Ocean } from './ocean.js?v=202610070355';
-import { Ripple } from './ripple.js?v=202610070355';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610070613';
+import { VS_FULL } from '../shaders/common.js?v=202610070613';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610070613';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610070613';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610070613';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610070613';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610070613';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610070613';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610070613';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610070613';
+import { Ocean } from './ocean.js?v=202610070613';
+import { Ripple } from './ripple.js?v=202610070613';
 import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202610070355';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610070355';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610070355';
+         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202610070613';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610070613';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610070613';
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -680,10 +680,15 @@ export class Renderer {
       .vec4Array('uLanternP[0]', new Float32Array(lampPos), 2)
       // 幌布を透かしてくる光。白い布なので日向の空よりずっと暗く、
       // わずかに暖かい
+      //
+      // 天頂の空だけから作っていたが、天幕は空のドーム全体から光を受ける。
+      // 夕方は天頂が暗く（0.03）地平が明るい（0.61）ので、天頂だけで測ると
+      // 舟の中だけ不自然に暗く青く沈み、17 時半が 19 時より暗いという
+      // 逆転まで起きていた。地平のぶんも入れる
       .set('uTentTint', [
-        this.sun.sunColor[0] * 0.105 + this.sun.zenith[0] * 0.5,
-        this.sun.sunColor[1] * 0.100 + this.sun.zenith[1] * 0.5,
-        this.sun.sunColor[2] * 0.092 + this.sun.zenith[2] * 0.5,
+        this.sun.sunColor[0] * 0.085 + this.sun.zenith[0] * 0.25 + this.sun.horizon[0] * 0.22,
+        this.sun.sunColor[1] * 0.082 + this.sun.zenith[1] * 0.25 + this.sun.horizon[1] * 0.22,
+        this.sun.sunColor[2] * 0.076 + this.sun.zenith[2] * 0.25 + this.sun.horizon[2] * 0.22,
       ]);
     return p;
   }
@@ -1043,8 +1048,6 @@ export class Renderer {
         .setFloat('uTankOuterR', TANK_OUTER_R)
         .setFloat('uRimTop', TANK.rimTop)
         .set('uBowlPos', this.bowlPos)
-        .setFloat('uBowlR', BOWL.outerR)
-        .setFloat('uBowlRimY', BOWL.rimY)
         .setFloat('uTime', time);
       this.full.draw();
     }

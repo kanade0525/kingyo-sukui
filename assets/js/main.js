@@ -4,16 +4,16 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610070355';
-import { Game } from './game.js?v=202610070355';
-import { UI } from './ui.js?v=202610070355';
-import { localHour, fetchWeather, sunFor, CLOSE_START } from './sky.js?v=202610070355';
-import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610070355';
-import { Sound, layerWants } from './sound.js?v=202610070355';
-import { POI } from './world.js?v=202610070355';
-import { nearestCity } from './place.js?v=202610070355';
-import { Home } from './home.js?v=202610070355';
-import { HOME, MAX_BOWL, ZOOM } from './world.js?v=202610070355';
+import { Renderer } from './renderer.js?v=202610070613';
+import { Game } from './game.js?v=202610070613';
+import { UI } from './ui.js?v=202610070613';
+import { localHour, fetchWeather, sunFor, CLOSE_START } from './sky.js?v=202610070613';
+import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610070613';
+import { Sound, layerWants } from './sound.js?v=202610070613';
+import { POI } from './world.js?v=202610070613';
+import { nearestCity } from './place.js?v=202610070613';
+import { Home } from './home.js?v=202610070613';
+import { HOME, MAX_BOWL, ZOOM } from './world.js?v=202610070613';
 
 // 言葉をいちばん先に差し替える。覆いの題字も見えてしまうので
 applyI18n();

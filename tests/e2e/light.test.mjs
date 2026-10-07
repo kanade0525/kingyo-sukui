@@ -12,7 +12,22 @@ async function page() {
   shared ||= await open(browser, { hour: 13 });
   return shared.page;
 }
-const bright = async (pg, h) => { await setHour(pg, h); return (await measure(pg)).mean; };
+/**
+ * その時刻の画面の明るさ。
+ *
+ * 1 回だけ撮ると、たまたま枠に何匹金魚が居たかで 1 割以上動く。
+ * 明るさの差はそれより小さいことがあるので、三度撮って真ん中を取る。
+ */
+const bright = async (pg, h) => {
+  await setHour(pg, h);
+  const three = [];
+  for (let i = 0; i < 3; i++) {
+    three.push((await measure(pg)).mean);
+    await pg.waitForTimeout(500);
+  }
+  three.sort((a, b) => a - b);
+  return three[1];
+};
 
 export default {
   '昼から深夜へ、明るさが単調に落ちる': async () => {

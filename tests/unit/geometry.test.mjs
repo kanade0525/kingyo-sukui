@@ -202,11 +202,16 @@ export default {
       ['石灯籠', ROOM.lantern[0], ROOM.lantern[1]],
       ['蹲踞', ROOM.basin[0], ROOM.basin[1]],
       ['楓', ROOM.maple[0], ROOM.maple[1]],
+      ['沓脱石', ROOM.kutsunugi[0], ROOM.kutsunugi[1]],
       ...ROOM.shrubs.map((s, i) => [`刈り込み${i + 1}`, s[0], s[1]]),
+      ...ROOM.rocks.map((s, i) => [`景石${i + 1}`, s[0], s[1]]),
+      ...ROOM.grass.map((s, i) => [`下草${i + 1}`, s[0], s[1]]),
     ];
-    for (const [name, , z] of things) {
+    for (const [name, x, z] of things) {
       ok(z < ROOM.edgeZ, `${name} が縁側（z=${ROOM.edgeZ}）より手前`);
       ok(z > ROOM.fenceZ, `${name} が竹垣（z=${ROOM.fenceZ}）より奥`);
+      // 脇の竹垣は x = ±4.2。その外に置くと垣の裏へ出る
+      ok(Math.abs(x) < 4.2, `${name} が脇の竹垣の外（x=${x}）`);
     }
     // 借景は竹垣のさらに向こう
     ok(ROOM.skylineZ < ROOM.fenceZ - 10, '借景が竹垣に近すぎる');

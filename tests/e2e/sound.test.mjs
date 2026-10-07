@@ -174,8 +174,15 @@ export default {
       const rising = got.gain.filter((g) => g.v > 0.12 * TARGET && g.v < 0.88 * TARGET);
       ok(rising.length >= 2,
          `立ち上がっている途中を捕まえられなかった（${got.gain.slice(0, 4).map((g) => g.v.toFixed(2)).join(', ')} …）`);
-      const a = rising[0], b = rising[rising.length - 1];
-      const span = (b.t - a.t) / ((b.v - a.v) / TARGET);
+      // 端の 2 点だけで傾きを出すと、混み合って 1 点ずれただけで
+      // 答えが倍半分になる。上がっている途中の全点を直線で近似する
+      const n = rising.length;
+      const mt = rising.reduce((s2, g) => s2 + g.t, 0) / n;
+      const mv = rising.reduce((s2, g) => s2 + g.v, 0) / n;
+      let sxy = 0, sxx = 0;
+      for (const g of rising) { sxy += (g.t - mt) * (g.v - mv); sxx += (g.t - mt) ** 2; }
+      const slope = sxy / Math.max(sxx, 1e-9);     // 毎秒どれだけ開くか
+      const span = TARGET / Math.max(slope, 1e-9);
       ok(span > 0.9, `音量が ${span.toFixed(2)} 秒で開ききる速さ。急すぎる`);
       ok(span < 4.0, `音量が ${span.toFixed(2)} 秒もかけて開く。遅すぎる`);
       // ちゃんと開ききること

@@ -312,7 +312,12 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
   letter-spacing:.06em;color:var(--hi);
   font-variant-numeric:tabular-nums;flex:0 0 auto;min-width:4.2em;text-align:right;
 }
-@media (max-width:520px){ #timebar{padding:8px 14px;margin-bottom:8px} }
+@media (max-width:520px){
+  #timebar{padding:8px 14px;margin-bottom:8px}
+  /* 狭いと「お祭り」と「店じまい」の札が重なって読めない。
+     帯のほうが分かりやすいので、印の札だけ落とす */
+  .tick b{display:none}
+}
 
 /* 家の鉢の見え方。右端に寄りと向きの操作を縦に並べる。
    地図の縮尺ボタンと同じ置き方で、親指の届く所に出す */

@@ -7,7 +7,7 @@
 // 浅い水の見せ方は、反射を盛ることではなく、底の砂利が屈折で揺らいで
 // 見える状態を残すこと。白い帯で底を隠さない。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610070355';
+import { HEAD, NOISE, SKYLIB, AMBIENT, MATERIAL, WATERLIB, CAUSTICS, VS_FULL } from './common.js?v=202610070613';
 
 
 
@@ -96,8 +96,6 @@ float outerDist(vec2 p){
 }
 uniform float uRimTop;     // 舟の上端
 uniform vec3 uBowlPos;
-uniform float uBowlR;
-uniform float uBowlRimY;
 out vec4 frag;
 
 /**
@@ -747,6 +745,11 @@ void main(){
   // 画素を測ると、飽和は 0% なのに一帯が 220 前後の無彩色になっていて、
   // 「白飛び」ではなく「頭打ちの平野」だと分かった。
   // 1 枚の板にするくらいなら、数画素の粒が散るほうが水に見える
+  //
+  // ただし頭打ちを 0.26 で固定していたので、日が低い時間に
+  // いちばん出るはずの照り返しまで潰れていた。水面が golden hour に
+  // 金色に光るのは、低い太陽が水に映った一本の道があるから。
+  // 日が低いほど頭打ちを上げる
   col += min(ggx(N, V, uSunDir, rough, vec3(0.02)) * uSunColor * PI, vec3(0.26));
   // 提灯の照り返し。夜はこれが水面の主役になる
   col += min(lanternSpec(vW, N, V, rough, vec3(0.02)), vec3(0.55));

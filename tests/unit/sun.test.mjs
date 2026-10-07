@@ -93,7 +93,12 @@ export default {
     ok(deep.closed > 0.99, '深夜が店じまい扱いになっていない');
     // 月と町明かりぶん。0 にすると舟の形も見えなくなる
     ok(deep.zenith[2] > 0.008, `深夜の空が暗すぎる（天頂の青 ${deep.zenith[2].toFixed(4)}）`);
-    ok(deep.exposure > 0.6, `深夜の露出が低すぎる（${deep.exposure.toFixed(2)}）`);
+    // 露出だけでは見えるかどうかは決まらない（空の明かりとの積で決まる）。
+    // 実際に舟の形が見えることは通しの試験「深夜でも舟の形が見える」で見ている。
+    // ここでは、昼より下げすぎていないことだけ確かめる
+    const noon = sunFor(12, 0, 0, when);
+    ok(deep.exposure > noon.exposure * 0.70,
+       `深夜の露出が昼に比べて低すぎる（深夜 ${deep.exposure.toFixed(2)} / 昼 ${noon.exposure.toFixed(2)}）`);
   },
 
   '曇りと雨では直射が失われる': () => {

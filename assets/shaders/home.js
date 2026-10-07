@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610070355';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610070613';
 
 /**
  * 縁側。
@@ -265,6 +265,11 @@ float hitLeaves(vec3 ro, vec3 rd, vec3 c, float r, out vec3 nn, out float dens){
 }
 
 /** 楕円体。半径を軸ごとに指定できる球 */
+/** XZ 面で倒した座標から、元の向きへ戻す */
+vec3 unrotXZ(vec3 v, vec2 bx, vec2 ax){
+  return vec3(v.x * bx.x + v.z * ax.x, v.y, v.x * bx.y + v.z * ax.y);
+}
+
 float hitEllip(vec3 ro, vec3 rd, vec3 c, vec3 rad, out vec3 nn){
   vec3 o = (ro - c) / rad, dd = rd / rad;
   float a = dot(dd, dd), b = dot(o, dd), cc = dot(o, o) - 1.0;
@@ -1046,42 +1051,65 @@ void main(){
     }
   }
 
-  // ---- 団扇。平柄。面を伏せて置いてある ----
+  // ---- 団扇。丸亀の平柄。面を伏せて置いてある ----
+  //
+  // 丸い板の真ん中から筋を引いていたので、風車にしか見えなかった。
+  // 実物は卵形で、骨は柄の先の「要」一点から扇に開く。
+  // 全長 37cm・面の幅 24cm、平柄は幅 2cm 厚さ 3mm の竹。
   {
-    vec3 uc = vec3(uUchiwa.x, uFloorY + 0.0022, uUchiwa.y);
-    vec3 nn;
-    // 面。直径 24cm、厚み 2mm ほどの薄い板
-    float t = hitEllip(uCam, d, uc, vec3(0.120, 0.0022, 0.107), nn);
+    vec3 uc = vec3(uUchiwa.x, uFloorY + 0.0021, uUchiwa.y);
+    // 団扇の向きへ光線ごと倒す。倒した中では面も柄も軸に揃うので、
+    // 卵形の切り抜きも平らな柄も、素直な式で書ける
+    const vec2 AX = vec2(-0.8211, 0.5708);   // 要から面の天へ
+    const vec2 BX = vec2(0.5708, 0.8211);    // 骨の開く向き
+    vec3 lo = vec3(dot(uCam.xz - uc.xz, BX), uCam.y - uc.y, dot(uCam.xz - uc.xz, AX));
+    vec3 ld = vec3(dot(d.xz, BX), d.y, dot(d.xz, AX));
+    vec3 ln;
+
+    // 面。卵形を包む薄い楕円体を当ててから、輪郭の外を捨てる
+    float t = hitEllip(lo, ld, vec3(0.0, 0.0, 0.010), vec3(0.130, 0.0021, 0.122), ln);
     if(t > 0.0 && t < depth){
-      vec3 p = uCam + d * t;
-      vec2 q = (p.xz - uc.xz);
-      float ca = 0.82, sa = 0.57;
-      vec2 r = vec2(q.x * ca - q.y * sa, q.x * sa + q.y * ca);
-      // 骨が放射に通る。地は生成りの紙
-      float rib = 0.5 + 0.5 * sin(atan(r.y, r.x) * 24.0);
-      vec3 paper = mix(vec3(0.425, 0.398, 0.348), vec3(0.472, 0.448, 0.398), rib);
-      // 中ほどに藍の判。縁は竹を細く回してある
-      float rr = length(r * vec2(1.0, 1.12));
-      paper = mix(paper, vec3(0.118, 0.142, 0.212), smoothstep(0.060, 0.050, rr) * 0.60);
-      paper = mix(paper, vec3(0.168, 0.145, 0.082), smoothstep(0.1095, 0.1135, rr));
-      col = paper * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.0 + skyAmbient(nn) * 1.15
-                   + lanternAmbient(p) * 0.6 + nightGlow())
-          + ggx(nn, -d, uSunDir, 0.55, vec3(0.030)) * uSunColor * PI * 0.2;
-      depth = t;
+      vec3 lp = lo + ld * t;
+      float s = (lp.z + 0.105) / 0.230;                 // 要 0 → 天 1
+      // 要の側が細く、天が広い卵形。いちばん太い所で 24cm
+      float hw = 0.152 * sqrt(max(0.0, 4.0 * s * (1.0 - s))) * (0.58 + 0.42 * s);
+      float e = min(hw - abs(lp.x), min(s, 1.0 - s) * 0.230);   // 輪郭までの距離
+      if(s > 0.0 && s < 1.0 && e > 0.0){
+        vec3 nn = unrotXZ(ln, BX, AX);
+        vec3 p = uCam + d * t;
+        // 骨は要から開く。面のいちばん太い所で 45 本・間隔 5mm。
+        // 要の近くは束になって潰れるので、そこだけ薄める
+        vec2 fan = vec2(lp.x, lp.z + 0.105);
+        float rib = (0.5 + 0.5 * sin(atan(fan.x, fan.y) * 221.0))
+                  * smoothstep(0.015, 0.070, length(fan))
+                  * (1.0 - smoothstep(0.9, 1.8, t));    // 遠いと縞が目に刺さる
+        // 白すぎると日向で飛んで、ただの白い塊になる。生成りは少し落とす
+        vec3 paper = mix(vec3(0.368, 0.344, 0.296), vec3(0.412, 0.390, 0.340), rib);
+        // 朱の角印をひとつ、天の側に捺してある。縁日の団扇は無地に判
+        vec2 sq = abs(vec2(lp.x - 0.004, lp.z - 0.058)) - vec2(0.0115);
+        float seal = (1.0 - smoothstep(0.0, 0.0014, max(sq.x, sq.y)))
+                   * smoothstep(0.26, 0.56, fbm(vec2(lp.x, lp.z) * 520.0));  // 掠れ
+        paper = mix(paper, vec3(0.372, 0.086, 0.062), seal);
+        // へり紙。縁を 9mm 回してある。ここが暗くないと輪郭が溶ける
+        paper = mix(paper, vec3(0.254, 0.212, 0.136), smoothstep(0.0115, 0.0068, e));
+        col = paper * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.0 + skyAmbient(nn) * 1.15
+                     + lanternAmbient(p) * 0.6 + nightGlow())
+            + ggx(nn, -d, uSunDir, 0.60, vec3(0.028)) * uSunColor * PI * 0.2;
+        depth = t;
+      }
     }
-    // 柄。面から 12cm 出る平らな竹
+    // 平柄。幅 2cm・厚み 3mm の竹の板。丸棒にすると爪楊枝に見える
     {
-      float ca = 0.82, sa = 0.57;
-      vec3 dir = vec3(ca, 0.0, -sa);
-      vec3 a0 = uc - dir * 0.100, a1 = uc - dir * 0.222;
-      // 平柄は竹の薄板。直径 17mm の丸棒だと丸太に見える
-      float t2 = hitSeg(uCam, d, a0, a1, 0.0032, nn);
+      float t2 = hitBox(lo, ld, vec3(0.0, -0.0005, -0.1635), vec3(0.0100, 0.0016, 0.0635), ln);
       if(t2 > 0.0 && t2 < depth){
+        vec3 lp = lo + ld * t2;
+        vec3 nn = unrotXZ(ln, BX, AX);
         vec3 p = uCam + d * t2;
-        vec3 bam = mix(vec3(0.185, 0.162, 0.092), vec3(0.242, 0.215, 0.126),
-                       fbm(vec2(dot(p.xz, dir.xz) * 60.0, 0.0)));
+        vec3 bam = mix(vec3(0.196, 0.172, 0.100), vec3(0.258, 0.230, 0.136),
+                       fbm(vec2(lp.z * 70.0, lp.x * 180.0)));
         col = bam * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.0 + skyAmbient(nn) * 1.1
-                   + lanternAmbient(p) * 0.6 + nightGlow());
+                   + lanternAmbient(p) * 0.6 + nightGlow())
+            + ggx(nn, -d, uSunDir, 0.45, vec3(0.032)) * uSunColor * PI * 0.25;
         depth = t2;
       }
     }
