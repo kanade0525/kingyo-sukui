@@ -1,18 +1,37 @@
-/* 夏の昼の縁日。明るい地面と、水色の舟。単一テーマで通す。
-   画面はほぼ全部が舟。文字は上下の端へ逃がして、水面を遮らない。
-   背景が明るいので、文字は黒に寄せ、白い帯を敷いて読ませる。 */
+/* 夏の昼の縁日。画面の中は実物どおりに作ってあるので、
+   操作のほうは「刷り物」に寄せる。屋台の品書きや木札と同じ立場。
+
+   色は四つだけ。生成り（わら半紙）・墨・藍・朱。
+   昭和の刷り物が四色なのは味ではなく、版が四枚だったからで、
+   色数を減らすことでしか出ない顔がある。
+   読みにくくしてレトロにするのは別の話なので、
+   地と字の明暗差は落とさない（生成り #f1e8d5 と墨 #2a2420）。
+
+   丸角・ぼかし影・背景のすりガラスは、どれも 2010 年代以降の
+   画面の作法で、ここでは一つも使わない。角は立て、影は硬く落とし、
+   縁は罫で囲む。 */
 
 :root{
   color-scheme: light;
 
-  --ink:#16212a;        /* 本文 */
-  --ink-dim:#5b6a75;    /* 副次 */
-  --sumi:#dfe3e1;       /* 画面外の地色 */
-  --ai:#1d4f63;         /* 舟の藍 */
-  --ai-pane:rgba(252,253,253,.94);
-  --hi:#d9501b;         /* 金魚の緋 */
-  --hi-soft:#ef7a3c;
-  --beni:#c42f1c;       /* 紅 */
+  /* 四色 */
+  --kinari:#f1e8d5;     /* 生成り。わら半紙 */
+  --kinari-2:#e6dabd;   /* 日に焼けた側 */
+  --ink:#2a2420;        /* 墨 */
+  --ink-dim:#6f6355;    /* 薄墨 */
+  --ai:#1c3f63;         /* 藍 */
+  --hi:#b63a1d;         /* 朱 */
+
+  --sumi:#d7cdb4;       /* 画面外の地色 */
+  --ai-pane:#f1e8d5;
+  --hi-soft:#8e2c16;    /* 朱の濃いほう。触れたとき */
+
+  /* 紙の繊維。外へは取りに行かない（SVG をそのまま埋めてある） */
+  --paper:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.26'/%3E%3C/svg%3E");
+  /* 囲み罫。外に細い罫、内にもう一本。刷り物の枠 */
+  --keisen:inset 0 0 0 1px var(--kinari), inset 0 0 0 2px rgba(42,36,32,.34);
+  /* 影は硬く落とす。版がずれて二度刷りになった感じ */
+  --kage:2px 2px 0 rgba(42,36,32,.17);
 
   /* 書体は一つだけ。
    *
@@ -41,7 +60,7 @@
 *{box-sizing:border-box}
 html,body{height:100%}
 body{
-  margin:0;background:var(--sumi);color:var(--ink);
+  margin:0;background:var(--sumi);background-image:var(--paper);color:var(--ink);
   font-family:var(--body);font-weight:var(--body-w);overflow:hidden;
   -webkit-text-size-adjust:100%;
   padding-top:env(safe-area-inset-top,0px);
@@ -51,7 +70,8 @@ body{
 canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
 body.playing canvas#scene{cursor:none}
 
-#fallback{position:fixed;inset:0;display:grid;place-content:center;padding:32px;text-align:center;background:var(--sumi)}
+#fallback{position:fixed;inset:0;display:grid;place-content:center;padding:32px;text-align:center;
+  background:var(--sumi);background-image:var(--paper)}
 #fallback h2{font-family:var(--disp);font-weight:var(--disp-w);letter-spacing:.08em;margin:0 0 12px}
 
 /* ---------- 下の帯 ---------- */
@@ -71,10 +91,9 @@ body.playing canvas#scene{cursor:none}
 #by{
   font-family:var(--disp);font-weight:var(--disp-w);font-size:11px;letter-spacing:.14em;
   color:var(--ink);text-decoration:none;
-  background:rgba(255,255,255,.88);border:1px solid rgba(23,34,43,.30);
-  box-shadow:0 1px 3px rgba(23,34,43,.12);
-  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-  border-radius:999px;padding:6px 13px;align-self:center;white-space:nowrap;
+  background:var(--kinari);background-image:var(--paper);
+  border:1px solid var(--ink);box-shadow:var(--kage);
+  padding:6px 13px;align-self:center;white-space:nowrap;
 }
 #by:hover,#by:focus-visible{border-color:var(--hi-soft);color:var(--hi-soft)}
 #by:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
@@ -93,14 +112,17 @@ body.playing canvas#scene{cursor:none}
 }
 #fps{color:var(--ink);font-variant-numeric:tabular-nums}
 
+/* 木札。丸角とぼかし影をやめて、角を立てて硬い影を落とす。
+   押されている札は朱でベタ刷りにする */
 button{
   font-family:var(--body);font-weight:var(--body-w);font-size:12px;color:var(--ink);
-  background:rgba(255,255,255,.88);border:1px solid rgba(23,34,43,.30);
-  box-shadow:0 1px 3px rgba(23,34,43,.12);
-  border-radius:999px;padding:7px 15px;cursor:pointer;white-space:nowrap;
-  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  background:var(--kinari);background-image:var(--paper);
+  border:1px solid var(--ink);box-shadow:var(--kage);
+  padding:7px 15px;cursor:pointer;white-space:nowrap;
 }
-button:hover{border-color:var(--hi-soft);color:var(--hi-soft)}
+button:hover{background-color:var(--kinari-2);color:var(--hi-soft)}
+/* 押すと札が沈む。影のぶんだけ動かす */
+button:active{transform:translate(1px,1px);box-shadow:1px 1px 0 rgba(42,36,32,.17)}
 button:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
 
 /* ---------- 設定 ---------- */
@@ -121,40 +143,65 @@ button:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
   overflow-y:auto;overscroll-behavior:contain;
   /* 中身が長いときに、指で弾いて送れるように */
   -webkit-overflow-scrolling:touch;
-  background:var(--ai-pane);border:1px solid rgba(23,34,43,.16);border-radius:12px;
-  padding:14px;display:flex;flex-direction:column;gap:12px;
-  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  background:var(--ai-pane);background-image:var(--paper);
+  border:1px solid var(--ink);box-shadow:var(--keisen),var(--kage);
+  padding:16px;display:flex;flex-direction:column;gap:12px;
 }
 #panel::-webkit-scrollbar{width:6px}
-#panel::-webkit-scrollbar-thumb{background:rgba(23,34,43,.22);border-radius:3px}
-#panel h3{margin:2px 0 -2px;font-family:var(--disp);font-size:12px;font-weight:var(--disp-w);letter-spacing:.14em;color:var(--hi)}
+#panel::-webkit-scrollbar-thumb{background:rgba(42,36,32,.30)}
+/* 節の見出し。朱の罫を一本下に敷く */
+#panel h3{
+  margin:2px 0 0;padding-bottom:4px;font-family:var(--disp);font-size:12px;
+  font-weight:var(--disp-w);letter-spacing:.14em;color:var(--hi);
+  border-bottom:1px solid rgba(182,58,29,.42);
+}
 .row{display:flex;flex-direction:column;gap:6px}
 .rl{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px;color:var(--ink-dim)}
 .rl span:last-child{color:var(--ink);font-variant-numeric:tabular-nums}
-input[type=range]{width:100%;accent-color:var(--hi);background:transparent}
+/* つまみ。
+ *
+ * accent-color を当てただけだと、丸い玉と角の丸い軌道という
+ * 各ブラウザの既定の顔が出て、ここだけ現代の画面になる。
+ * 軌道は墨の罫一本、つまみは帯に挿した朱の栞にする */
+input[type=range]{
+  -webkit-appearance:none;appearance:none;
+  width:100%;background:transparent;height:20px;margin:0;
+}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:rgba(42,36,32,.42)}
+input[type=range]::-moz-range-track{height:2px;background:rgba(42,36,32,.42)}
+input[type=range]::-moz-range-progress{height:2px;background:var(--hi)}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;margin-top:-8px;
+  width:9px;height:18px;background:var(--hi);
+  border:1px solid var(--ink);box-shadow:1px 1px 0 rgba(42,36,32,.30);
+}
+input[type=range]::-moz-range-thumb{
+  width:9px;height:18px;border-radius:0;background:var(--hi);
+  border:1px solid var(--ink);box-shadow:1px 1px 0 rgba(42,36,32,.30);
+}
 input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 .seg{display:flex;gap:4px}
-.seg button{flex:1;padding:6px 0;border-radius:7px;font-size:11px;text-align:center}
-.seg button[aria-pressed=true]{background:var(--hi);color:#fff;border-color:var(--hi);font-weight:700}
-.seg button[aria-pressed=true]:hover{color:#fff}
+.seg{gap:0}
+.seg button{flex:1;padding:6px 0;font-size:11px;text-align:center;border-left-width:0;box-shadow:none}
+.seg button:first-child{border-left-width:1px}
+.seg button[aria-pressed=true]{background:var(--hi);background-image:none;color:var(--kinari);border-color:var(--ink);font-weight:700}
+.seg button[aria-pressed=true]:hover{background-color:var(--hi);color:var(--kinari)}
 
 /* ---------- 読み込み中の覆い ---------- */
 #loading{
   position:fixed;inset:0;z-index:4;display:grid;place-items:center;padding:24px;
-  background:radial-gradient(120% 86% at 50% 40%,rgba(248,250,249,.30),rgba(236,240,239,.88));
+  background:var(--kinari);background-image:var(--paper);
   transition:opacity .5s ease;
 }
 #loading.done{opacity:0;pointer-events:none}
 .card{width:min(560px,100%);text-align:center}
 .card h1{
   margin:0 0 28px;font-family:var(--disp);font-weight:var(--disp-w);
-  font-size:clamp(40px,10vw,76px);letter-spacing:.22em;text-wrap:balance;
-  text-shadow:0 1px 0 rgba(255,255,255,.75), 0 3px 26px rgba(255,255,255,.95);
+  font-size:clamp(40px,10vw,76px);letter-spacing:.22em;text-wrap:balance;color:var(--ink);
 }
 /* 進み具合は刻めないので、流れる脈動だけ出す */
-.bar{width:min(220px,60%);height:2px;margin:0 auto;background:rgba(0,0,0,.10);
-  border-radius:2px;overflow:hidden}
-.bar i{display:block;width:40%;height:100%;background:var(--hi);border-radius:2px;
+.bar{width:min(220px,60%);height:3px;margin:0 auto;background:rgba(42,36,32,.16);overflow:hidden}
+.bar i{display:block;width:40%;height:100%;background:var(--hi);
   animation:sweep 1.25s cubic-bezier(.45,0,.55,1) infinite}
 @keyframes sweep{
   0%{transform:translateX(-100%)}
@@ -190,21 +237,20 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
   top:calc(12px + env(safe-area-inset-top,0px));
   right:calc(12px + env(safe-area-inset-right,0px));
   text-align:right;line-height:1.55;pointer-events:none;
-  padding:8px 12px;border-radius:12px;
-  background:rgba(255,255,255,.80);border:1px solid rgba(23,34,43,.18);
-  box-shadow:0 1px 3px rgba(23,34,43,.12);
-  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  padding:9px 13px;
+  background:var(--kinari);background-image:var(--paper);
+  border:1px solid var(--ink);box-shadow:var(--keisen),var(--kage);
   font-variant-numeric:tabular-nums;
 }
 :root.panel-open #nowbar{display:none}
 /* 何を映しているかの一行。いまの時刻と天気を見せていることを、
    画面だけで分かるようにする */
 #nowWhat{
-  font-size:9px;letter-spacing:.10em;color:#fff;
-  background:var(--hi);border-radius:999px;
-  padding:2px 8px;margin:0 0 4px auto;display:inline-block;
+  font-size:9px;letter-spacing:.10em;color:var(--kinari);
+  background:var(--hi);
+  padding:2px 8px;margin:0 0 5px auto;display:inline-block;
 }
-#nowWhat.manual{background:rgba(23,34,43,.42)}
+#nowWhat.manual{background:var(--ai)}
 
 #nowPlace{font-family:var(--disp);font-weight:var(--disp-w);font-size:13px;letter-spacing:.10em;color:var(--ink)}
 #nowSky{font-size:11px;color:var(--ink-dim)}
@@ -219,7 +265,6 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
   font:inherit;font-size:10px;letter-spacing:.06em;
   color:var(--hi);background:none;border:0;box-shadow:none;
   padding:2px 0;margin-left:8px;cursor:pointer;text-decoration:underline;
-  -webkit-backdrop-filter:none;backdrop-filter:none;border-radius:0;
 }
 .rl .mute:hover{color:var(--ink)}
 /* 押せる印は、薄くしすぎると読めない。行だけ落として印は残す */
@@ -229,30 +274,28 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 /* 持ち帰る。器に金魚がいるときだけ出る。
    いちばん押してほしいものなので、ほかの操作より目立たせる */
 #btnTakeHome{
-  background:var(--hi);color:#fff;border-color:var(--hi);font-weight:700;
+  background:var(--hi);background-image:none;color:var(--kinari);font-weight:700;
 }
-#btnTakeHome:hover{color:#fff;border-color:var(--hi)}
+#btnTakeHome:hover{background-color:var(--hi-soft);color:var(--kinari)}
 
 /* 家の鉢へ／屋台へ戻る。ボタンと同じ札にする（a 要素なので形を揃える） */
 #btnHome,#btnStall{
   font-family:var(--body);font-weight:var(--body-w);font-size:12px;color:var(--ink);
   text-decoration:none;
-  background:rgba(255,255,255,.88);border:1px solid rgba(23,34,43,.30);
-  box-shadow:0 1px 3px rgba(23,34,43,.12);
-  border-radius:999px;padding:7px 15px;white-space:nowrap;
-  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  background:var(--kinari);background-image:var(--paper);
+  border:1px solid var(--ink);box-shadow:var(--kage);
+  padding:7px 15px;white-space:nowrap;
 }
-#btnHome:hover,#btnStall:hover{border-color:var(--hi-soft);color:var(--hi-soft)}
+#btnHome:hover,#btnStall:hover{background-color:var(--kinari-2);color:var(--hi-soft)}
 
 /* 時刻のつまみ。下の並びのすぐ上に、細い帯で出す。
    設定（開発用の覗き窓）を開かなくても、天気と時刻だけは動かせるようにする */
 #timebar{
   flex:1 0 100%;order:-1;margin:0 0 10px;pointer-events:auto;
   display:flex;align-items:center;gap:12px;
-  background:rgba(255,255,255,.90);border:1px solid rgba(23,34,43,.22);
-  box-shadow:0 2px 10px rgba(23,34,43,.14);
-  border-radius:999px;padding:9px 18px;
-  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  background:var(--kinari);background-image:var(--paper);
+  border:1px solid var(--ink);box-shadow:var(--keisen),var(--kage);
+  padding:10px 18px;
 }
 /* つまみの軌道は透かす。下に敷いた空の帯が、そこに見えていてほしい */
 #timebar input[type=range]{
@@ -262,32 +305,33 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 #timebar input[type=range]::-webkit-slider-runnable-track{background:transparent;height:22px}
 #timebar input[type=range]::-moz-range-track{background:transparent;height:22px}
 #timebar input[type=range]::-moz-range-progress{background:transparent}
+/* 丸い玉は今どきの顔をするので、帯に挿した栞の形にする */
 #timebar input[type=range]::-webkit-slider-thumb{
-  -webkit-appearance:none;appearance:none;margin-top:3px;
-  width:16px;height:16px;border-radius:50%;background:var(--hi);
-  border:2px solid #fff;box-shadow:0 1px 3px rgba(23,34,43,.40);
+  -webkit-appearance:none;appearance:none;margin-top:1px;
+  width:9px;height:20px;background:var(--hi);
+  border:1px solid var(--ink);box-shadow:1px 1px 0 rgba(42,36,32,.30);
 }
 #timebar input[type=range]::-moz-range-thumb{
-  width:16px;height:16px;border-radius:50%;background:var(--hi);
-  border:2px solid #fff;box-shadow:0 1px 3px rgba(23,34,43,.40);
+  width:9px;height:20px;border-radius:0;background:var(--hi);
+  border:1px solid var(--ink);box-shadow:1px 1px 0 rgba(42,36,32,.30);
 }
 #timeTrack{position:relative;flex:1 1 auto;min-width:0;padding-top:13px}
 /* その日の空の色。昼夜がひと目で分かる */
 #daystrip{
-  position:absolute;left:0;right:0;top:20px;height:8px;border-radius:999px;
-  box-shadow:inset 0 0 0 1px rgba(23,34,43,.14);
+  position:absolute;left:0;right:0;top:20px;height:8px;
+  box-shadow:inset 0 0 0 1px var(--ink);
 }
 /* お祭りをやっている時間。提灯に灯が入ってから店じまいまで */
 #fest{
-  position:absolute;top:19px;height:10px;border-radius:999px;
-  background:rgba(217,80,27,.30);box-shadow:inset 0 0 0 1px rgba(217,80,27,.55);
+  position:absolute;top:18px;height:12px;
+  background:rgba(182,58,29,.26);box-shadow:inset 0 0 0 1px var(--hi);
 }
 #fest b{
   position:absolute;left:50%;transform:translateX(-50%);bottom:13px;
   font-family:var(--disp);font-weight:var(--disp-w);font-size:9px;font-style:normal;
   letter-spacing:.06em;color:var(--hi);white-space:nowrap;
 }
-.tick{position:absolute;top:16px;width:1px;height:16px;background:rgba(23,34,43,.55)}
+.tick{position:absolute;top:15px;width:1px;height:18px;background:var(--ink)}
 .tick b{
   position:absolute;left:50%;transform:translateX(-50%);bottom:17px;
   font-family:var(--disp);font-weight:var(--disp-w);font-size:9px;font-style:normal;
@@ -298,14 +342,14 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
    四つ並べて、いまどれかを見せる */
 #wxPick{display:flex;gap:0;flex:0 0 auto}
 #wxPick button{
-  border-radius:0;padding:7px 9px;box-shadow:none;
-  border-left-width:0;
+  padding:7px 10px;box-shadow:none;border-left-width:0;
 }
-#wxPick button:first-child{border-radius:999px 0 0 999px;border-left-width:1px}
-#wxPick button:last-child{border-radius:0 999px 999px 0}
+#wxPick button:first-child{border-left-width:1px}
+#wxPick{box-shadow:var(--kage)}
 #wxPick button[aria-pressed=true]{
-  background:var(--hi);color:#fff;border-color:var(--hi);
+  background:var(--hi);background-image:none;color:var(--kinari);
 }
+#wxPick button[aria-pressed=true]:hover{background-color:var(--hi);color:var(--kinari)}
 @media (max-width:520px){ #wxPick button{padding:6px 7px;font-size:11px} }
 #timeNow{
   font-family:var(--disp);font-weight:var(--disp-w);font-size:14px;
@@ -327,7 +371,7 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
   display:flex;flex-direction:column;gap:9px;
 }
 #viewpad button{
-  width:40px;height:40px;padding:0;border-radius:999px;
+  width:40px;height:40px;padding:0;
   font-size:17px;line-height:1;display:grid;place-items:center;
 }
 #viewpad button:last-child{font-size:12px}
@@ -342,10 +386,9 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
   position:fixed;z-index:4;
   top:calc(12px + env(safe-area-inset-top,0px));
   left:calc(12px + env(safe-area-inset-left,0px));
-  padding:8px 13px;border-radius:12px;
-  background:rgba(255,255,255,.80);border:1px solid rgba(23,34,43,.18);
-  box-shadow:0 1px 3px rgba(23,34,43,.12);
-  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  padding:9px 14px;
+  background:var(--kinari);background-image:var(--paper);
+  border:1px solid var(--ink);box-shadow:var(--keisen),var(--kage);
   font-family:var(--disp);font-weight:var(--disp-w);font-size:13px;letter-spacing:.10em;color:var(--ink);
   font-variant-numeric:tabular-nums;pointer-events:none;
 }
@@ -354,15 +397,15 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 #toast{
   position:fixed;z-index:6;left:50%;transform:translateX(-50%);
   bottom:calc(84px + env(safe-area-inset-bottom,0px));
-  padding:9px 18px;border-radius:999px;
-  background:rgba(23,34,43,.82);color:#fff;
+  padding:9px 18px;
+  background:var(--ink);color:var(--kinari);
+  border:1px solid var(--ink);box-shadow:var(--kage);
   font-size:12px;letter-spacing:.06em;white-space:nowrap;
   pointer-events:none;opacity:0;transition:opacity .35s;
-  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
 }
 #toast.show{opacity:1}
 
 
 /* 部屋の明かりの入切。点いているときは灯りの色 */
 #btnLamp{padding:7px 12px;font-size:14px;line-height:1}
-#btnLamp[aria-pressed=true]{background:var(--hi);color:#fff;border-color:var(--hi)}
+#btnLamp[aria-pressed=true]{background:var(--hi);background-image:none;color:var(--kinari)}
