@@ -186,6 +186,16 @@ export default {
     }
   },
 
+  '縁側の置物が板の上に乗っている': () => {
+    // 縁側の板があるのは z が edgeZ より手前だけ。
+    // それより奥に置くと、板の無い所で宙に浮く
+    for (const [name, xz] of [['蚊遣り', ROOM.kayari], ['団扇', ROOM.uchiwa]]) {
+      ok(xz[1] > ROOM.edgeZ, `${name} が縁側の端（z=${ROOM.edgeZ}）より外にある`);
+    }
+    // 沓脱石だけは庭に据える
+    ok(ROOM.kutsunugi[1] < ROOM.edgeZ, '沓脱石が縁側の上にある');
+  },
+
   '庭の作りものが縁側と竹垣の間に収まる': () => {
     // 縁側の縁より手前に置くと縁側にめり込み、竹垣より奥に置くと垣の裏へ出る
     const things = [

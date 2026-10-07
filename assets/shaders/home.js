@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610070049';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610070209';
 
 /**
  * 縁側。
@@ -935,70 +935,48 @@ void main(){
     }
   }
 
-  // ---- 蚊遣り豚。
+  // ---- 蚊遣り。線香皿に渦巻を一本。
   //
-  // 線香皿を板に貼った絵で出していたが、平らな丸にしか見えなかった。
-  // 昭和の縁側に置いてあるのは、たいてい陶器の豚。
-  // 胴・鼻・耳・四つ足の塊で組んで、横腹の穴から煙を出す ----
+  // はじめは板に貼った絵で出したが、平らな丸にしか見えなかった。
+  // 次に陶器の豚で作ったが、軸に沿った楕円体と棒だけでは
+  // どう組んでも豚に見えず、煙の穴は目玉に見えた。
+  // 作れない形を無理に置くより、作れる形をきちんと置く。
+  // 線香皿なら浅い丸皿で、見間違えようがない ----
   {
     vec3 base = vec3(uKayari.x, uFloorY, uKayari.y);
-    vec3 body = base + vec3(0.0, 0.082, 0.0);
+    float R = 0.085;          // 直径 17cm の皿
+    float H = 0.016;
     vec3 nn;
-    float t;
-    // 胴。長さ 20cm・高さ 14cm・幅 12cm
-    t = hitEllip(uCam, d, body, vec3(0.100, 0.066, 0.060), nn);
+    float t = hitCyl(uCam, d, base, R, H, nn);
     if(t > 0.0 && t < depth){
       vec3 p = uCam + d * t;
-      // 飴釉。焼き物なのでむらがあり、よく照る
-      vec3 glaze = mix(vec3(0.112, 0.070, 0.038), vec3(0.185, 0.126, 0.062),
-                       fbm(p.xz * 26.0 + p.y * 14.0));
-      // 横腹の穴。ここから煙が出る
-      float hole = smoothstep(0.034, 0.026, length((p - (body + vec3(0.012, 0.012, 0.055)))
-                                                   * vec3(1.0, 1.2, 0.35)));
-      glaze = mix(glaze, vec3(0.018, 0.013, 0.010), hole);
-      col = glaze * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.0 + skyAmbient(nn) * 1.2
-                   + lanternAmbient(p) * 0.5 + nightGlow())
-          + ggx(nn, -d, uSunDir, 0.10, vec3(0.055)) * uSunColor * PI * 0.5 * (1.0 - hole);
-      depth = t;
-    }
-    // 鼻先
-    t = hitEllip(uCam, d, body + vec3(0.096, -0.010, 0.0), vec3(0.034, 0.030, 0.030), nn);
-    if(t > 0.0 && t < depth){
-      vec3 p = uCam + d * t;
-      vec3 glaze = vec3(0.150, 0.102, 0.052);
-      // 鼻の穴が二つ
-      glaze = mix(glaze, vec3(0.022, 0.016, 0.012),
-                  smoothstep(0.009, 0.005, abs(abs(p.z - body.z) - 0.011))
-                * smoothstep(0.012, 0.006, abs(p.y - (body.y - 0.010))));
-      col = glaze * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.0 + skyAmbient(nn) * 1.2
-                   + lanternAmbient(p) * 0.5 + nightGlow())
-          + ggx(nn, -d, uSunDir, 0.10, vec3(0.055)) * uSunColor * PI * 0.5;
-      depth = t;
-    }
-    // 耳。前の方に二つ
-    for(int k = 0; k < 2; k++){
-      float sz = k == 0 ? -0.034 : 0.034;
-      t = hitEllip(uCam, d, body + vec3(0.050, 0.055, sz), vec3(0.020, 0.022, 0.011), nn);
-      if(t > 0.0 && t < depth){
-        vec3 p = uCam + d * t;
-        col = vec3(0.138, 0.092, 0.046)
-            * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.0 + skyAmbient(nn) * 1.2
-             + lanternAmbient(p) * 0.5 + nightGlow())
-            + ggx(nn, -d, uSunDir, 0.10, vec3(0.055)) * uSunColor * PI * 0.4;
-        depth = t;
+      vec2 q = p.xz - base.xz;
+      float dish = length(q);
+      // 焼き締めの陶器。土の肌が残る
+      vec3 clay = mix(vec3(0.112, 0.092, 0.076), vec3(0.168, 0.142, 0.118),
+                      fbm(q * 120.0 + p.y * 40.0));
+      if(nn.y > 0.5){
+        // 天面。縁が立ち上がって、中が窪んでいる
+        float rim = smoothstep(0.070, 0.082, dish);
+        clay *= 1.0 - (1.0 - rim) * 0.30;
+        // 渦巻。直径 12cm に 10 巻き前後。幅 3mm で同じだけ間を空ける
+        float ang = atan(q.y, q.x);
+        float spiral = fract(dish * 160.0 - ang / 6.2831853);
+        float coil = smoothstep(0.62, 0.40, abs(spiral - 0.5) * 2.0)
+                   * smoothstep(0.061, 0.057, dish) * smoothstep(0.008, 0.012, dish);
+        // 先だけ燃えて、そこまでは白い灰が残る
+        float burn = smoothstep(0.058, 0.052, dish);
+        vec3 incense = mix(vec3(0.235, 0.228, 0.218), vec3(0.102, 0.072, 0.046), burn);
+        clay = mix(clay, incense, coil);
       }
-    }
-    // 四つ足。短い
-    for(int k = 0; k < 4; k++){
-      float sx = (k < 2 ? 0.055 : -0.055);
-      float sz = ((k == 0 || k == 2) ? -0.034 : 0.034);
-      t = hitCyl(uCam, d, base + vec3(sx, 0.0, sz), 0.016, 0.030, nn);
-      if(t > 0.0 && t < depth){
-        vec3 p = uCam + d * t;
-        col = vec3(0.108, 0.070, 0.036)
-            * (uSunColor * max(dot(nn, uSunDir), 0.0) * 0.8 + skyAmbient(nn) * 0.95
-             + lanternAmbient(p) * 0.5 + nightGlow());
-        depth = t;
+      col = clay * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.0 + skyAmbient(nn) * 1.2
+                  + lanternAmbient(p) * 0.5 + nightGlow())
+          + ggx(nn, -d, uSunDir, 0.34, vec3(0.035)) * uSunColor * PI * 0.3;
+      depth = t;
+      // 火。渦の外端で赤く熾る
+      vec2 tip = base.xz + vec2(0.0585, 0.0);
+      if(nn.y > 0.5){
+        col += vec3(0.95, 0.30, 0.06) * smoothstep(0.006, 0.0, length(q - vec2(0.0585, 0.0))) * 1.8;
       }
     }
   }
@@ -1143,8 +1121,9 @@ void main(){
       float yaw2 = uTime * 0.55 + f * 6.0;
       vec2 sway = vec2(sin(yaw2), cos(yaw2 * 0.83)) * f * f * 0.085;
       // 煙は豚の横腹の穴から出る
-      vec3 c = vec3(uKayari.x + 0.012 + sway.x, uFloorY + 0.094 + f * 0.38,
-                    uKayari.y + 0.055 + sway.y);
+      // 煙は、渦の燃えている先から立つ
+      vec3 c = vec3(uKayari.x + 0.0585 + sway.x, uFloorY + 0.020 + f * 0.38,
+                    uKayari.y + sway.y);
       float t = dot(c - uCam, d);
       if(t < 0.02 || t > depth) continue;
       float m = length(uCam + d * t - c);

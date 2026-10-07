@@ -1,6 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
 
-import { t } from './i18n.js?v=202610070049';
+import { t } from './i18n.js?v=202610070209';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -18,7 +18,7 @@ export class UI {
       homebar: $('homebar'), homeCount: $('homeCount'), toast: $('toast'),
       viewpad: $('viewpad'),
       wxPick: $('wxPick'), daystrip: $('daystrip'),
-      tickLantern: $('tickLantern'), tickClose: $('tickClose'),
+      fest: $('fest'), tickClose: $('tickClose'),
       btnClock: $('btnClock'), timebar: $('timebar'),
       timeRange: $('timeRange'), timeNow: $('timeNow'),
       btnZoomIn: $('btnZoomIn'), btnZoomOut: $('btnZoomOut'), btnViewReset: $('btnViewReset'),
@@ -199,7 +199,9 @@ export class UI {
   setDayStrip(stops, marks) {
     const g = stops.map((c, i) => `${c} ${(i / (stops.length - 1) * 100).toFixed(1)}%`);
     this.el.daystrip.style.background = `linear-gradient(90deg, ${g.join(', ')})`;
-    this.el.tickLantern.style.left = `${(marks.lantern / 24) * 100}%`;
+    // お祭りをやっている時間。提灯に灯が入ってから店じまいまで
+    this.el.fest.style.left = `${(marks.lantern / 24) * 100}%`;
+    this.el.fest.style.width = `${((marks.close - marks.lantern) / 24) * 100}%`;
     this.el.tickClose.style.left = `${(marks.close / 24) * 100}%`;
   }
 

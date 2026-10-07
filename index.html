@@ -28,7 +28,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&display=swap">
-<link rel="stylesheet" href="assets/css/app.css?v=202610070049">
+<link rel="stylesheet" href="assets/css/app.css?v=202610070209">
 </head>
 <body>
 
@@ -60,8 +60,8 @@
       <!-- その日の空の色を 24 時間ぶん並べた帯。
            どこが昼でどこが夜か、つまみを動かす前に分かる -->
       <div id="daystrip"></div>
-      <!-- 提灯が点く時刻と、店じまいの時刻 -->
-      <i class="tick" id="tickLantern"><b data-t="tickLantern">提灯</b></i>
+      <!-- お祭りをやっている時間。提灯に灯が入ってから店じまいまで -->
+      <div id="fest"><b data-t="tickFest">お祭り</b></div>
       <i class="tick" id="tickClose"><b data-t="tickClose">店じまい</b></i>
       <input id="timeRange" type="range" min="0" max="24" step="0.25" value="13"
              data-t-aria="timeSet">
@@ -196,6 +196,6 @@
 </div>
 
 
-<script type="module" src="assets/js/main.js?v=202610070049"></script>
+<script type="module" src="assets/js/main.js?v=202610070209"></script>
 </body>
 </html>
