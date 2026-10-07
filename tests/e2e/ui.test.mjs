@@ -30,13 +30,20 @@ export default {
   '設定を開かなくても天気と時刻を変えられる': () => withPage({}, async (page) => {
     // 設定は開発用の覗き窓なので、いずれ畳む。遊ぶ人が触るのは
     // 音の入切と、この二つだけ
-    await page.click('#btnWx');
+    // 天気は四つ並べてある。回すボタンだと押すまで何が起きるか分からない
+    await page.click('#wxPick button[data-w="2"]');
     await page.waitForTimeout(600);
-    const w1 = await page.evaluate(() => window.__kingyo.renderer.weather);
-    await page.click('#btnWx');
+    eq(await page.evaluate(() => window.__kingyo.renderer.weather), 2, '雨にならない');
+    eq(await page.evaluate(() =>
+         document.querySelector('#wxPick button[data-w="2"]').getAttribute('aria-pressed')),
+       'true', '選んだ天気に印が付かない');
+    await page.click('#wxPick button[data-w="0"]');
     await page.waitForTimeout(600);
-    const w2 = await page.evaluate(() => window.__kingyo.renderer.weather);
-    ok(w1 !== w2, `天気のボタンで天気が変わらない（${w1} → ${w2}）`);
+    eq(await page.evaluate(() => window.__kingyo.renderer.weather), 0, '晴れに戻らない');
+    // 時刻の帯には、その日の空の色が敷いてある
+    const strip = await page.evaluate(() =>
+      document.getElementById('daystrip').style.background);
+    ok(strip.includes('linear-gradient'), '時刻の帯に空の色が出ていない');
 
     // 時刻の帯。押すまでは出ていない
     eq(await page.evaluate(() => document.getElementById('timebar').hidden), true,

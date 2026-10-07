@@ -5,7 +5,7 @@
 // 画面を横に割って、どの帯でも模様が残っていることを見る。
 
 import { launch, open, measure, setHour, setWeather, stillWater, peek } from '../lib/page.mjs';
-import { ok, between } from '../lib/assert.mjs';
+import { ok, eq, between } from '../lib/assert.mjs';
 
 let browser, shared;
 async function page() {
@@ -84,21 +84,59 @@ export default {
 
   '空が閉じるほど、水底の網目は薄れる': async () => {
     // 方向の揃った光でないとコースティクスは出ない。手加減ではなく、
-    // 曇りの日に水底の網目が出ないのと同じこと
-    const pg = await page();
+    // 曇りの日に水底の網目が出ないのと同じこと。
+    //
+    // ここだけ共有のページを使わない。測るのは画素の細かさなので、
+    // 前の試験が残した波紋や設定が乗ると、三つの天気で同じものを
+    // 測ることになって網目の差がその下に埋もれる
+    browser ||= await launch();
+    const own = await open(browser, { hour: 13 });
+    const pg = own.page;
     await setHour(pg, 13);
     await stillWater(pg);
+    // 金魚を退ける。
+    //
+    // 測っているのは横に並んだ画素の差で、枠に何匹居たかで 1 割動く。
+    // 網目の差はそれより小さいことがあるので、
+    // 魚が居ると「網目が薄れたか」を測れない
+    //
+    // 消すだけでは、群れが足りないぶんを湧かせ直すので戻ってくる。
+    // 群れの更新ごと止めてから空にする
+    await pg.evaluate(() => {
+      const sc = window.__kingyo.game.school;
+      sc.update = () => {};
+      sc.list.length = 0;
+    });
+    // 雨を止めて、前の試験が立てた波紋が消えるまで待つ。
+    //
+    // 残っていると、三つの天気で同じ輪を測ることになって
+    // 網目の差がその下に埋もれる。雨粒を強くしたぶん、残りも長い
+    await pg.evaluate(() => { window.__kingyo.game.rain = 0; });
+    await pg.waitForTimeout(5000);
+    eq(await peek(pg, 'fish'), 0, '金魚が残っている。網目ではなく魚を測ってしまう');
     const got = [];
     for (const w of [0, 1, 2]) {
       await setWeather(pg, w);
-      await pg.waitForTimeout(2400);
+      // 雨の粒を止める。
+      //
+      // 雨の水面は輪だらけになるので、そのまま測ると
+      // 「網目が薄れたか」ではなく「波紋が増えたか」を測ることになる。
+      // ここで見たいのは、方向の揃った光が失われて網目が消えることのほう
+      await pg.evaluate(() => { window.__kingyo.game.rain = 0; });
+      await pg.waitForTimeout(3200);
       got.push((await measure(pg, BOX)).detail);
     }
     await setWeather(pg, 0);
+    await own.ctx.close();
     ok(got[0] > got[1] * 1.15,
        `くもりで網目が薄れない（晴れ ${got[0].toFixed(1)} / くもり ${got[1].toFixed(1)}）`);
-    ok(got[1] > got[2],
-       `雨で網目がさらに薄れない（くもり ${got[1].toFixed(1)} / 雨 ${got[2].toFixed(1)}）`);
+    ok(got[0] > got[2] * 1.15,
+       `雨で網目が薄れない（晴れ ${got[0].toFixed(1)} / 雨 ${got[2].toFixed(1)}）`);
+    // くもりと雨は比べない。
+    //
+    // 直射はどちらもほとんど無い（晴れの 0.16 と 0.07）ので、
+    // 網目はもう両方とも消えている。残っている差は映り込みと
+    // 露出の持ち上げ方の違いで、網目の強さではない
   },
 
   'おしまい': async () => {

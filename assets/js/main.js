@@ -4,16 +4,16 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610062214';
-import { Game } from './game.js?v=202610062214';
-import { UI } from './ui.js?v=202610062214';
-import { localHour, fetchWeather, sunFor } from './sky.js?v=202610062214';
-import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610062214';
-import { Sound, layerWants } from './sound.js?v=202610062214';
-import { POI } from './world.js?v=202610062214';
-import { nearestCity } from './place.js?v=202610062214';
-import { Home } from './home.js?v=202610062214';
-import { HOME, MAX_BOWL, ZOOM } from './world.js?v=202610062214';
+import { Renderer } from './renderer.js?v=202610070049';
+import { Game } from './game.js?v=202610070049';
+import { UI } from './ui.js?v=202610070049';
+import { localHour, fetchWeather, sunFor, CLOSE_START } from './sky.js?v=202610070049';
+import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610070049';
+import { Sound, layerWants } from './sound.js?v=202610070049';
+import { POI } from './world.js?v=202610070049';
+import { nearestCity } from './place.js?v=202610070049';
+import { Home } from './home.js?v=202610070049';
+import { HOME, MAX_BOWL, ZOOM } from './world.js?v=202610070049';
 
 // 言葉をいちばん先に差し替える。覆いの題字も見えてしまうので
 applyI18n();
@@ -48,6 +48,8 @@ const ui = new UI({
     game.rain = w === 2 ? 1 : 0;
     // 設定の帯と、下の並びの札の両方を合わせる
     ui.setWeather(w, t('manual'));
+    // 空の色が変わるので、帯も引き直す
+    drawDayStrip();
     showNow();
   },
   audio(on) { sound.setEnabled(on); if (on) sound.unlock(); },
@@ -81,7 +83,29 @@ function boot() {
   ui.setView(view);
   renderer.setView(view);
   applyNow(false);
+  drawDayStrip();
   requestAnimationFrame(frame);
+}
+
+/**
+ * 時刻の帯に、その日の空の色を敷く。
+ *
+ * つまみだけだと、どこが昼でどこが夜か動かすまで分からない。
+ * 同じ sunFor から色を引いているので、帯の色と画面の色は必ず一致する。
+ * 提灯が点く時刻は、空の明るさから決まるので毎日ずれる。走査して拾う。
+ */
+function drawDayStrip() {
+  const stops = [];
+  let lantern = 18;
+  for (let i = 0; i <= 48; i++) {
+    const h = (i / 48) * 24;
+    const s = sunFor(h, 0, renderer.weather);
+    // 帯は小さいので、空の地平の色をそのまま使うといちばん読みやすい
+    const k = 255 / Math.max(...s.horizon, 0.28);
+    stops.push(`rgb(${s.horizon.map((c) => Math.round(Math.min(c * k, 255))).join(',')})`);
+    if (lantern === 18 && h > 12 && s.lanternOn > 0.5) lantern = h;
+  }
+  ui.setDayStrip(stops, { lantern, close: CLOSE_START });
 }
 
 /**

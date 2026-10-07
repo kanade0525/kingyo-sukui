@@ -28,7 +28,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&display=swap">
-<link rel="stylesheet" href="assets/css/app.css?v=202610062214">
+<link rel="stylesheet" href="assets/css/app.css?v=202610070049">
 </head>
 <body>
 
@@ -56,8 +56,16 @@
   <!-- 時刻。「時」で開く。設定を開かなくても動かせる。
        並びの中に入れてあるので、ボタンが折り返しても重ならない -->
   <div id="timebar" hidden>
-    <input id="timeRange" type="range" min="0" max="24" step="0.25" value="13"
-           data-t-aria="timeSet">
+    <div id="timeTrack">
+      <!-- その日の空の色を 24 時間ぶん並べた帯。
+           どこが昼でどこが夜か、つまみを動かす前に分かる -->
+      <div id="daystrip"></div>
+      <!-- 提灯が点く時刻と、店じまいの時刻 -->
+      <i class="tick" id="tickLantern"><b data-t="tickLantern">提灯</b></i>
+      <i class="tick" id="tickClose"><b data-t="tickClose">店じまい</b></i>
+      <input id="timeRange" type="range" min="0" max="24" step="0.25" value="13"
+             data-t-aria="timeSet">
+    </div>
     <span id="timeNow">13:00</span>
   </div>
   <div id="tools">
@@ -65,7 +73,12 @@
     <button id="btnLamp" hidden aria-pressed="true" data-t-aria="lampAria">☉</button>
     <a id="btnHome" href="#home" data-t="goHome">家の鉢</a>
     <a id="btnStall" href="#" hidden data-t="backToStall">屋台へ戻る</a>
-    <button id="btnWx" data-t-aria="wxCycle"><span id="wxMark">晴</span></button>
+    <div id="wxPick" role="group" data-t-aria="wxCycle">
+      <button data-w="0" data-t="wxMarkClear">晴</button>
+      <button data-w="1" data-t="wxMarkCloudy">曇</button>
+      <button data-w="2" data-t="wxMarkRain">雨</button>
+      <button data-w="auto" data-t="wxMarkAuto">今</button>
+    </div>
     <button id="btnClock" aria-expanded="false" aria-controls="timebar"
             data-t="timeMark" data-t-aria="timeOpen">時</button>
     <button id="btnSound" aria-pressed="true" data-t-aria="soundToggle"><span id="soundMark">♪</span></button>
@@ -183,6 +196,6 @@
 </div>
 
 
-<script type="module" src="assets/js/main.js?v=202610062214"></script>
+<script type="module" src="assets/js/main.js?v=202610070049"></script>
 </body>
 </html>

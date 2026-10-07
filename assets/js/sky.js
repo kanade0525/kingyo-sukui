@@ -85,7 +85,7 @@ function solarPosition(hour, when = new Date()) {
  * 店じまい。この時刻から提灯が落ち、1 時間かけて真っ暗になる。
  * 夏祭り・縁日は 21 時か 22 時終いが多数派なので、そこへ合わせる。
  */
-const CLOSE_START = 21.0;
+export const CLOSE_START = 21.0;
 const CLOSE_END = 22.0;
 
 export const WEATHER = { CLEAR: 0, CLOUDY: 1, RAIN: 2 };
@@ -162,9 +162,22 @@ export function sunFor(hour, yawDeg = 0, weather = WEATHER.CLEAR, when = new Dat
     return [mix(l, c[0], k), mix(l, c[1], k), mix(l, c[2], k)];
   };
   const keep = weather === WEATHER.CLEAR ? 1.0
-             : weather === WEATHER.CLOUDY ? 0.22 : 0.13;
+             : weather === WEATHER.CLOUDY ? 0.10 : 0.06;
   zenith = flat(zenith, keep);
-  horizon = flat(horizon, Math.min(keep + 0.18, 1.0));
+  horizon = flat(horizon, Math.min(keep + 0.10, 1.0));
+  // 曇りは明るい灰、雨は暗い鉛色。同じ灰色でも、この差が無いと
+  // どちらも「ぼんやりした日」で、見分けが付かない
+  //
+  // 明暗で振りすぎると、曇りの空が明るいぶん水面の模様まで持ち上がって
+  // コースティクスの差が消え、雨は夕暮れと同じ暗さに並ぶ。
+  // 見分けは彩度（青が抜けるか）が受け持っているので、明暗は控えめでよい
+  if (weather === WEATHER.CLOUDY) {
+    zenith = scale3(zenith, 1.12);
+    horizon = scale3(horizon, 1.07);
+  } else if (weather === WEATHER.RAIN) {
+    zenith = scale3(zenith, 0.86);
+    horizon = scale3(horizon, 0.92);
+  }
   // 夜空。晴れた夜は藍、曇りや雨の夜は街明かりを雲が返すのでかえって明るい
   // 夜空。晴れた夜は藍、曇りや雨の夜は街明かりを雲が返すのでかえって明るい。
   // 店がしまって提灯が落ちると、残る光はこれだけになる。月と町の明かりで

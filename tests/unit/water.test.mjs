@@ -4,7 +4,7 @@
 // Game は描画と切り離して動くので、波紋を受け取る偽物を挿して直に見る。
 
 import { Game } from '../../assets/js/game.js?v=202610041324';
-import { TANK, RAIN, AIR } from '../../assets/js/world.js?v=202610041324';
+import { TANK, RAIN, AIR, RIPPLE } from '../../assets/js/world.js?v=202610041324';
 import { ok, between } from '../lib/assert.mjs';
 
 /** 波紋を受け取って記録するだけの偽物 */
@@ -35,7 +35,7 @@ export default {
     g.rain = 1;
     run(g, 4);
     // 26 粒が 0.3 秒ほどで 1 周するので、4 秒なら数百回
-    const rainDrops = rip.drops.filter((d) => Math.abs(d.amp - 0.0011) < 1e-9);
+    const rainDrops = rip.drops.filter((d) => Math.abs(d.amp - RIPPLE.rain) < 1e-9);
     ok(rainDrops.length > 100, `4 秒で波紋が ${rainDrops.length} 回しか立たない`);
   },
 
@@ -46,7 +46,7 @@ export default {
     g.start();
     g.rain = 1;
     run(g, 4);
-    const rainDrops = rip.drops.filter((d) => Math.abs(d.amp - 0.0011) < 1e-9);
+    const rainDrops = rip.drops.filter((d) => Math.abs(d.amp - RIPPLE.rain) < 1e-9);
     ok(spread(rainDrops) > 80,
        `雨粒が ${spread(rainDrops)} 通りの場所にしか落ちない。同じ所に落ち続けている`);
     for (const d of rainDrops) {
@@ -62,7 +62,7 @@ export default {
     g.start();
     g.rain = 0;
     run(g, 3);
-    const rainDrops = rip.drops.filter((d) => Math.abs(d.amp - 0.0011) < 1e-9);
+    const rainDrops = rip.drops.filter((d) => Math.abs(d.amp - RIPPLE.rain) < 1e-9);
     ok(rainDrops.length === 0, `晴れているのに雨の波紋が ${rainDrops.length} 回立った`);
   },
 
@@ -72,8 +72,8 @@ export default {
     g.ripple = rip;
     g.start();
     run(g, 3);
-    // 泡の波紋は振幅 0.0009 で、エアストーンの近くにだけ落ちる
-    const air = rip.drops.filter((d) => Math.abs(d.amp - 0.0009) < 1e-9);
+    // 泡の波紋はエアストーンの近くにだけ落ちる
+    const air = rip.drops.filter((d) => Math.abs(d.amp - RIPPLE.bubble) < 1e-9);
     ok(air.length > 50, `3 秒で泡の波紋が ${air.length} 回しか立たない`);
     for (const d of air) {
       ok(Math.hypot(d.x - AIR.stone[0], d.z - AIR.stone[2]) < 0.05,
@@ -89,8 +89,8 @@ export default {
     g.start();
     g.rain = 1;
     run(g, 2);
-    const air = rip.drops.filter((d) => Math.abs(d.amp - 0.0009) < 1e-9)[0];
-    const rain = rip.drops.filter((d) => Math.abs(d.amp - 0.0011) < 1e-9)[0];
+    const air = rip.drops.filter((d) => Math.abs(d.amp - RIPPLE.bubble) < 1e-9)[0];
+    const rain = rip.drops.filter((d) => Math.abs(d.amp - RIPPLE.rain) < 1e-9)[0];
     ok(air && rain, '泡か雨の波紋が立っていない');
     ok(air.amp < rain.amp, '泡の波紋が雨粒より強い');
     ok(air.amp > rain.amp * 0.4, '泡の波紋が雨粒に比べて弱すぎる。見えない');

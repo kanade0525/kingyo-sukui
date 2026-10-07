@@ -1,6 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
 
-import { t } from './i18n.js?v=202610062214';
+import { t } from './i18n.js?v=202610070049';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -17,7 +17,8 @@ export class UI {
       btnTakeHome: $('btnTakeHome'), btnHome: $('btnHome'), btnStall: $('btnStall'), btnLamp: $('btnLamp'),
       homebar: $('homebar'), homeCount: $('homeCount'), toast: $('toast'),
       viewpad: $('viewpad'),
-      btnWx: $('btnWx'), wxMark: $('wxMark'),
+      wxPick: $('wxPick'), daystrip: $('daystrip'),
+      tickLantern: $('tickLantern'), tickClose: $('tickClose'),
       btnClock: $('btnClock'), timebar: $('timebar'),
       timeRange: $('timeRange'), timeNow: $('timeNow'),
       btnZoomIn: $('btnZoomIn'), btnZoomOut: $('btnZoomOut'), btnViewReset: $('btnViewReset'),
@@ -42,12 +43,13 @@ export class UI {
     //
     // 設定は開発用の覗き窓なので、いずれ畳む。遊ぶ人が触りたいのは
     // 音の入切と、この二つだけ。下の並びに出しておく。
-    this.el.btnWx.addEventListener('click', () => {
-      // 晴れ → 曇り → 雨 → 現在地 の順に回す
-      const next = this.wxShown === null ? 0
-                 : this.wxShown >= 2 ? null : this.wxShown + 1;
-      if (next === null) handlers.now(); else handlers.weather(next);
-    });
+    // 回すボタンだと、押すまで何が起きるか分からない。四つ並べる
+    for (const b of this.el.wxPick.querySelectorAll('button')) {
+      b.addEventListener('click', () => {
+        if (b.dataset.w === 'auto') handlers.now();
+        else handlers.weather(Number(b.dataset.w));
+      });
+    }
 
     this.el.btnClock.addEventListener('click', () => {
       const open = this.el.timebar.hidden;
@@ -188,6 +190,19 @@ export class UI {
     this.showTime(h);
   }
 
+  /**
+   * 時刻の帯に、その日の空の色と、提灯・店じまいの印を敷く。
+   *
+   * つまみだけだと、どこが昼でどこが夜か動かすまで分からない。
+   * stops は 0 時から 24 時までの色、marks は印を打つ時刻。
+   */
+  setDayStrip(stops, marks) {
+    const g = stops.map((c, i) => `${c} ${(i / (stops.length - 1) * 100).toFixed(1)}%`);
+    this.el.daystrip.style.background = `linear-gradient(90deg, ${g.join(', ')})`;
+    this.el.tickLantern.style.left = `${(marks.lantern / 24) * 100}%`;
+    this.el.tickClose.style.left = `${(marks.close / 24) * 100}%`;
+  }
+
   /** 下の帯の時刻表示。00:00 の形で書く */
   showTime(h) {
     const m = Math.round((h % 1) * 60);
@@ -205,8 +220,10 @@ export class UI {
     // 下の並びの札。手で決めているあいだはその天気、
     // 現在地に任せているあいだは「今」と出す
     this.wxShown = auto ? null : w;
-    this.el.wxMark.textContent = auto ? t('wxMarkAuto')
-      : w === 0 ? t('wxMarkClear') : w === 1 ? t('wxMarkCloudy') : t('wxMarkRain');
+    for (const b of this.el.wxPick.querySelectorAll('button')) {
+      const on = b.dataset.w === 'auto' ? auto : (!auto && Number(b.dataset.w) === w);
+      b.setAttribute('aria-pressed', String(on));
+    }
   }
 
   /**

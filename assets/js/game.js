@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610062214';
-import { Poi } from './poi.js?v=202610062214';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN } from './world.js?v=202610062214';
+import { School } from './fish.js?v=202610070049';
+import { Poi } from './poi.js?v=202610070049';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN, RIPPLE } from './world.js?v=202610070049';
 
 /** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
 const h11 = (x) => {
@@ -145,7 +145,7 @@ export class Game {
         // なでても水面に何も起きていないように見えていた。
         // 指は紙より小さいが、水を押しのける深さはむしろ深い。
         // ポイと同じくらいまで上げる
-        this.ripple.drop(x, z, 0.034, -0.0048 - Math.min(d, 0.05) * 0.20);
+        this.ripple.drop(x, z, 0.034, RIPPLE.poiSink - Math.min(d, 0.05) * 0.20);
         this.lastTouch = [x, z];
       } else {
         this.lastTouch = null;
@@ -179,7 +179,7 @@ export class Game {
       this.showUntil = 0;
       poi.locked = false;
       this.renewAt = this.time + 1.3;
-      this.ripple.drop(poi.x, poi.z, POI.radius * 1.6, -0.0030);
+      this.ripple.drop(poi.x, poi.z, POI.radius * 1.6, RIPPLE.poi);
     }
     if (this.renewAt !== undefined && this.time >= this.renewAt) {
       this.renewAt = undefined;
@@ -313,7 +313,7 @@ export class Game {
         d.t -= Math.floor(d.t);
         // 波紋は格子（4mm 刻み）より十分大きく取る。小さいと波が
         // 格子の縦横にしか進めず、輪ではなく菱形に広がる
-        this.ripple.drop(d.x, d.z, 0.013 + d.w * 0.007, 0.0011);
+        this.ripple.drop(d.x, d.z, 0.013 + d.w * 0.007, RIPPLE.rain);
         this.sound?.raindrop();
         this.#reseedDrop(d);
       }
@@ -331,15 +331,12 @@ export class Game {
       // 出口は石の長さ（30mm）ぶんに散らす。1 点を叩き続けると、
       // 波が干渉して花のような定在模様が立ったまま残る。
       //
-      // 1 粒ぶんを 0.00022 にしていた。雨粒の 1/5、ポイの 1/20 で、
-      // 泡が弾けても水面に何も起きていないように見えていた。
-      // 0.00090 にすると、石の上から輪が広がるのが分かる。
-      // 22 秒まわして、定在模様が立たないことは確かめた
+      // 22 秒まわして、定在模様が立たないことは確かめてある
       this.ripple.drop(
         AIR.stone[0] + (r1 - 0.5) * 0.044,
         AIR.stone[2] + (r3 - 0.5) * 0.030,
         0.013 + r3 * 0.007,
-        0.00090,
+        RIPPLE.bubble,
       );
     }
   }
@@ -398,7 +395,7 @@ export class Game {
     for (const f of this.bowl) f.leaveAt = this.time;
     this.leaving.push(...this.bowl);
     this.bowl.length = 0;
-    if (this.ripple) this.ripple.drop(BOWL.pos[0], BOWL.pos[2], BOWL.innerR * 1.2, -0.0036);
+    if (this.ripple) this.ripple.drop(BOWL.pos[0], BOWL.pos[2], BOWL.innerR * 1.2, RIPPLE.bowl);
     this.poi.splash = 1.0;
     this.poi.splashAt = [BOWL.pos[0], BOWL.pos[2]];
     this.poi.splashIn = false;
