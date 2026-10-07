@@ -4,7 +4,7 @@
 // 舟のきわの濡れ」に 130 行を割いた縁日専用のシェーダで、家には使えない。
 // 代わりに、材質の道具（NOISE / MATERIAL / SKYLIB / AMBIENT）は全部使い回す。
 
-import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610070209';
+import { HEAD, NOISE, SKYLIB, MATERIAL, AMBIENT } from './common.js?v=202610070355';
 
 /**
  * 縁側。
@@ -302,6 +302,66 @@ float hitClump(vec3 ro, vec3 rd, vec3 c, vec3 rad, out vec3 nn, out float up){
   nn = normalize(v / rad);
   up = clamp(v.y * 0.5 + 0.5, 0.0, 1.0);
   return t;
+}
+
+/**
+ * 蚊取り線香の渦。芯までの距離を返す（負なら線香の中）。
+ *
+ * 渦は「1 周するごとに PITCH だけ外へ出る」螺旋。
+ * ある点のいちばん近い巻きまでの距離は、
+ * 半径から角度ぶんを引いて PITCH で割った余りから出せる。
+ */
+float coilDist(vec3 p, vec3 c){
+  const float PITCH = 0.0068;   // 線香 3.4mm ＋ 隙間 3.4mm
+  const float THICK = 0.0019;   // 線香の太さの半分
+  vec2 q = p.xz - c.xz;
+  float r = length(q);
+  if(r < 0.0105 || r > 0.0615) return 1.0;
+  float a = atan(q.y, q.x) / 6.2831853;      // -0.5 … 0.5
+  float k = (r / PITCH) - a;
+  float dr = (fract(k + 0.5) - 0.5) * PITCH; // いちばん近い巻きまでの横の距離
+  float dy = p.y - (c.y + THICK);
+  return length(vec2(dr, dy)) - THICK;
+}
+
+/**
+ * 渦に当たる所を探す。
+ *
+ * 皿に渦の模様を描くだけでは、丸い板に絵を刷ったようにしか見えない。
+ * 線香は立っている物なので、薄い層の中を光線で進めて当たりを取る。
+ */
+float coilHit(vec3 ro, vec3 rd, vec3 c, out vec3 nn){
+  nn = vec3(0.0, 1.0, 0.0);
+  const float THICK = 0.0019;
+  float y0 = c.y - 0.0004, y1 = c.y + THICK * 2.0 + 0.0004;
+  if(abs(rd.y) < 1e-5) return -1.0;
+  float ta = (y0 - ro.y) / rd.y, tb = (y1 - ro.y) / rd.y;
+  float t0 = max(min(ta, tb), 0.0), t1 = max(ta, tb);
+  if(t1 <= t0) return -1.0;
+  t1 = min(t1, t0 + 0.30);
+  float step_ = (t1 - t0) / 48.0;
+  float prev = 1.0;
+  for(int i = 0; i < 48; i++){
+    float t = t0 + step_ * float(i);
+    float dd = coilDist(ro + rd * t, c);
+    if(dd < 0.0){
+      // 半分ずつ詰めて境目を出す
+      float lo = t - step_, hi = t;
+      for(int k = 0; k < 5; k++){
+        float m = (lo + hi) * 0.5;
+        if(coilDist(ro + rd * m, c) < 0.0) hi = m; else lo = m;
+      }
+      vec3 p = ro + rd * hi;
+      float e = 0.0004;
+      nn = normalize(vec3(
+        coilDist(p + vec3(e, 0.0, 0.0), c) - coilDist(p - vec3(e, 0.0, 0.0), c),
+        coilDist(p + vec3(0.0, e, 0.0), c) - coilDist(p - vec3(0.0, e, 0.0), c),
+        coilDist(p + vec3(0.0, 0.0, e), c) - coilDist(p - vec3(0.0, 0.0, e), c)));
+      return hi;
+    }
+    prev = dd;
+  }
+  return -1.0;
 }
 
 /** 鉢の落とす影 */
@@ -935,49 +995,54 @@ void main(){
     }
   }
 
-  // ---- 蚊遣り。線香皿に渦巻を一本。
+  // ---- 蚊遣り。線香皿に、深緑の渦を一本 ----
   //
-  // はじめは板に貼った絵で出したが、平らな丸にしか見えなかった。
-  // 次に陶器の豚で作ったが、軸に沿った楕円体と棒だけでは
-  // どう組んでも豚に見えず、煙の穴は目玉に見えた。
-  // 作れない形を無理に置くより、作れる形をきちんと置く。
-  // 線香皿なら浅い丸皿で、見間違えようがない ----
+  // 皿に渦を刷った絵では、厚い円盤に模様が付いているだけだった。
+  // 線香は太さ 3.4mm の棒を巻いた立体で、色は深緑。
+  // 先から燃えて、燃えたところは白い灰になって崩れずに残る。
   {
     vec3 base = vec3(uKayari.x, uFloorY, uKayari.y);
-    float R = 0.085;          // 直径 17cm の皿
-    float H = 0.016;
     vec3 nn;
-    float t = hitCyl(uCam, d, base, R, H, nn);
+    // 皿。16mm も厚く取っていたので、まな板の切れ端に見えた。
+    // 線香皿はごく薄い
+    float t = hitCyl(uCam, d, base, 0.078, 0.005, nn);
     if(t > 0.0 && t < depth){
       vec3 p = uCam + d * t;
       vec2 q = p.xz - base.xz;
-      float dish = length(q);
-      // 焼き締めの陶器。土の肌が残る
-      vec3 clay = mix(vec3(0.112, 0.092, 0.076), vec3(0.168, 0.142, 0.118),
-                      fbm(q * 120.0 + p.y * 40.0));
-      if(nn.y > 0.5){
-        // 天面。縁が立ち上がって、中が窪んでいる
-        float rim = smoothstep(0.070, 0.082, dish);
-        clay *= 1.0 - (1.0 - rim) * 0.30;
-        // 渦巻。直径 12cm に 10 巻き前後。幅 3mm で同じだけ間を空ける
-        float ang = atan(q.y, q.x);
-        float spiral = fract(dish * 160.0 - ang / 6.2831853);
-        float coil = smoothstep(0.62, 0.40, abs(spiral - 0.5) * 2.0)
-                   * smoothstep(0.061, 0.057, dish) * smoothstep(0.008, 0.012, dish);
-        // 先だけ燃えて、そこまでは白い灰が残る
-        float burn = smoothstep(0.058, 0.052, dish);
-        vec3 incense = mix(vec3(0.235, 0.228, 0.218), vec3(0.102, 0.072, 0.046), burn);
-        clay = mix(clay, incense, coil);
-      }
+      // 皿は黒い陶器。線香との明暗差が無いと、渦の隙間が埋まって
+      // 緑の円盤にしか見えない
+      vec3 clay = mix(vec3(0.024, 0.021, 0.019), vec3(0.046, 0.041, 0.036),
+                      fbm(q * 130.0 + p.y * 40.0));
+      // 落ちた灰が薄く積もる
+      clay = mix(clay, vec3(0.120, 0.116, 0.110),
+                 smoothstep(0.42, 0.80, fbm(q * 90.0 + 4.0))
+               * smoothstep(0.066, 0.050, length(q)) * 0.35);
       col = clay * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.0 + skyAmbient(nn) * 1.2
                   + lanternAmbient(p) * 0.5 + nightGlow())
-          + ggx(nn, -d, uSunDir, 0.34, vec3(0.035)) * uSunColor * PI * 0.3;
+          + ggx(nn, -d, uSunDir, 0.40, vec3(0.030)) * uSunColor * PI * 0.25;
       depth = t;
-      // 火。渦の外端で赤く熾る
-      vec2 tip = base.xz + vec2(0.0585, 0.0);
-      if(nn.y > 0.5){
-        col += vec3(0.95, 0.30, 0.06) * smoothstep(0.006, 0.0, length(q - vec2(0.0585, 0.0))) * 1.8;
-      }
+    }
+    // 渦。皿の上に立っている
+    float tc = coilHit(uCam, d, base + vec3(0.0, 0.005, 0.0), nn);
+    if(tc > 0.0 && tc < depth){
+      vec3 p = uCam + d * tc;
+      vec2 q2 = p.xz - base.xz;
+      float r = length(q2);
+      // 何巻き目か。
+      //
+      // 半径で灰を切ると、渦が輪切りの点線になる。
+      // 線香が燃えるのは外の端から渦に沿ってなので、
+      // 巻き数で測らないと「燃えかけ」にならない
+      float turn = r / 0.0068 - atan(q2.y, q2.x) / 6.2831853;
+      const float BURN = 8.15;          // ここまで燃えた
+      float ash = smoothstep(BURN - 0.10, BURN + 0.10, turn);
+      vec3 green = vec3(0.058, 0.112, 0.042) * (0.82 + 0.36 * fbm(p.xz * 420.0));
+      vec3 c2 = mix(green, vec3(0.215, 0.208, 0.198), ash);
+      col = c2 * (uSunColor * max(dot(nn, uSunDir), 0.0) * 1.1 + skyAmbient(nn) * 1.25
+                + lanternAmbient(p) * 0.5 + nightGlow());
+      // 熾火。燃えている先だけ赤い
+      col += vec3(1.0, 0.32, 0.06) * smoothstep(0.16, 0.0, abs(turn - BURN)) * 1.5;
+      depth = tc;
     }
   }
 
