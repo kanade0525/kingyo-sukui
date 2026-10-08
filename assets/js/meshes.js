@@ -4,8 +4,8 @@
 // 形は頂点シェーダで作る。泳ぎのうねりを毎フレーム CPU で計算して
 // 転送するのは無駄で、しかも法線を作り直す手間が増えるため。
 
-import { Mesh } from './glx.js?v=202610070613';
-import { TANK, POI, BOWL, AIR, JAR, BED, ANACHARIS, jarRadius } from './world.js?v=202610070613';
+import { Mesh } from './glx.js?v=202610080114';
+import { TANK, POI, BOWL, AIR, JAR, BED, ANACHARIS, jarRadius } from './world.js?v=202610080114';
 
 /** 位置・法線・領域の 3 属性を貯めて Mesh にする小さな入れ物。 */
 class Builder {
@@ -325,12 +325,20 @@ export function poiMesh(gl) {
  * 金魚を入れ、最後に水面を重ねたいため。
  */
 export function bowlMesh(gl) {
-  const { outerR, innerR, rimY, waterY, floorY } = BOWL;
+  const { outerR, innerR, wall, floorWall, rimY, waterY, floorY } = BOWL;
   const x = 0, z = 0;   // 置き場所は uBowlPos で動かす
   const SEG = 40;
   const body = new Builder();
   // 浮いているので、外側は底で丸く閉じる。地面までは伸ばさない
-  const ground = floorY - 0.009;
+  const ground = floorY - floorWall;
+  // 外側の輪郭。外底 → 胴の張り → 縁
+  const footR = outerR * 0.52;
+  const bellyR = outerR * 0.88, bellyY = floorY + 0.012;
+  // 内底の半径は、外側の輪郭から肉厚ぶん内へ寄せて出す。
+  // innerR の決め打ちで絞っていたので、肉厚を薄くすると
+  // 内底が外底より外へ出てしまう
+  const outerAtFloor = footR + (bellyR - footR) * ((floorY - ground) / (bellyY - ground));
+  const innerFootR = Math.max(outerAtFloor - wall, 0.012);
 
   const ring = (r0, y0, r1, y1, region, nOut) => {
     const base = body.pos.length / 3;
@@ -352,8 +360,8 @@ export function bowlMesh(gl) {
   };
 
   // 外側（下すぼまり）、縁の上面、内側、底
-  ring(outerR * 0.52, ground, outerR * 0.88, floorY + 0.012, 4, 1);
-  ring(outerR * 0.88, floorY + 0.012, outerR, rimY, 4, 1);
+  ring(footR, ground, bellyR, bellyY, 4, 1);
+  ring(bellyR, bellyY, outerR, rimY, 4, 1);
   // 外底のふた
   {
     const c = body.pos.length / 3;
@@ -361,19 +369,19 @@ export function bowlMesh(gl) {
     const b0 = body.pos.length / 3;
     for (let j = 0; j <= SEG; j++) {
       const a = (j / SEG) * Math.PI * 2;
-      body.pos.push(x + Math.cos(a) * outerR * 0.52, ground, z + Math.sin(a) * outerR * 0.52);
+      body.pos.push(x + Math.cos(a) * footR, ground, z + Math.sin(a) * footR);
       body.nrm.push(0, -1, 0); body.reg.push(4);
     }
     for (let j = 0; j < SEG; j++) body.idx.push(c, b0 + j, b0 + j + 1);
   }
   ring(outerR, rimY, innerR, rimY, 4, 0);
-  ring(innerR, rimY, innerR * 0.78, floorY, 5, -1);
+  ring(innerR, rimY, innerFootR, floorY, 5, -1);
 
   const base = body.pos.length / 3;
   body.pos.push(x, floorY, z); body.nrm.push(0, 1, 0); body.reg.push(5);
   for (let j = 0; j <= SEG; j++) {
     const a = (j / SEG) * Math.PI * 2;
-    body.pos.push(x + Math.cos(a) * innerR * 0.78, floorY, z + Math.sin(a) * innerR * 0.78);
+    body.pos.push(x + Math.cos(a) * innerFootR, floorY, z + Math.sin(a) * innerFootR);
     body.nrm.push(0, 1, 0); body.reg.push(5);
   }
   for (let j = 0; j < SEG; j++) body.idx.push(base, base + 1 + j + 1, base + 1 + j);

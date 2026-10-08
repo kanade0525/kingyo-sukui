@@ -8,9 +8,9 @@
 //   1. 上がっていくポイの上にいる金魚を「乗った」状態にする
 //   2. ポイが水面より上に出きった時、まだ乗っていれば成功
 
-import { School } from './fish.js?v=202610070613';
-import { Poi } from './poi.js?v=202610070613';
-import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN, RIPPLE } from './world.js?v=202610070613';
+import { School } from './fish.js?v=202610080114';
+import { Poi } from './poi.js?v=202610080114';
+import { TANK, POI, BOWL, FISH_KINDS, TURTLE, MAX_BOWL, AIR, RAIN, RIPPLE } from './world.js?v=202610080114';
 
 /** props.js の頂点シェーダと同じハッシュ。粒の位置と速さを一致させる。 */
 const h11 = (x) => {
@@ -206,14 +206,28 @@ export class Game {
     // 掬わせない代わりに「器がいっぱい」と知らせる
     if (poi.vy > 0.001 && poi.y < 0.015 && !poi.broke && poi.health > 0.02
         && this.bowl.length < MAX_BOWL) {
-      const reach = POI.radius * 1.35 * Math.sqrt(poi.health);
+      // 紙の外に居るものは乗らない。
+      //
+      // 紙の半径の 1.35 倍まで拾っていた。直径 78mm の紙に対して
+      // 直径 105mm の輪で拾うことになり、紙に触れてもいない金魚まで
+      // 乗っていた。縦の窓も 125mm あって、金魚の泳ぐ層（68mm）より
+      // 広かったので、ポイを上げる間に層ぜんぶを拾っていた
+      const reach = POI.radius * Math.sqrt(poi.health);
+      // 紙に乗る量には限りがある。重なったぶんは滑って落ちる
+      let used = this.held.reduce((s, f) => s + f.len * f.len * 0.32, 0);
       for (const f of this.school.list) {
         if (f.held || f.gone) continue;
+        const foot = f.len * f.len * 0.32;
+        if (used + foot > POI.hold) continue;
         const d = Math.hypot(f.p[0] - poi.x, f.p[2] - poi.z);
         const above = f.p[1] - poi.y;
-        if (d < reach && above > -0.030 && above < 0.095) {
+        // 下側に余裕を取るのは、上がってくる紙が金魚より速いから。
+        // 紙が通り抜けるとき金魚は紙の下に来るが、実物ではそこで
+        // 掬い上げられる。上側は、紙から浮いている金魚を拾わない幅
+        if (d < reach - f.len * 0.10 && above > -0.030 && above < 0.045) {
           f.held = true;
           this.held.push(f);
+          used += foot;
         }
       }
     }
@@ -349,7 +363,7 @@ export class Game {
       len: f.len,
       seed: f.seed,
       a: Math.random() * Math.PI * 2,
-      r: BOWL.innerR * (0.30 + Math.random() * 0.34),
+      r: BOWL.swimR * (0.47 + Math.random() * 0.53),
       spin: (Math.random() > 0.5 ? 1 : -1) * (0.8 + Math.random() * 0.9),
       phase: Math.random() * 10,
       beat: 9 + Math.random() * 4,

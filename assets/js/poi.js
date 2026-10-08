@@ -4,8 +4,8 @@
 // 水中で速く動かしたときの方が一気に傷む。斜めに入れて静かに抜くのが
 // 上手い人のやり方なので、ゲームとしてもそこに報いる。
 
-import { TANK, POI } from './world.js?v=202610070613';
-import { clamp, lerp } from './mat.js?v=202610070613';
+import { TANK, POI } from './world.js?v=202610080114';
+import { clamp, lerp } from './mat.js?v=202610080114';
 
 export class Poi {
   constructor() {
@@ -107,9 +107,20 @@ export class Poi {
     //
     // 丁寧に動かせば 40 秒近くもち、水中で振り回せば 8 秒ほどで破れる。
     // 実物の 5 号より優しいが、初見の人が数十秒で終わらない程度にはしてある。
-    if (this.submerged && !this.broke) {
-      const drag = Math.min(this.speed, 0.55);
-      this.health -= dt * (0.012 + drag * 0.30 + load * 0.022);
+    //
+    // 重さで破れるほうを「沈んでいる間だけ」で書いていた。
+    // 水の中の金魚は浮力でほとんど重さが無いので、これは
+    // 「何匹乗せても、持ち上げたあとは絶対に破れない」という意味になる。
+    // 実物が破れるのは、水から出して全部の重さが紙に乗った瞬間。
+    // 器へ移すまでの一拍を持ちこたえられるかが、この遊びの山場になる。
+    //
+    // 濡れていない紙は強い。乾くほど重さに耐える
+    if (!this.broke) {
+      const wetness = 0.35 + 0.65 * this.wet;
+      const borne = load * (this.submerged ? 0.030 : 0.310) * wetness;
+      const drag = this.submerged ? Math.min(this.speed, 0.55) : 0;
+      const soak = this.submerged ? 0.012 : 0;
+      this.health -= dt * (soak + drag * 0.30 + borne);
       if (this.health <= 0) { this.health = 0; this.broke = true; }
     }
   }

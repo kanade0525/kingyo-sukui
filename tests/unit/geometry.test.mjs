@@ -85,6 +85,17 @@ export default {
     }
   },
 
+  '器の肉厚が実物の目安に収まる': () => {
+    // 11mm で作っていた。直径 15cm の器に 1cm の縁は擂鉢の厚みで、
+    // 縁日のお椀ではない。実物は低発泡ポリスチレンの成形品
+    // （直径 160×高さ 68mm）で、肉厚は 2〜3mm
+    near(BOWL.outerR - BOWL.innerR, BOWL.wall, 1e-9, '内径と外径が肉厚と合わない');
+    between(BOWL.wall, 0.0015, 0.0040, '器の肉厚');
+    between(BOWL.floorWall, 0.0020, 0.0050, '器の底の肉厚');
+    // 金魚の回る輪は、底の狭まったところより内側でなければ壁を抜ける
+    ok(BOWL.swimR < BOWL.innerR, '金魚の回る輪が内壁より外');
+  },
+
   '器が舟の内側に収まる': () => {
     for (const [pitch, pname] of PITCHES) {
       for (const [portrait, vname] of VIEWS) {

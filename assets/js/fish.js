@@ -4,8 +4,8 @@
 // 整列させるより、それぞれが勝手に漂って壁で向きを変えるほうが
 // 実際の金魚に近い動きになる。
 
-import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD, BOWL } from './world.js?v=202610070613';
-import { clamp, lerp, wrapAngle } from './mat.js?v=202610070613';
+import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD, BOWL } from './world.js?v=202610080114';
+import { clamp, lerp, wrapAngle } from './mat.js?v=202610080114';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -90,8 +90,12 @@ class Fish {
     // 沈んだポイには強く反応する。水の上にあるときも、影が差すぶん
     // 少しだけ嫌がる
     // 用心深い個体ほど、遠くから気づいて強く逃げる
-    const near = (poi.submerged ? 0.150 : 0.094) * this.wary;
-    const force = (poi.submerged ? 5.8 : 2.0) * this.wary;
+    // 逃げる距離（15cm）は、紙を直径 105mm の輪で判定していた頃に
+    // 合わせたもの。紙を実寸（78mm）に直すと、逃げ切った金魚は
+    // ちょうど判定の外に並ぶので、何度やっても一匹も乗らなくなる。
+    // 舟の金魚は締めて冷やしてあって動きが鈍い。実物に寄せて緩める
+    const near = (poi.submerged ? 0.070 : 0.050) * this.wary;
+    const force = (poi.submerged ? 2.1 : 1.0) * this.wary;
     if (Math.abs(poi.y - this.p[1]) < 0.16) {
       const ax = this.p[0] - poi.x, az = this.p[2] - poi.z;
       const d = Math.hypot(ax, az);
