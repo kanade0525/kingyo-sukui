@@ -4,16 +4,16 @@
 // 数秒ぶんの dt が一度に来ると、金魚が壁を突き抜けるため。
 // 短く切りすぎると、描画が重い機械でゲームだけ遅回しになる。
 
-import { Renderer } from './renderer.js?v=202610250537';
-import { Game } from './game.js?v=202610250537';
-import { UI } from './ui.js?v=202610250537';
-import { localHour, fetchWeather, sunFor, CLOSE_START } from './sky.js?v=202610250537';
-import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610250537';
-import { Sound, layerWants } from './sound.js?v=202610250537';
-import { POI } from './world.js?v=202610250537';
-import { nearestCity } from './place.js?v=202610250537';
-import { Home } from './home.js?v=202610250537';
-import { HOME, MAX_BOWL, ZOOM } from './world.js?v=202610250537';
+import { Renderer } from './renderer.js?v=202610250617';
+import { Game } from './game.js?v=202610250617';
+import { UI } from './ui.js?v=202610250617';
+import { localHour, fetchWeather, sunFor, CLOSE_START } from './sky.js?v=202610250617';
+import { applyI18n, t, WEATHER_LABEL } from './i18n.js?v=202610250617';
+import { Sound, layerWants } from './sound.js?v=202610250617';
+import { POI } from './world.js?v=202610250617';
+import { nearestCity } from './place.js?v=202610250617';
+import { Home } from './home.js?v=202610250617';
+import { HOME, MAX_BOWL, ZOOM } from './world.js?v=202610250617';
 
 // 言葉をいちばん先に差し替える。覆いの題字も見えてしまうので
 applyI18n();
@@ -57,6 +57,7 @@ const ui = new UI({
   soundSource(m) { sound.setSource(m); },
   now() { manualHour = false; manualWeather = false; applyNow(true); },
   takeHome() { takeHome(); },
+  release() { releaseHome(); },
   lamp(on) { renderer?.setLamp(on); },
   zoom(dir) { renderer?.zoomBy(dir > 0 ? ZOOM.step : 1 / ZOOM.step); },
   viewReset() { if (renderer) { renderer.zoom = 1; renderer.orbit = { x: 0, y: 0 }; } },
@@ -232,6 +233,14 @@ function takeHome() {
   ui.toast(t('tookHome', { n }));
   // 持ち帰ったら家へ移る。袋を提げて帰ったことになる
   setTimeout(() => { location.hash = '#home'; }, 900);
+}
+
+/** 鉢の金魚を手放す。二度押しの確かめは ui.js でしてある */
+function releaseHome() {
+  const n = home.list.length;
+  if (!n) return;
+  home.clear();                            // ここで保存する
+  ui.toast(t('released', { n }));
 }
 
 /** 画面を切り替える */

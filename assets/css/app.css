@@ -288,6 +288,9 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 }
 #btnHome:hover,#btnStall:hover{background-color:var(--kinari-2);color:var(--hi-soft)}
 
+/* 逃がす。一度押すと朱に変わり、もう一度で逃がす */
+#btnRelease.armed{background:var(--hi);background-image:none;color:var(--kinari);font-weight:700}
+
 /* 時刻のつまみ。下の並びのすぐ上に、細い帯で出す。
    設定（開発用の覗き窓）を開かなくても、天気と時刻だけは動かせるようにする */
 #timebar{
@@ -382,16 +385,20 @@ input[type=range]:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
 }
 
 /* 家の画面の札。右上の「いまの時刻と天気」と同じ形 */
-#homebar{
+#homeside{
   position:fixed;z-index:4;
   top:calc(12px + env(safe-area-inset-top,0px));
   left:calc(12px + env(safe-area-inset-left,0px));
+  display:flex;flex-direction:column;align-items:flex-start;gap:8px;
+}
+#homebar{
   padding:9px 14px;
   background:var(--kinari);background-image:var(--paper);
   border:1px solid var(--ink);box-shadow:var(--keisen),var(--kage);
   font-family:var(--disp);font-weight:var(--disp-w);font-size:13px;letter-spacing:.10em;color:var(--ink);
   font-variant-numeric:tabular-nums;pointer-events:none;
 }
+#btnRelease{padding:6px 12px;font-size:11px}
 
 /* 短い知らせ。画面の真ん中の下寄りに出て、数秒で消える */
 #toast{

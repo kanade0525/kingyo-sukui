@@ -1,6 +1,6 @@
 // 画面の文字まわり。DOM を触るのはこのファイルだけにする。
 
-import { t } from './i18n.js?v=202610250537';
+import { t } from './i18n.js?v=202610250617';
 //
 // innerHTML は使わない。数字は textContent で差し替えるだけなので、
 // そのほうが速いし、文字列の組み立てで事故らない。
@@ -15,6 +15,7 @@ export class UI {
       panel: $('panel'), btnPanel: $('btnPanel'),
       fallback: $('fallback'), fallbackWhy: $('fallbackWhy'),
       btnTakeHome: $('btnTakeHome'), btnHome: $('btnHome'), btnStall: $('btnStall'), btnLamp: $('btnLamp'),
+      btnRelease: $('btnRelease'),
       homebar: $('homebar'), homeCount: $('homeCount'), toast: $('toast'),
       viewpad: $('viewpad'),
       wxPick: $('wxPick'), daystrip: $('daystrip'),
@@ -32,6 +33,22 @@ export class UI {
     window.addEventListener('orientationchange', () => setTimeout(refit, 250));
 
     this.el.btnTakeHome.addEventListener('click', () => handlers.takeHome());
+
+    // 逃がす。鉢の金魚は端末にしか残っていないので、消したら戻せない。
+    // 一度目は札を「もう一度押すと逃がします」に変えるだけにして、
+    // 続けて押したときだけ逃がす。少し置くと元に戻る
+    this.el.btnRelease.addEventListener('click', () => {
+      if (!this.releaseArmed) {
+        this.releaseArmed = true;
+        this.el.btnRelease.textContent = t('releaseConfirm');
+        this.el.btnRelease.classList.add('armed');
+        clearTimeout(this.releaseTimer);
+        this.releaseTimer = setTimeout(() => this.#disarmRelease(), 3500);
+        return;
+      }
+      this.#disarmRelease();
+      handlers.release();
+    });
 
     // 寄りと向き。押すたび一段ずつ動かす。
     // なぞる・つまむだけだと、触れると分かる手掛かりが画面に無い
@@ -277,6 +294,7 @@ export class UI {
     this.el.viewpad.hidden = !home;
     if (home) this.el.btnTakeHome.hidden = true;
     if (!home) { this.el.btnLamp.hidden = true; this.lampShown = false; }
+    if (!home) { this.el.btnRelease.hidden = true; this.#disarmRelease(); }
     // 水面の設定は家では効かない。「いまは鳴らない」の印と同じ考えで、
     // 動かしても何も起きないつまみを出しておかない
     for (const sec of this.#waterRows()) sec.hidden = home;
@@ -313,11 +331,25 @@ export class UI {
   }
 
   setHome(n, fit, full) {
+    // 逃がす札は、鉢に何かいるときだけ
+    const none = n === 0;
+    if (this.el.btnRelease.hidden !== none) {
+      this.el.btnRelease.hidden = none;
+      if (none) this.#disarmRelease();
+    }
     const text = n === 0 ? t('homeEmpty')
                : full ? `${t('homeCount', { n })}・${t('homeFull')}`
                : n > fit ? t('homeCrowded', { n, fit })
                : t('homeCount', { n });
     if (this.el.homeCount.textContent !== text) this.el.homeCount.textContent = text;
+  }
+
+  #disarmRelease() {
+    clearTimeout(this.releaseTimer);
+    if (!this.releaseArmed) return;
+    this.releaseArmed = false;
+    this.el.btnRelease.textContent = t('release');
+    this.el.btnRelease.classList.remove('armed');
   }
 
   /** 短い知らせ。数秒で消える */

@@ -313,6 +313,42 @@ export default {
     eq(await peek(page, 'bowl'), before, '満杯なのに器の数が変わった');
   }),
 
+  '「逃がす」は二度押しで鉢を空にし、保存からも消える': () => withPage({ hour: 13 }, async (page, errors) => {
+    await putInBowl(page, 3, 2);
+    await takeHome(page);
+    // 屋台では出ない札が、家で鉢に何かいるときは出る
+    await page.waitForFunction(() => !document.getElementById('btnRelease').hidden, null, { timeout: 20000 });
+    const click = () => page.evaluate(() => document.getElementById('btnRelease').click());
+
+    await click();
+    eq((await peek(page, 'home')).length, 3, '一度押しただけで逃げた');
+    ok(await page.evaluate(() => document.getElementById('btnRelease').classList.contains('armed')),
+       '一度押しても確かめの札にならない');
+
+    await click();
+    eq((await peek(page, 'home')).length, 0, '二度押しても鉢に残っている');
+    ok(JSON.parse(await peek(page, 'stored')).fish.length === 0, '保存に残っている');
+    await page.waitForFunction(() => document.getElementById('btnRelease').hidden, null, { timeout: 20000 });
+    eq(errors.length, 0, errors.slice(0, 3).join(' / '));
+  }),
+
+  '「逃がす」は一度押して置いておくと元に戻る': () => withPage({ hour: 13 }, async (page) => {
+    await putInBowl(page, 2);
+    await takeHome(page);
+    await page.waitForFunction(() => !document.getElementById('btnRelease').hidden, null, { timeout: 20000 });
+    await page.evaluate(() => document.getElementById('btnRelease').click());
+    await page.waitForTimeout(4200);
+    ok(!(await page.evaluate(() => document.getElementById('btnRelease').classList.contains('armed'))),
+       '置いておいても確かめの札のまま');
+    // 戻ったあとの一度押しは、また確かめから
+    await page.evaluate(() => document.getElementById('btnRelease').click());
+    eq((await peek(page, 'home')).length, 2, '時間を置いた一度押しで逃げた');
+  }),
+
+  '屋台では「逃がす」が出ない': () => withPage({ hour: 13 }, async (page) => {
+    ok(await page.evaluate(() => document.getElementById('btnRelease').hidden), '屋台で「逃がす」が出ている');
+  }),
+
   '縦画面でも鉢が収まる': () => withPage({
     viewport: { width: 390, height: 664 }, mobile: true, hour: 13,
   }, async (page, errors) => {

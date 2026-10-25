@@ -28,7 +28,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&display=swap">
-<link rel="stylesheet" href="assets/css/app.css?v=202610250537">
+<link rel="stylesheet" href="assets/css/app.css?v=202610250617">
 </head>
 <body>
 
@@ -94,8 +94,14 @@
 </div>
 
 <!-- 家の画面の札。鉢に何匹いるか。屋台では引っ込む -->
-<div id="homebar" hidden>
-  <div id="homeCount"></div>
+<div id="homeside">
+  <div id="homebar" hidden>
+    <div id="homeCount"></div>
+  </div>
+  <!-- 鉢の金魚を手放す。匹数の札のすぐ下に置く。
+       下の並びに入れると、縦画面で折り返して寄りのボタンに重なる。
+       消すと戻せないので、二度押しで逃がす -->
+  <button id="btnRelease" hidden data-t="release">逃がす</button>
 </div>
 
 <div id="panel" hidden>
@@ -196,6 +202,6 @@
 </div>
 
 
-<script type="module" src="assets/js/main.js?v=202610250537"></script>
+<script type="module" src="assets/js/main.js?v=202610250617"></script>
 </body>
 </html>
