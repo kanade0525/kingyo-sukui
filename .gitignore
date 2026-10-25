@@ -8,3 +8,7 @@ assets/sound/*.m4a
 # 試験のために入れるもの。本体は依存ゼロのまま
 node_modules/
 package-lock.json
+
+# 外部APIの鍵。絶対に載せない
+.env
+.env.*

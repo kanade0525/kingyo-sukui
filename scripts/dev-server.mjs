@@ -18,6 +18,7 @@ const TYPES = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.glb': 'model/gltf-binary',
 };
 
 const server = createServer(async (req, res) => {
