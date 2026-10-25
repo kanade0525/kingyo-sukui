@@ -9,37 +9,49 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610250617';
-import { VS_FULL } from '../shaders/common.js?v=202610250617';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610250617';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610250617';
-import { VS_FISHGLB, FS_FISHGLB } from '../shaders/fishglb.js?v=202610250617';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610250617';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610250617';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610250617';
-import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610250617';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610250617';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610250617';
-import { Ocean } from './ocean.js?v=202610250617';
-import { loadGlb } from './glb.js?v=202610250617';
-import { Ripple } from './ripple.js?v=202610250617';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610250711';
+import { VS_FULL } from '../shaders/common.js?v=202610250711';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610250711';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610250711';
+import { VS_FISHGLB, FS_FISHGLB } from '../shaders/fishglb.js?v=202610250711';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610250711';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610250711';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610250711';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610250711';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610250711';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610250711';
+import { Ocean } from './ocean.js?v=202610250711';
+import { loadGlb } from './glb.js?v=202610250711';
+import { Ripple } from './ripple.js?v=202610250711';
 import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202610250617';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610250617';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610250617';
+         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202610250711';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610250711';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610250711';
 
 /**
- * 和金の見本を、手描きの金魚と同じ体の座標へ置き直す。
+ * 立体の見本。どの種類をどの見本で描くか、と見本ごとの寸法。
+ *
+ * 寸法は見本を輪切りにして測った。bodyLen は鼻先から尾柄まで（見本の長さ 1 に対して）、
+ * midY は胴の芯の高さ。黒い種類は、見本の色を描くときに黒へ塗り替える。
+ * 更紗出目金は見本の赤のまま描く（見本に白い斑は無い）。
+ */
+const GLB_MODELS = [
+  { url: 'assets/models/wakin.glb', bodyLen: 0.76, midY: 0.23, kinds: [0, 1] },     // 小赤・小黒
+  { url: 'assets/models/demekin.glb', bodyLen: 0.65, midY: 0.40, kinds: [2, 3] },   // 黒出目金・更紗出目金
+];
+const BLACK_KINDS = [1, 2];
+
+/**
+ * 見本を、手描きの金魚と同じ体の座標へ置き直す。
  *
  * 見本は頭が -x、尾が +x で、長さ 1（鼻先から尾の先まで）、腹の下が y = 0。
  * 手描きの金魚は頭が +x で、鼻先が x = 0.5、尾柄が x = -0.345（体長 0.845）。
- * 見本の体長（鼻先から尾柄）は 0.76 なので、0.845 / 0.76 倍して体長を揃える。
- * 掬いの判定は体長で測っているので、ここが揃っていれば当たりも変わらない。
+ * 見本の体長を 0.845 に合わせる。掬いの判定は体長で測っているので、
+ * ここが揃っていれば当たりも変わらない。
  * x と z を両方裏返すと、y 軸まわりに半回転しただけで、面の表裏は変わらない。
  */
-function fitWakin(g) {
-  const K = 0.845 / 0.76;
-  const midY = 0.23;                 // 胴の芯の高さ
+const fitTo = ({ bodyLen, midY }) => (g) => {
+  const K = 0.845 / bodyLen;
   const x0 = g.min[0];
   for (let i = 0; i < g.pos.length; i += 3) {
     g.pos[i] = 0.5 - (g.pos[i] - x0) * K;
@@ -48,7 +60,7 @@ function fitWakin(g) {
     g.nrm[i] = -g.nrm[i];
     g.nrm[i + 2] = -g.nrm[i + 2];
   }
-}
+};
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
 const TANK_OUTER = [
@@ -799,53 +811,65 @@ export class Renderer {
   }
 
   /**
-   * 立体の見本（assets/models/wakin.glb）で和金を描く。手描きと見比べるための試し。
+   * 立体の見本（assets/models/*.glb）で金魚を描く。手描きと見比べるための試し。
    *
-   *   ?glb       小赤（和金）をすべて見本で描く
-   *   ?glb=half  小赤の半分だけ見本で描く。同じ舟の中で並べて比べられる
+   *   ?glb       見本のある種類をすべて見本で描く
+   *   ?glb=half  半分だけ見本で描く。同じ舟の中で並べて比べられる
    *
    * 付けなければ何も読まない。読み終わるまでは手描きのまま泳ぐ。
    */
   #initGlbFish(gl) {
     const mode = new URLSearchParams(location.search).get('glb');
     this.glbMode = mode;
-    this.glbQueue = [];
-    this.glbFish = null;
+    this.glbModels = GLB_MODELS.map((m) => ({ ...m, loaded: null, queue: [] }));
     if (mode === null) return;
     this.pFishGlb = new Program(gl, VS_FISHGLB, FS_FISHGLB, 'fishGlb');
-    loadGlb(gl, 'assets/models/wakin.glb', fitWakin)
-      .then((g) => { this.glbFish = g; })
-      .catch((e) => console.error('[glb]', e));
+    for (const m of this.glbModels) {
+      loadGlb(gl, m.url, fitTo(m))
+        .then((g) => { m.loaded = g; })
+        .catch((e) => console.error('[glb]', m.url, e));
+    }
   }
 
-  #usesGlb(f) {
-    if (!this.glbFish || f.kind !== 0) return false;
-    return this.glbMode !== 'half' || f.seed < 0.5;
+  /** この金魚を描く見本。無ければ null（手描きで描く） */
+  #glbFor(f) {
+    if (this.glbMode === null) return null;
+    if (this.glbMode === 'half' && f.seed >= 0.5) return null;
+    const m = this.glbModels.find((x) => x.kinds.includes(f.kind));
+    return m?.loaded ? m : null;
   }
 
-  /** #oneFish で後回しにした見本の金魚を、まとめて描く */
+  /** #oneFish で後回しにした見本の金魚を、見本ごとにまとめて描く */
   #flushGlb(time) {
-    if (!this.glbQueue.length) return;
+    if (!this.glbModels.some((m) => m.queue.length)) return;
     const p = this.pFishGlb.use();
     this.#lights(p);
     this.#water(p);
-    p.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time)
-     .tex('uTex', this.glbFish.tex);
-    for (const f of this.glbQueue) {
-      p.set('uPos', f.p)
-        .setFloat('uYaw', f.yaw)
-        .setFloat('uLen', f.len)
-        .setFloat('uPhase', f.phase)
-        .setFloat('uBeat', f.beat)
-        .setFloat('uBend', f.bend || 0);
-      this.glbFish.mesh.draw();
+    p.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
+    // テクスチャは見本ごとに替える。#lights と #water が使った後の番号に結ぶ
+    const unit = p.unit;
+    for (const m of this.glbModels) {
+      if (!m.queue.length) continue;
+      p.unit = unit;
+      p.tex('uTex', m.loaded.tex);
+      for (const f of m.queue) {
+        p.set('uPos', f.p)
+          .setFloat('uYaw', f.yaw)
+          .setFloat('uLen', f.len)
+          .setFloat('uPhase', f.phase)
+          .setFloat('uBeat', f.beat)
+          .setFloat('uBend', f.bend || 0)
+          .setInt('uBlack', BLACK_KINDS.includes(f.kind) ? 1 : 0);
+        m.loaded.mesh.draw();
+      }
+      m.queue.length = 0;
     }
-    this.glbQueue.length = 0;
   }
 
   #oneFish(p, f) {
     // 見本で描く金魚は別のプログラムなので、1 匹ずつ切り替えずに溜めておく
-    if (this.#usesGlb(f)) { this.glbQueue.push(f); return; }
+    const m = this.#glbFor(f);
+    if (m) { m.queue.push(f); return; }
     p.set('uPos', f.p)
       .setFloat('uYaw', f.yaw)
       .setFloat('uLen', f.len)

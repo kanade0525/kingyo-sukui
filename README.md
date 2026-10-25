@@ -165,7 +165,7 @@ MIT
 - [水と浮葉を操る庭](https://lab.s2forme.com/sui-making.html) / [植物と魚のアクアリウム](https://lab.s2forme.com/veil-making.html)（ソニアのAI研究所）— 「反射だけ強くすると根と魚が見えにくい。近くは水中が見え、浅い角度では周囲が映るバランスを探そう」
 - [Open-Meteo](https://open-meteo.com) — 現在地の天気
 - 音：[効果音ラボ](https://soundeffect-lab.info/)（蝉・風鈴・雨・虫）、[SHW](https://shw.in/sozai/)（祭囃子）
-- 和金の立体見本（`assets/models/wakin.glb`）：作者が [Tripo](https://www.tripo3d.ai/) で生成し、三角形と絵を縮めたもの（CC BY 4.0）。手描きの和金の寸法はこれを輪切りにして測った。`?glb` を付けると見本そのもので泳ぐ（`?glb=half` で半分だけ）
+- 金魚の立体見本（`assets/models/wakin.glb`・`demekin.glb`）：作者が [Tripo](https://www.tripo3d.ai/) で生成し、三角形と絵を縮めたもの（CC BY 4.0）。手描きの和金の寸法はこれを輪切りにして測った。`?glb` を付けると見本そのもので泳ぐ（`?glb=half` で半分だけ）。小黒と黒出目金は見本の色を黒に塗り替えている
 
 ---
 

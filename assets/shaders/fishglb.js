@@ -7,8 +7,8 @@
 // 見本は胴とひれが 1 枚につながった網なので、手描きの金魚のように
 // 尾の反りや胸びれの漕ぎを別々には動かせない。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610250617';
-import { SWIM } from './actors.js?v=202610250617';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202610250711';
+import { SWIM } from './actors.js?v=202610250711';
 
 export const VS_FISHGLB = `${HEAD}
 layout(location=0) in vec3 aPos;
@@ -58,6 +58,7 @@ in vec2 vUv;
 in float vDist;
 uniform vec3 uCam;
 uniform sampler2D uTex;
+uniform int uBlack;        // 1 = 小黒・黒出目金。見本の色を黒へ塗り替える
 out vec4 frag;
 
 void main(){
@@ -75,6 +76,14 @@ void main(){
   float hi = max(base.r, max(base.g, base.b)), lo = min(base.r, min(base.g, base.b));
   float fin = smoothstep(0.55, 0.25, (hi - lo) / max(hi, 1e-4));
 
+  // 黒い種類。見本は赤い金魚しか無いので、明るさの起伏だけ残して黒天鵞絨にする。
+  // 手描きの黒（0.034 前後）に合わせ、ひれは少し透けて明るい
+  if(uBlack == 1){
+    float lum = dot(base, vec3(0.30, 0.59, 0.11));
+    base = mix(vec3(0.030, 0.026, 0.034), vec3(0.080, 0.070, 0.090), smoothstep(0.08, 0.40, lum));
+    base = mix(base, base * 1.6, fin);
+  }
+
   vec3 caus = vec3(1.0);
   if(vW.y < -0.002){
     float below = -vW.y;
@@ -88,9 +97,11 @@ void main(){
 
   float up = N.y * 0.5 + 0.5;
   vec3 col = base * lit * (0.80 + 0.30 * up);
-  float gloss = 0.8 * (1.0 - fin);
+  // 照りは手描きと同じ。黒い体は照りが目立つので強め、金属の色は青みの銀
+  float gloss = (uBlack == 1 ? 1.4 : 0.8) * (1.0 - fin);
+  vec3 F0m = uBlack == 1 ? vec3(0.16, 0.15, 0.20) : vec3(0.50, 0.26, 0.07);
   col += ggx(N, V, underSunDir(), 0.24, vec3(0.035)) * uSunColor * gloss * PI;
-  col += ggx(N, V, underSunDir(), 0.34, vec3(0.50, 0.26, 0.07)) * uSunColor * PI * 0.22 * (1.0 - fin);
+  col += ggx(N, V, underSunDir(), 0.34, F0m) * uSunColor * PI * 0.22 * (1.0 - fin);
   col += base * pow(1.0 - ndv, 4.0) * 0.10 * lit;
 
   frag = vec4(col, vDist);
