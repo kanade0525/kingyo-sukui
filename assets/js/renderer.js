@@ -9,24 +9,24 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610250711';
-import { VS_FULL } from '../shaders/common.js?v=202610250711';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610250711';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610250711';
-import { VS_FISHGLB, FS_FISHGLB } from '../shaders/fishglb.js?v=202610250711';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610250711';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610250711';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610250711';
-import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610250711';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610250711';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610250711';
-import { Ocean } from './ocean.js?v=202610250711';
-import { loadGlb } from './glb.js?v=202610250711';
-import { Ripple } from './ripple.js?v=202610250711';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610260528';
+import { VS_FULL } from '../shaders/common.js?v=202610260528';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610260528';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610260528';
+import { VS_FISHGLB, FS_FISHGLB } from '../shaders/fishglb.js?v=202610260528';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610260528';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610260528';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610260528';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610260528';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610260528';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610260528';
+import { Ocean } from './ocean.js?v=202610260528';
+import { loadGlb } from './glb.js?v=202610260528';
+import { Ripple } from './ripple.js?v=202610260528';
 import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202610250711';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610250711';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610250711';
+         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202610260528';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610260528';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610260528';
 
 /**
  * 立体の見本。どの種類をどの見本で描くか、と見本ごとの寸法。
@@ -811,18 +811,18 @@ export class Renderer {
   }
 
   /**
-   * 立体の見本（assets/models/*.glb）で金魚を描く。手描きと見比べるための試し。
+   * 立体の見本（assets/models/*.glb）で金魚を描く。これが既定。
    *
-   *   ?glb       見本のある種類をすべて見本で描く
    *   ?glb=half  半分だけ見本で描く。同じ舟の中で並べて比べられる
+   *   ?glb=off   見本を読まず、すべて手描きで描く
    *
-   * 付けなければ何も読まない。読み終わるまでは手描きのまま泳ぐ。
+   * 読み終わるまでは手描きのまま泳ぐ。
    */
   #initGlbFish(gl) {
-    const mode = new URLSearchParams(location.search).get('glb');
-    this.glbMode = mode;
+    const mode = new URLSearchParams(location.search).get('glb') ?? '';
+    this.glbMode = mode === 'off' ? null : mode;
     this.glbModels = GLB_MODELS.map((m) => ({ ...m, loaded: null, queue: [] }));
-    if (mode === null) return;
+    if (this.glbMode === null) return;
     this.pFishGlb = new Program(gl, VS_FISHGLB, FS_FISHGLB, 'fishGlb');
     for (const m of this.glbModels) {
       loadGlb(gl, m.url, fitTo(m))
