@@ -345,6 +345,21 @@ export default {
     eq((await peek(page, 'home')).length, 2, '時間を置いた一度押しで逃げた');
   }),
 
+  'GPU が取り上げられても、読み込み直して鉢に戻る': () => withPage({ hour: 13 }, async (page) => {
+    await putInBowl(page, 2);
+    await takeHome(page);
+    // 重いコマが続くと、ブラウザは描く文脈を取り上げる。放っておくと真っ暗のまま止まる
+    await page.evaluate(() => {
+      window.__before = true;
+      const lose = window.__kingyo.renderer.gl.getExtension('WEBGL_lose_context');
+      lose.loseContext();
+      setTimeout(() => lose.restoreContext(), 300);
+    });
+    await page.waitForFunction(() => !window.__before && window.__kingyo?.renderer, null, { timeout: 90000 });
+    eq(await peek(page, 'view'), 'home', '読み込み直したら家から出てしまった');
+    eq((await peek(page, 'home')).length, 2, '読み込み直したら鉢の金魚が減った');
+  }),
+
   '屋台では「逃がす」が出ない': () => withPage({ hour: 13 }, async (page) => {
     ok(await page.evaluate(() => document.getElementById('btnRelease').hidden), '屋台で「逃がす」が出ている');
   }),

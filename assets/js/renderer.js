@@ -9,24 +9,24 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610260528';
-import { VS_FULL } from '../shaders/common.js?v=202610260528';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610260528';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610260528';
-import { VS_FISHGLB, FS_FISHGLB } from '../shaders/fishglb.js?v=202610260528';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610260528';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610260528';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610260528';
-import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610260528';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610260528';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610260528';
-import { Ocean } from './ocean.js?v=202610260528';
-import { loadGlb } from './glb.js?v=202610260528';
-import { Ripple } from './ripple.js?v=202610260528';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202610282159';
+import { VS_FULL } from '../shaders/common.js?v=202610282159';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202610282159';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202610282159';
+import { VS_FISHGLB, FS_FISHGLB } from '../shaders/fishglb.js?v=202610282159';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202610282159';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202610282159';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202610282159';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202610282159';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202610282159';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202610282159';
+import { Ocean } from './ocean.js?v=202610282159';
+import { loadGlb } from './glb.js?v=202610282159';
+import { Ripple } from './ripple.js?v=202610282159';
 import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202610260528';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610260528';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610260528';
+         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202610282159';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202610282159';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202610282159';
 
 /**
  * 立体の見本。どの種類をどの見本で描くか、と見本ごとの寸法。
@@ -244,6 +244,8 @@ export class Renderer {
       dofB: makeFbo(gl, [makeTex(gl, bw, bh, 'rgba16f', { filter: 'linear' })]),
       // 仕上げた 1 枚。FXAA はこれを読み直してならす
       ldr: makeFbo(gl, [makeTex(gl, w, h, 'rgba8', { filter: 'linear' })]),
+      // 家の部屋と縁側。縦横半分で描いて引き伸ばす（renderHome を参照）
+      room: makeFbo(gl, [makeTex(gl, Math.max(2, w >> 1), Math.max(2, h >> 1), 'rgba16f', { filter: 'linear' })]),
     };
     this.updateCamera();
   }
@@ -430,34 +432,42 @@ export class Renderer {
 
     gl.disable(gl.CULL_FACE);
 
+    // ---- 部屋と縁側 ----
+    //
+    // 庭は画素ごとに光線を飛ばす重い 1 枚で、家の画面の時間のほとんどを
+    // ここが食う。鉢の中身と本パスの 2 枚へ毎コマ描き直していたときは、
+    // 屋台の 4 倍重く（M1 で 1 コマ 60ms）カクついていた。
+    //
+    // 縦横半分の板へ 1 度だけ描き、本パスへ引き伸ばして写す。
+    // 鉢から先は被写界深度でぼかすので、半分でも粗さは見えない
+    const room = this.fbos.room;
+    bindFbo(gl, room);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    this.#drawRoom(time);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, room.fb);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.fbos.hdr.fb);
+    gl.blitFramebuffer(0, 0, room.w, room.h, 0, 0, this.w, this.h, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+
     // ---- 鉢の中身。ガラス越しに読み直すので、別の板へ描く ----
+    // ガラスの鉢は向こう側も透けているので、鉢越しに見えるのは
+    // 「水の向こうの部屋」になる。その部屋を本パスから写して敷く
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.fbos.hdr.fb);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.fbos.scene.fb);
+    gl.blitFramebuffer(0, 0, this.w, this.h, 0, 0, this.w, this.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     bindFbo(gl, this.fbos.scene);
     gl.depthMask(true);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
-    gl.disable(gl.BLEND);
-    gl.clearColor(0, 0, 0, 60);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    // まず部屋を敷く。ガラスの鉢は向こう側も透けているので、
-    // 鉢越しに見えるのは「水の向こうの部屋」になる
-    gl.disable(gl.DEPTH_TEST);
-    gl.depthMask(false);
-    this.#drawRoom(time);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthMask(true);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
     this.#jarPass(0, time);
     this.#homeFish(fish, time, 1);
 
     // ---- 本パス ----
+    // 部屋はもう敷いてあるので、深さだけ消す
     bindFbo(gl, this.fbos.hdr);
-    gl.depthMask(true);
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    // 部屋と縁側
-    gl.disable(gl.DEPTH_TEST);
-    gl.depthMask(false);
-    this.#drawRoom(time);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
 
     // ガラス。中身（別の板に描いてある）を屈折して読み直し、1 枚で仕上げる。
     //
