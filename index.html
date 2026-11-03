@@ -4,11 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>金魚掬い</title>
-<meta name="description" content="水面を Tessendorf の波スペクトルから GPU 上の FFT で毎フレーム逆変換している、WebGL2 の金魚掬い。A WebGL2 goldfish-scooping game whose water is solved every frame by an FFT on the GPU.">
+<meta name="description" content="ブラウザで遊べる金魚すくいゲーム。水面を Tessendorf の波スペクトルから GPU 上の FFT で毎フレーム逆変換している、WebGL2 の金魚掬い。A WebGL2 goldfish-scooping game whose water is solved every frame by an FFT on the GPU.">
 <meta name="theme-color" content="#e8e2d6">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="canonical" href="https://kanade0525.github.io/kingyo-sukui/">
+<!-- Google Search Console の所有権の確認。消すと確認が外れる -->
+<meta name="google-site-verification" content="nozWnHT6TPKx3d4G2QcykViepf8o8GaiqSTQLRxYrL8">
 <!-- 共有したときに出る絵と文。画像はこのアプリ自身を描画して書き出したもの -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="金魚掬い — Goldfish Scooping">
@@ -25,6 +27,8 @@
 <meta name="twitter:title" content="金魚掬い — Goldfish Scooping">
 <meta name="twitter:description" content="水面を GPU 上の FFT で解いている WebGL2 の金魚掬い。時刻と天気は現在地を映します。 / A WebGL2 goldfish scoop with an FFT ocean surface.">
 <meta name="twitter:image" content="https://kanade0525.github.io/kingyo-sukui/assets/og.png">
+<!-- 検索結果に出すゲームの説明（構造化データ）。実行されないデータ -->
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "VideoGame", "name": "金魚掬い", "alternateName": ["金魚すくい", "Goldfish Scooping"], "url": "https://kanade0525.github.io/kingyo-sukui/", "description": "ブラウザで遊べる金魚すくいゲーム。水面を GPU 上の FFT で解いている WebGL2 の金魚掬い。開いた時刻と現在地の天気を映します。", "image": "https://kanade0525.github.io/kingyo-sukui/assets/og.png", "inLanguage": ["ja", "en"], "genre": "シミュレーション", "gamePlatform": "Web browser", "applicationCategory": "Game", "operatingSystem": "Web", "isAccessibleForFree": true, "offers": {"@type": "Offer", "price": "0", "priceCurrency": "JPY"}, "author": {"@type": "Person", "name": "KANADE ISHIDA", "url": "https://kanade0525.github.io/portfolio/"}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&display=swap">

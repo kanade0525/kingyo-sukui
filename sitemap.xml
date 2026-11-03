@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 検索エンジンに渡すページの一覧（Search Console に送る）。perf.html・sound.html は作業用なので入れない -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://kanade0525.github.io/kingyo-sukui/</loc></url>
+</urlset>
