@@ -92,6 +92,9 @@ const DICT = {
     pitchMid: '標準',
     pitchTop: '真上',
     fps: '描画速度',
+    hSupport: '応援',
+    supportBmc: 'カードで。アカウント不要',
+    supportGh: '手数料なしで全額届く',
   },
   en: {
     title: 'Goldfish Scooping',
@@ -175,6 +178,9 @@ const DICT = {
     pitchMid: 'Normal',
     pitchTop: 'Overhead',
     fps: 'Frame rate',
+    hSupport: 'Support',
+    supportBmc: 'By card. No account needed',
+    supportGh: 'No fees. Every cent arrives',
   },
 };
 

@@ -156,6 +156,16 @@ button:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
   border-bottom:1px solid rgba(182,58,29,.42);
 }
 .row{display:flex;flex-direction:column;gap:6px}
+/* 応援の窓口。設定の見出しと同じ罫の下に、二つを縦に並べる */
+.support{display:flex;flex-direction:column;gap:6px}
+.support a{
+  display:flex;flex-direction:column;gap:2px;padding:7px 9px;
+  border:1px solid rgba(42,36,32,.42);color:var(--ink);text-decoration:none;
+}
+.support a:hover,.support a:focus-visible{border-color:var(--hi);color:var(--hi)}
+.support a:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
+.support b{font-size:12px}
+.support small{font-size:10.5px;color:var(--ink-dim)}
 .rl{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px;color:var(--ink-dim)}
 .rl span:last-child{color:var(--ink);font-variant-numeric:tabular-nums}
 /* つまみ。

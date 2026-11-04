@@ -7,7 +7,7 @@
 // GLB は 12 バイトの頭書きのあとに、JSON の塊とバイナリの塊が並ぶ。
 // JSON が「バイナリのどこからどこまでが何か」を指している。
 
-import { Mesh } from './glx.js?v=202610282159';
+import { Mesh } from './glx.js?v=202611040002';
 
 const GLB_MAGIC = 0x46546c67;     // "glTF"
 const CHUNK_JSON = 0x4e4f534a;
