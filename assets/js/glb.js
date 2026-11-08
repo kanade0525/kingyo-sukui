@@ -7,7 +7,7 @@
 // GLB は 12 バイトの頭書きのあとに、JSON の塊とバイナリの塊が並ぶ。
 // JSON が「バイナリのどこからどこまでが何か」を指している。
 
-import { Mesh } from './glx.js?v=202611082211';
+import { Mesh } from './glx.js?v=202611082306';
 
 const GLB_MAGIC = 0x46546c67;     // "glTF"
 const CHUNK_JSON = 0x4e4f534a;
@@ -105,10 +105,12 @@ export async function loadGlb(gl, url, fit = null) {
   const g = extractGlb(await res.arrayBuffer());
   // 見本ごとの向きと寸法の違いは、呼ぶ側が直す（位置と法線をその場で書き換える）
   if (fit) fit(g);
+  // 置き直しで頂点ごとの値を足すことがある（カメの脚らしさなど）
   const mesh = new Mesh(gl, [
     { loc: 0, size: 3, data: g.pos },
     { loc: 1, size: 3, data: g.nrm },
     { loc: 2, size: 2, data: g.uv },
+    ...(g.extra || []),
   ], g.idx);
 
   const bmp = await createImageBitmap(g.image);

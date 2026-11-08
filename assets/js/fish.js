@@ -4,8 +4,8 @@
 // 整列させるより、それぞれが勝手に漂って壁で向きを変えるほうが
 // 実際の金魚に近い動きになる。
 
-import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD, BOWL } from './world.js?v=202611082211';
-import { clamp, lerp, wrapAngle } from './mat.js?v=202611082211';
+import { TANK, FISH_KINDS, FISH_LAYER, TURTLE, MAX_FISH, PAD, BOWL } from './world.js?v=202611082306';
+import { clamp, lerp, wrapAngle } from './mat.js?v=202611082306';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -29,10 +29,12 @@ class Fish {
     this.kind = this.turtle ? 0 : pickKind();
     // 小赤は全長 3cm ほど。出目金はひと回り大きい。
     // 亀は甲長 3cm の子ガメで、小赤と同じくらいしかない
-    // 小赤と小黒は全長 3cm ほど。出目金はひと回り大きい
+    // 小赤と小黒は全長 3cm ほど。出目金はひと回り大きい。
+    // 出目金は 4〜5cm にしていたが、見本は尾が長く胴も丸いので、
+    // 小赤の倍近い大きさに見えた。3.6〜4.4cm に下げる
     this.len = this.turtle
       ? rand(0.030, 0.038)
-      : this.kind <= 1 ? rand(0.026, 0.035) : rand(0.040, 0.050);
+      : this.kind <= 1 ? rand(0.026, 0.035) : rand(0.036, 0.044);
     const y = rand(FISH_LAYER.bottom, FISH_LAYER.top);
     this.p = fromEdge
       ? [rand(-1, 1) > 0 ? mx : -mx, y, rand(-mz, mz)]

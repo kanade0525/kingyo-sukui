@@ -2,18 +2,20 @@
 //
 // 形は見本の網をそのまま使い、四肢の漕ぎだけ手描きのカメと同じ拍子で
 // 付ける。見本は甲羅も四肢も 1 枚につながった網なので、部位の番号は無い。
-// 四肢は「甲羅の外へ張り出していて、縁より低い所」として位置から見分け、
-// 付け根のまわりに回す。頭と尾も位置で見分け、頭はわずかに上下し、尾は左右に振る。
+// どの頂点が脚かは、読み込むときに甲羅の輪郭と比べて決め（renderer.js の
+// fitTurtle）、「脚の番号 + 脚らしさ」として頂点に持たせてある。
+// 脚は付け根のまわりに回す。頭と尾は位置で見分け、頭はわずかに上下し、尾は左右に振る。
 //
 // 色は見本の絵から取り、光（水中の日差し・光の網・行灯・照り）は
 // 手描きのカメと同じ道具で当てる。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202611082211';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202611082306';
 
 export const VS_TURTLEGLB = `${HEAD}
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNrm;
 layout(location=2) in vec2 aUv;
+layout(location=3) in float aLimb;   // 脚の番号（整数部）+ 脚らしさ（小数部）
 uniform mat4 uVP;
 uniform vec3 uCam;
 uniform vec3 uPos;
@@ -28,29 +30,13 @@ out vec2 vUv;
 out float vDist;
 
 /**
- * 体の座標は甲長 1、甲羅の中心が原点、頭が +x、縁の高さが y = 0。
- * 前脚の付け根は x = +0.36、後脚は x = -0.35、どちらも z = ±0.30。
+ * 体の座標は甲長 1、甲羅の中心が原点、頭が +x、甲羅の中ほどの高さが y = 0。
+ * 前脚の付け根は甲羅の前の縁のわき x = +0.45、後脚は x = -0.32、どちらも z = ±0.37。
  */
 vec3 limbRoot(int li){
-  float x = li < 2 ? 0.36 : -0.35;
-  float z = (li == 0 || li == 2) ? 0.30 : -0.30;
-  return vec3(x, -0.08, z);
-}
-
-/**
- * 四肢らしさ。甲羅の楕円（半長 0.5・半幅 0.34）の外で、縁より低い所。
- *
- * はじめは「|z| が 0.24〜0.36 より外」で切っていたが、甲羅の縁甲板が
- * |z| = 0.34 まであるので、四肢の付け根が縁と見分けられず、動くのは
- * 足先だけ（頂点 4,400 のうち 550）だった。楕円の外側で切れば、甲羅は
- * 一つも入らず、四肢は付け根から丸ごと入る（1,250）
- */
-float limbWeight(vec3 p){
-  float e = (p.x * p.x) / (0.5 * 0.5) + (p.z * p.z) / (0.34 * 0.34);
-  float out_ = smoothstep(0.95, 1.20, e);
-  float low = smoothstep(0.05, -0.05, p.y);
-  float side = smoothstep(0.15, 0.25, abs(p.z));         // 頭と尾は除く
-  return out_ * low * side;
+  float x = li < 2 ? 0.45 : -0.32;
+  float z = (li == 0 || li == 2) ? 0.37 : -0.37;
+  return vec3(x, -0.09, z);
 }
 
 void main(){
@@ -58,14 +44,18 @@ void main(){
   vec3 n = aNrm;
 
   // 四肢を漕ぐ。前脚と後脚で位相をずらし、付け根のまわりに水平に回す
-  float w = limbWeight(p);
+  // 整数部が番号、小数部が脚らしさ（0.99 まで）。floor(aLimb + 0.001) と
+  // 書いていたら 0.999 の頂点で番号が 1 つずれ、反対側の付け根を中心に
+  // 回って脚が棒のように伸びた
+  int li = int(aLimb);
+  float w = min((aLimb - float(li)) / 0.99, 1.0);
   if(w > 0.0){
-    int li = (p.x > 0.0 ? 0 : 2) + (p.z > 0.0 ? 0 : 1);
     vec3 root = limbRoot(li);
     float ph = uTime * uBeat + uPhase + float(li) * 1.7;
     // 前後に払う。振り幅 0.38 では甲長 3cm のカメで 2 画素も動かず、
-    // 止まって見えた。子ガメは脚を ±35° ほど大きく振る
-    float swing = sin(ph) * 0.65 * w;
+    // 止まって見えた。この見本の脚は短い（甲長の 1/6 ほどしか出ていない）ので、
+    // 屋台の引きの画でも分かるよう ±50° 近くまで振る
+    float swing = sin(ph) * 0.85 * w;
     // 右と左で回す向きを揃える（どちらも前後へ払う）
     float a = p.z > 0.0 ? swing : -swing;
     float c = cos(a), s = sin(a);
@@ -74,7 +64,7 @@ void main(){
     n = vec3(n.x * c - n.z * s, n.y, n.x * s + n.z * c);
     // 押すときに下へ掻き、戻すときに持ち上げる。真上から見ても
     // 脚の長さが変わって見えるので、漕いでいるのが分かる
-    float dip = cos(ph) * 0.40 * w;
+    float dip = cos(ph) * 0.45 * w;
     float b = p.z > 0.0 ? dip : -dip;
     float cb = cos(b), sb = sin(b);
     d = vec3(d.x, d.y * cb - d.z * sb, d.y * sb + d.z * cb);

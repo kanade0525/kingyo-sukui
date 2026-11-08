@@ -9,25 +9,25 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202611082211';
-import { VS_FULL } from '../shaders/common.js?v=202611082211';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202611082211';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202611082211';
-import { VS_FISHGLB, FS_FISHGLB } from '../shaders/fishglb.js?v=202611082211';
-import { VS_TURTLEGLB, FS_TURTLEGLB } from '../shaders/turtleglb.js?v=202611082211';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202611082211';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202611082211';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202611082211';
-import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202611082211';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202611082211';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202611082211';
-import { Ocean } from './ocean.js?v=202611082211';
-import { loadGlb } from './glb.js?v=202611082211';
-import { Ripple } from './ripple.js?v=202611082211';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202611082306';
+import { VS_FULL } from '../shaders/common.js?v=202611082306';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202611082306';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202611082306';
+import { VS_FISHGLB, FS_FISHGLB } from '../shaders/fishglb.js?v=202611082306';
+import { VS_TURTLEGLB, FS_TURTLEGLB } from '../shaders/turtleglb.js?v=202611082306';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202611082306';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202611082306';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202611082306';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202611082306';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202611082306';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202611082306';
+import { Ocean } from './ocean.js?v=202611082306';
+import { loadGlb } from './glb.js?v=202611082306';
+import { Ripple } from './ripple.js?v=202611082306';
 import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202611082211';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202611082211';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202611082211';
+         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202611082306';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202611082306';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202611082306';
 
 /**
  * 立体の見本。どの種類をどの見本で描くか、と見本ごとの寸法。
@@ -46,11 +46,22 @@ const BLACK_KINDS = [1, 2];
  * ミドリガメの見本。
  *
  * 見本は頭が -x、長さ 1（鼻先から尾の先まで）、足の裏が y = 0。
- * 甲羅は x = -0.40〜0.27（甲長 0.67）、縁の高さは y = 0.15。
+ * 甲羅は x = -0.30〜0.30（甲長 0.60）、天が y = 0.275、腹の底が 0.07。
+ * はじめは幅の広がりから甲羅を -0.40〜0.27 と読んだが、それは前脚まで
+ * 含めた幅だった。甲羅の張り出し（y = 0.155〜0.245）だけで測り直した。
  * 手描きのカメは甲長 1・甲羅の中心が原点・頭が +x・縁が y = 0 なので、
  * 甲羅を基準に置き直す。uLen は甲長（3cm 前後）。
+ *
+ * outline は真上から見た甲羅の半幅。x = -0.3125 から 0.025 刻み。
+ * 甲羅は楕円ではなく、前脚の後ろでいったん細り、後ろ寄りがいちばん広い。
+ * 楕円 1 つで切ると後ろの縁が外にはみ出し、後脚と一緒に動いてしまった
  */
-const GLB_TURTLE = { url: 'assets/models/kame.glb', shellX0: -0.40, shellX1: 0.27, midY: 0.15 };
+const GLB_TURTLE = {
+  url: 'assets/models/kame.glb', shellX0: -0.30, shellX1: 0.30, midY: 0.17,
+  outlineX0: -0.3125, outlineStep: 0.025,
+  outline: [0.10, 0.19, 0.226, 0.232, 0.233, 0.196, 0.178, 0.178, 0.191, 0.202, 0.213, 0.219, 0.222,
+            0.227, 0.229, 0.229, 0.230, 0.226, 0.220, 0.210, 0.200, 0.180, 0.163, 0.138, 0.104, 0.02],
+};
 
 /**
  * 見本を、手描きの金魚と同じ体の座標へ置き直す。
@@ -73,16 +84,41 @@ const fitTo = ({ bodyLen, midY }) => (g) => {
   }
 };
 
-const fitTurtle = ({ shellX0, shellX1, midY }) => (g) => {
+/**
+ * カメの見本を置き直し、あわせて「脚らしさ」を頂点ごとに決める。
+ *
+ * 見本は甲羅も四肢も 1 枚の網で、部位の番号が無い。真上から見て甲羅の
+ * 輪郭より外に出ている分を脚とし、輪郭からの距離で 0〜1 にする。
+ * 頭と尾は細い（|z| < 0.1）ので外す。
+ * 値は「脚の番号 + 脚らしさ」の 1 つの数にして、シェーダで分ける。
+ * 番号は 0 右前・1 左前・2 右後・3 左後（手描きの limbAngle と同じ）
+ */
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const fitTurtle = ({ shellX0, shellX1, midY, outlineX0, outlineStep, outline }) => (g) => {
   const K = 1 / (shellX1 - shellX0);
   const cx = (shellX0 + shellX1) / 2;
-  for (let i = 0; i < g.pos.length; i += 3) {
-    g.pos[i] = -(g.pos[i] - cx) * K;
+  const halfWidth = (x) => {
+    const t = (x - outlineX0) / outlineStep;
+    const i = Math.floor(t);
+    if (i < 0 || i >= outline.length - 1) return 0;
+    return outline[i] + (outline[i + 1] - outline[i]) * (t - i);
+  };
+  const n = g.pos.length / 3;
+  const limb = new Float32Array(n);
+  for (let k = 0; k < n; k++) {
+    const i = k * 3;
+    const x = g.pos[i], z = g.pos[i + 2];
+    const w = smooth(0.015, 0.05, Math.abs(z) - halfWidth(x)) * smooth(0.08, 0.14, Math.abs(z));
+    // 前脚は x < 0（頭側）、右は見本の z < 0（置き直しで裏返るので、描くときの z > 0）
+    const li = (x < -0.05 ? 0 : 2) + (z < 0 ? 0 : 1);
+    limb[k] = li + Math.min(w, 0.99);
+    g.pos[i] = -(x - cx) * K;
     g.pos[i + 1] = (g.pos[i + 1] - midY) * K;
-    g.pos[i + 2] = -g.pos[i + 2] * K;
+    g.pos[i + 2] = -z * K;
     g.nrm[i] = -g.nrm[i];
     g.nrm[i + 2] = -g.nrm[i + 2];
   }
+  g.extra = [{ loc: 3, size: 1, data: limb }];
 };
 
 // 舟がいちばん張り出すのは縁の上端。地面の影と接地の陰りはここで取る
