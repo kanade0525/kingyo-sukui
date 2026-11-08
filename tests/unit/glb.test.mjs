@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { extractGlb } from '../../assets/js/glb.js?v=202610080114';
 import { ok, eq, between } from '../lib/assert.mjs';
 
-const MODELS = [['和金', 'wakin.glb'], ['出目金', 'demekin.glb']];
+const MODELS = [['和金', 'wakin.glb'], ['出目金', 'demekin.glb'], ['ミドリガメ', 'kame.glb']];
 const fileOf = (name) => new URL(`../../assets/models/${name}`, import.meta.url);
 const load = (name) => {
   const b = readFileSync(fileOf(name));

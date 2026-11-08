@@ -9,24 +9,25 @@
 // 板ポリで近似せず、屈折方向に進めた点を投影し直すので、
 // 浅い角度でも金魚が水面の起伏に沿って歪む。
 
-import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202611040002';
-import { VS_FULL } from '../shaders/common.js?v=202611040002';
-import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202611040002';
-import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202611040002';
-import { VS_FISHGLB, FS_FISHGLB } from '../shaders/fishglb.js?v=202611040002';
-import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202611040002';
-import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202611040002';
-import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202611040002';
-import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202611040002';
-import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202611040002';
-import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202611040002';
-import { Ocean } from './ocean.js?v=202611040002';
-import { loadGlb } from './glb.js?v=202611040002';
-import { Ripple } from './ripple.js?v=202611040002';
+import { Program, FullScreen, makeTex, makeFbo, bindFbo, gridMesh, makeCube, bindCubeFace } from './glx.js?v=202611081426';
+import { VS_FULL } from '../shaders/common.js?v=202611081426';
+import { FS_SKY, VS_TANK, FS_TANK, VS_WATER, FS_WATER, FS_FISHSHADOW } from '../shaders/scene.js?v=202611081426';
+import { VS_FISH, FS_FISH, VS_POI, FS_POI } from '../shaders/actors.js?v=202611081426';
+import { VS_FISHGLB, FS_FISHGLB } from '../shaders/fishglb.js?v=202611081426';
+import { VS_TURTLEGLB, FS_TURTLEGLB } from '../shaders/turtleglb.js?v=202611081426';
+import { VS_TURTLE, FS_TURTLE } from '../shaders/turtle.js?v=202611081426';
+import { FS_BRIGHT, FS_BLUR, FS_COMPOSITE, FS_FXAA } from '../shaders/post.js?v=202611081426';
+import { FS_ENVBAKE, FS_ENVFILTER } from '../shaders/env.js?v=202611081426';
+import { FS_ROOM, VS_JAR, FS_JAR } from '../shaders/home.js?v=202611081426';
+import { VS_PAD, FS_PAD, VS_WEED, FS_WEED, VS_LEAF, FS_LEAF, VS_BUBBLE, FS_BUBBLE, VS_GEAR, FS_GEAR, VS_SPLASH, FS_SPLASH, VS_RAIN, FS_RAIN } from '../shaders/props.js?v=202611081426';
+import { tankMesh, fishMesh, poiMesh, bowlMesh, turtleMesh, padMesh, weedMesh, jarMesh, bubbleMesh, gearMesh, splashMesh } from './meshes.js?v=202611081426';
+import { Ocean } from './ocean.js?v=202611081426';
+import { loadGlb } from './glb.js?v=202611081426';
+import { Ripple } from './ripple.js?v=202611081426';
 import { TANK, PATCH, RIPPLE_SPAN, POI, BOWL, MAX_FISH, PAD, WEED, LEAF, JAR, ROOM, ORBIT, jarView, AIR, LANTERN, RAIN,
-         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202611040002';
-import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202611040002';
-import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202611040002';
+         pushOutOfBowl, bowlPosFor, mapleLeaves, jarRadius, jarCameraFor, ZOOM } from './world.js?v=202611081426';
+import { sunFor, DEFAULT_HOUR, WEATHER } from './sky.js?v=202611081426';
+import { mat4, perspective, lookAt, multiply, norm3, cross3, sub3 } from './mat.js?v=202611081426';
 
 /**
  * 立体の見本。どの種類をどの見本で描くか、と見本ごとの寸法。
@@ -42,6 +43,16 @@ const GLB_MODELS = [
 const BLACK_KINDS = [1, 2];
 
 /**
+ * ミドリガメの見本。
+ *
+ * 見本は頭が -x、長さ 1（鼻先から尾の先まで）、足の裏が y = 0。
+ * 甲羅は x = -0.40〜0.27（甲長 0.67）、縁の高さは y = 0.15。
+ * 手描きのカメは甲長 1・甲羅の中心が原点・頭が +x・縁が y = 0 なので、
+ * 甲羅を基準に置き直す。uLen は甲長（3cm 前後）。
+ */
+const GLB_TURTLE = { url: 'assets/models/kame.glb', shellX0: -0.40, shellX1: 0.27, midY: 0.15 };
+
+/**
  * 見本を、手描きの金魚と同じ体の座標へ置き直す。
  *
  * 見本は頭が -x、尾が +x で、長さ 1（鼻先から尾の先まで）、腹の下が y = 0。
@@ -55,6 +66,18 @@ const fitTo = ({ bodyLen, midY }) => (g) => {
   const x0 = g.min[0];
   for (let i = 0; i < g.pos.length; i += 3) {
     g.pos[i] = 0.5 - (g.pos[i] - x0) * K;
+    g.pos[i + 1] = (g.pos[i + 1] - midY) * K;
+    g.pos[i + 2] = -g.pos[i + 2] * K;
+    g.nrm[i] = -g.nrm[i];
+    g.nrm[i + 2] = -g.nrm[i + 2];
+  }
+};
+
+const fitTurtle = ({ shellX0, shellX1, midY }) => (g) => {
+  const K = 1 / (shellX1 - shellX0);
+  const cx = (shellX0 + shellX1) / 2;
+  for (let i = 0; i < g.pos.length; i += 3) {
+    g.pos[i] = -(g.pos[i] - cx) * K;
     g.pos[i + 1] = (g.pos[i + 1] - midY) * K;
     g.pos[i + 2] = -g.pos[i + 2] * K;
     g.nrm[i] = -g.nrm[i];
@@ -641,15 +664,8 @@ export class Renderer {
     let tp = null;
     for (const f of fish) {
       if (!f.turtle) continue;
-      if (!tp) {
-        tp = this.pTurtle.use();
-        this.#lights(tp);
-        tp.mat4('uVP', this.vp).set('uCam', this.cam)
-          .setFloat('uTime', time).setInt('uUnderwater', underwater);
-      }
-      tp.set('uPos', f.p).setFloat('uYaw', f.yaw).setFloat('uLen', f.len)
-        .setFloat('uPhase', f.phase).setFloat('uBeat', f.beat).setFloat('uSeed', f.seed);
-      this.mTurtle.draw();
+      tp ||= this.#turtleProgram(time, { water: false, underwater });
+      this.#oneTurtle(tp, f);
     }
   }
 
@@ -832,13 +848,39 @@ export class Renderer {
     const mode = new URLSearchParams(location.search).get('glb') ?? '';
     this.glbMode = mode === 'off' ? null : mode;
     this.glbModels = GLB_MODELS.map((m) => ({ ...m, loaded: null, queue: [] }));
+    this.glbTurtle = { ...GLB_TURTLE, loaded: null };
     if (this.glbMode === null) return;
     this.pFishGlb = new Program(gl, VS_FISHGLB, FS_FISHGLB, 'fishGlb');
+    this.pTurtleGlb = new Program(gl, VS_TURTLEGLB, FS_TURTLEGLB, 'turtleGlb');
     for (const m of this.glbModels) {
       loadGlb(gl, m.url, fitTo(m))
         .then((g) => { m.loaded = g; })
         .catch((e) => console.error('[glb]', m.url, e));
     }
+    loadGlb(gl, this.glbTurtle.url, fitTurtle(this.glbTurtle))
+      .then((g) => { this.glbTurtle.loaded = g; })
+      .catch((e) => console.error('[glb]', this.glbTurtle.url, e));
+  }
+
+  /**
+   * カメを描くプログラム。見本が読めていれば見本で、まだなら手描きで描く。
+   * 家の鉢では水のうねりの道具（#water）を結ばない
+   */
+  #turtleProgram(time, { water = true, underwater = null } = {}) {
+    const m = this.glbTurtle.loaded;
+    const p = (m ? this.pTurtleGlb : this.pTurtle).use();
+    this.#lights(p);
+    if (water) this.#water(p);
+    p.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
+    if (underwater !== null) p.setInt('uUnderwater', underwater);
+    if (m) p.tex('uTex', m.tex);
+    return p;
+  }
+
+  #oneTurtle(p, f) {
+    p.set('uPos', f.p).setFloat('uYaw', f.yaw).setFloat('uLen', f.len)
+      .setFloat('uPhase', f.phase).setFloat('uBeat', f.beat).setFloat('uSeed', f.seed);
+    (this.glbTurtle.loaded ? this.glbTurtle.loaded.mesh : this.mTurtle).draw();
   }
 
   /** この金魚を描く見本。無ければ null（手描きで描く） */
@@ -1022,18 +1064,8 @@ export class Renderer {
     for (const f of school.list) {
       if (f.gone || !f.turtle) continue;
       if ((f.p[1] > -0.004) !== wantAbove) continue;
-      if (!tp) {
-        tp = this.pTurtle.use();
-        this.#lights(tp); this.#water(tp);
-        tp.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
-      }
-      tp.set('uPos', f.p)
-        .setFloat('uYaw', f.yaw)
-        .setFloat('uLen', f.len)
-        .setFloat('uPhase', f.phase)
-        .setFloat('uBeat', f.beat)
-        .setFloat('uSeed', f.seed);
-      this.mTurtle.draw();
+      tp ||= this.#turtleProgram(time);
+      this.#oneTurtle(tp, f);
     }
   }
 
@@ -1288,14 +1320,8 @@ export class Renderer {
       let tp = null;
       for (const f of state.bowl) {
         if (!f.turtle) continue;
-        if (!tp) {
-          tp = this.pTurtle.use();
-          this.#lights(tp); this.#water(tp);
-          tp.mat4('uVP', this.vp).set('uCam', this.cam).setFloat('uTime', time);
-        }
-        tp.set('uPos', f.p).setFloat('uYaw', f.yaw).setFloat('uLen', f.len)
-          .setFloat('uPhase', f.phase).setFloat('uBeat', f.beat).setFloat('uSeed', f.seed);
-        this.mTurtle.draw();
+        tp ||= this.#turtleProgram(time);
+        this.#oneTurtle(tp, f);
       }
     }
     gl.enable(gl.BLEND);
