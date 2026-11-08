@@ -7,8 +7,8 @@
 // 見本は胴とひれが 1 枚につながった網なので、手描きの金魚のように
 // 尾の反りや胸びれの漕ぎを別々には動かせない。
 
-import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202611081426';
-import { SWIM } from './actors.js?v=202611081426';
+import { HEAD, NOISE, MATERIAL, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202611082211';
+import { SWIM } from './actors.js?v=202611082211';
 
 export const VS_FISHGLB = `${HEAD}
 layout(location=0) in vec3 aPos;

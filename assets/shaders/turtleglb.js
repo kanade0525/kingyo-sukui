@@ -8,7 +8,7 @@
 // 色は見本の絵から取り、光（水中の日差し・光の網・行灯・照り）は
 // 手描きのカメと同じ道具で当てる。
 
-import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202611081426';
+import { HEAD, NOISE, SKYLIB, AMBIENT, WATERLIB, CAUSTICS } from './common.js?v=202611082211';
 
 export const VS_TURTLEGLB = `${HEAD}
 layout(location=0) in vec3 aPos;
@@ -37,12 +37,20 @@ vec3 limbRoot(int li){
   return vec3(x, -0.08, z);
 }
 
-/** 四肢らしさ。甲羅の外（|z| が大きい）で、縁より低い所 */
+/**
+ * 四肢らしさ。甲羅の楕円（半長 0.5・半幅 0.34）の外で、縁より低い所。
+ *
+ * はじめは「|z| が 0.24〜0.36 より外」で切っていたが、甲羅の縁甲板が
+ * |z| = 0.34 まであるので、四肢の付け根が縁と見分けられず、動くのは
+ * 足先だけ（頂点 4,400 のうち 550）だった。楕円の外側で切れば、甲羅は
+ * 一つも入らず、四肢は付け根から丸ごと入る（1,250）
+ */
 float limbWeight(vec3 p){
-  float out_ = smoothstep(0.24, 0.36, abs(p.z));
-  float low = smoothstep(0.00, -0.10, p.y);
-  float body = 1.0 - smoothstep(0.48, 0.62, abs(p.x));   // 頭と尾は除く
-  return out_ * low * body;
+  float e = (p.x * p.x) / (0.5 * 0.5) + (p.z * p.z) / (0.34 * 0.34);
+  float out_ = smoothstep(0.95, 1.20, e);
+  float low = smoothstep(0.05, -0.05, p.y);
+  float side = smoothstep(0.15, 0.25, abs(p.z));         // 頭と尾は除く
+  return out_ * low * side;
 }
 
 void main(){
@@ -54,15 +62,24 @@ void main(){
   if(w > 0.0){
     int li = (p.x > 0.0 ? 0 : 2) + (p.z > 0.0 ? 0 : 1);
     vec3 root = limbRoot(li);
-    float swing = sin(uTime * uBeat + uPhase + float(li) * 1.7) * 0.38 * w;
+    float ph = uTime * uBeat + uPhase + float(li) * 1.7;
+    // 前後に払う。振り幅 0.38 では甲長 3cm のカメで 2 画素も動かず、
+    // 止まって見えた。子ガメは脚を ±35° ほど大きく振る
+    float swing = sin(ph) * 0.65 * w;
     // 右と左で回す向きを揃える（どちらも前後へ払う）
     float a = p.z > 0.0 ? swing : -swing;
     float c = cos(a), s = sin(a);
     vec3 d = p - root;
-    p = root + vec3(d.x * c - d.z * s, d.y, d.x * s + d.z * c);
+    d = vec3(d.x * c - d.z * s, d.y, d.x * s + d.z * c);
     n = vec3(n.x * c - n.z * s, n.y, n.x * s + n.z * c);
-    // 払うときにわずかに持ち上がる
-    p.y += swing * 0.07 * smoothstep(0.30, 0.60, abs(p.z));
+    // 押すときに下へ掻き、戻すときに持ち上げる。真上から見ても
+    // 脚の長さが変わって見えるので、漕いでいるのが分かる
+    float dip = cos(ph) * 0.40 * w;
+    float b = p.z > 0.0 ? dip : -dip;
+    float cb = cos(b), sb = sin(b);
+    d = vec3(d.x, d.y * cb - d.z * sb, d.y * sb + d.z * cb);
+    n = vec3(n.x, n.y * cb - n.z * sb, n.y * sb + n.z * cb);
+    p = root + d;
   }
   // 頭はゆっくり上下する
   float head = smoothstep(0.50, 0.70, p.x);
